@@ -10,7 +10,7 @@
 #include <sstream>
 #include <string>
 #include <typeinfo>
-#include <unordered_map>
+#include <map>
 #include <vector>
 
 #include "cmd_args/base/def.h"
@@ -21,39 +21,30 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-class argparser
-{
+class parser {
 public:
-    argparser(std::string description) : description(std::move(description)) {}
+    parser(std::string description)
+        : description(std::move(description)) {}
 
-    argparser &set_program_name(std::string name)
-    {
+    parser& set_program_name(std::string name) {
         program_name = std::move(name);
         return *this;
     }
 
-    std::string usage_string() const
-    {
+    std::string usage_string() const {
         std::ostringstream oss;
         oss << "usage: " << program_name << " [options]";
-        for (auto const &named_arg : named_arguments) {
-            std::cout << " [=" << named_arg.name << "]";
-        }
+        oss << named_args.doGetUsage();
+        oss << pos_args.doGetUsage();
 
-        for (auto const &arg : arguments) {
-            std::cout << " [" << arg.name << "]";
-        }
-        
         return oss.str();
     }
 
-    void print_usage() const
-    {
+    void print_usage() const {
         std::cout << usage_string() << std::endl;
     }
 
-    std::string env_string() const
-    {
+    std::string env_string() const {
         std::ostringstream oss;
         size_t i = 0;
         for (auto& e : setEnvs) {
@@ -68,24 +59,17 @@ public:
         std::cout << env_string() << std::endl;
     }
 
-    std::size_t calc_desc_max_length() const noexcept
-    {
+    std::size_t calc_desc_max_length() const noexcept {
         std::size_t max_name_length = 0;
-        for (auto const &opt : short_circuit_options) {
+        for (auto const& opt : short_circuit_options) {
             std::size_t length = opt.long_name.length();
-            if (!opt.short_name.empty())
-            {
-                length += 4;
-            }
+            if (!opt.short_name.empty()) { length += 4; }
             max_name_length = std::max(max_name_length, length);
         }
 
-        for (auto const &opt : options) {
+        for (auto const& opt : options) {
             std::size_t length = opt.long_name.length();
-            if (!opt.short_name.empty())
-            {
-                length += 4;
-            }
+            if (!opt.short_name.empty()) { length += 4; }
             max_name_length = std::max(max_name_length, length);
         }
 
@@ -94,26 +78,8 @@ public:
         return max_name_length;
     }
 
-    void short_circuit_options_help(std::ostringstream &_Out, std::size_t _Max) const
-    {
-        for (auto const &opt : short_circuit_options) {
-            _Out << "  ";
-            std::size_t printed_length = 0;
-            if (!opt.short_name.empty())
-            {
-                _Out << opt.short_name << ", ";
-                printed_length = 4;
-            }
-            _Out << opt.long_name;
-            printed_length += opt.long_name.length();
-            _Out << std::string(_Max - printed_length, ' ');
-            _Out << replace(opt.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
-        }
-    }
-
-    void options_help(std::ostringstream &_Out, std::size_t _Max) const
-    {
-        for (auto const &opt : options) {
+    void short_circuit_options_help(std::ostringstream& _Out, std::size_t _Max) const {
+        for (auto const& opt : short_circuit_options) {
             _Out << "  ";
             std::size_t printed_length = 0;
             if (!opt.short_name.empty()) {
@@ -123,54 +89,27 @@ public:
             _Out << opt.long_name;
             printed_length += opt.long_name.length();
             _Out << std::string(_Max - printed_length, ' ');
-            if (opt.type != "bool") {
-                _Out << "(" << opt.type << ") ";
-            }
-            _Out << replace(opt.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
+            _Out << util::replace(opt.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
         }
     }
 
-    void named_arguments_help(std::ostringstream &_Out, std::size_t _Max) const
-    {
-        if (named_arguments.size() > 0) {
-            _Out << "\nNamed arguments:\n";
-            _Max = 0;
-            for (auto const &arg : named_arguments) {
-                _Max = std::max(_Max, arg.name.length());
+    void options_help(std::ostringstream& _Out, std::size_t _Max) const {
+        for (auto const& opt : options) {
+            _Out << "  ";
+            std::size_t printed_length = 0;
+            if (!opt.short_name.empty()) {
+                _Out << opt.short_name << ", ";
+                printed_length = 4;
             }
-
-            _Max = std::max(_Max, std::size_t(25));
-            for (auto const &arg : named_arguments) {
-                _Out << "  ";
-                _Out << arg.name;
-                _Out << std::string(_Max - arg.name.length(), ' ') << "(" << arg.type << ") ";
-                _Out << replace(arg.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
-            }
+            _Out << opt.long_name;
+            printed_length += opt.long_name.length();
+            _Out << std::string(_Max - printed_length, ' ');
+            if (opt.type != "bool") { _Out << "(" << opt.type << ") "; }
+            _Out << util::replace(opt.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
         }
     }
 
-   void arguments_help(std::ostringstream &_Out, std::size_t _Max) const
-    {
-        if (arguments.size() > 0) {
-            _Out << "\nPosition arguments:\n";
-            _Max = 0;
-            for (auto const &arg : arguments)
-            {
-                _Max = std::max(_Max, arg.name.length());
-            }
-            _Max = std::max(_Max, std::size_t(25));
-            for (auto const &arg : arguments)
-            {
-                _Out << "  ";
-                _Out << arg.name;
-                _Out << std::string(_Max - arg.name.length(), ' ') << "(" << arg.type << ") ";
-                _Out << replace(arg.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
-            }
-        }
-    }
-
-    std::string help_desc() const
-    {
+    std::string help_desc() const {
         std::ostringstream oss(usage_string(), std::ios::app);
         oss << "\n" << description << "\n\n";
         oss << "Options:\n";
@@ -178,29 +117,27 @@ public:
         auto max_name_length = calc_desc_max_length();
         short_circuit_options_help(oss, max_name_length);
         options_help(oss, max_name_length);
-        named_arguments_help(oss, max_name_length);
-        arguments_help(oss, max_name_length);
- 
+        named_args.doGetHelp(oss, max_name_length);
+        pos_args.doGetHelp(oss, max_name_length);
+
         return oss.str();
     }
 
-    void print_help() const
-    {
+    void print_help() const {
         std::cout << help_desc() << std::endl;
     }
 
-    argparser &add_help_option()
-    {
+    parser& add_help_option() {
         return add_sc_option("-?", "--help", "show this help message", [this]() { print_help(); });
     }
 
-    argparser& add_env_option() {
+    parser& add_env_option() {
         return add_sc_option("-!", "--env", "show this env message", [this]() { print_env(); });
     }
 
     // add short circuit option
-    argparser &add_sc_option(std::string sname, std::string lname, std::string desc, std::function<void(void)> callback)
-    {
+    parser& add_sc_option(std::string sname, std::string lname, std::string desc,
+                          std::function<void(void)> callback) {
         // long name must not be empty
         check_add_option_lname(lname);
         // allow short name to be empty
@@ -208,16 +145,17 @@ public:
             check_add_option_sname(sname);
             short_name_index[sname.back()] = short_circuit_options.size();
         }
-        short_circuit_options.emplace_back(std::move(sname), std::move(lname), std::move(desc), std::move(callback));
-        
+        short_circuit_options.emplace_back(std::move(sname), std::move(lname), std::move(desc),
+                                           std::move(callback));
+
         return *this;
     }
 
     template <typename T>
-    argparser &add_option(std::string sname, std::string lname, std::string help, T &&default_value)
-    {
+    parser& add_option(std::string sname, std::string lname, std::string help, T&& default_value) {
         if (type_string<T>() == "null") {
-            std::cerr << "(build error) unsupport type for option: " << typeid(T).name() << std::endl;
+            std::cerr << "(build error) unsupport type for option: " << typeid(T).name()
+                      << std::endl;
             std::exit(-1);
         }
 
@@ -227,22 +165,15 @@ public:
             short_name_index[sname.back()] = options.size();
         }
 
-        options.emplace_back(
-            std::move(sname),
-            std::move(lname),
-            std::move(help),
-            type_string<T>(),
-            to_string(default_value)
-        );
+        options.emplace_back(std::move(sname), std::move(lname), std::move(help), type_string<T>(),
+                             to_string(default_value));
 
         return *this;
     }
 
-    argparser &add_option(std::string sname, std::string lname, std::string help)
-    {
+    parser& add_option(std::string sname, std::string lname, std::string help) {
         check_add_option_lname(lname);
-        if (sname != "")
-        {
+        if (sname != "") {
             check_add_option_sname(sname);
             short_name_index[sname.back()] = options.size();
         }
@@ -251,29 +182,24 @@ public:
     }
 
     template <typename T>
-    argparser &add_argument(std::string name, std::string help)
-    {
+    parser& add_argument(std::string name, std::string help) {
         check_add_argument_name<T>(name);
-        arguments.emplace_back(std::move(name), std::move(help), type_string<T>());
+        pos_args.doPush(std::move(name), std::move(help), util::type_string<T>());
         return *this;
     }
 
     template <typename T>
-    argparser &add_named_argument(std::string name, std::string help)
-    {
+    parser& add_named_argument(std::string name, std::string help) {
         check_add_argument_name<T>(name);
-        named_arguments.emplace_back(std::move(name), std::move(help), type_string<T>());
+        named_args.doPush(std::move(name), std::move(help), util::type_string<T>());
         return *this;
     }
 
     template <typename T>
-    T get_option(std::string const &name) const
-    {
+    T get_option(std::string const& name) const {
         using namespace util;
         auto pos = find_option_sname(name);
-        if (pos == options.cend()) {
-            pos = find_option_lname(name);
-        }
+        if (pos == options.cend()) { pos = find_option_lname(name); }
 
         if (pos == options.cend()) {
             std::cerr << "(get error) option not found: " << name << std::endl;
@@ -281,8 +207,8 @@ public:
         }
 
         if (pos->type != type_string<T>()) {
-            std::cerr << "(get error) option type mismatch: set '" << pos->type << "' but you try get with '"
-                      << type_string<T>() << "'" << std::endl;
+            std::cerr << "(get error) option type mismatch: set '" << pos->type
+                      << "' but you try get with '" << type_string<T>() << "'" << std::endl;
             std::exit(-1);
         }
 
@@ -290,119 +216,130 @@ public:
     }
 
     // some alias for get_option
-    bool has_option(std::string const &name) const { return get_option<bool>(name); }
-    bool get_option_bool(std::string const &name) const { return get_option<bool>(name); }
-    int get_option_int(std::string const &name) const { return get_option<int>(name); }
-    int64_t get_option_int64(std::string const &name) const { return get_option<int64_t>(name); }
-    double get_option_double(std::string const &name) const { return get_option<double>(name); }
-    std::string get_option_string(std::string const &name) const { return get_option<std::string>(name); }
+    bool has_option(std::string const& name) const {
+        return get_option<bool>(name);
+    }
+    bool get_option_bool(std::string const& name) const {
+        return get_option<bool>(name);
+    }
+    int get_option_int(std::string const& name) const {
+        return get_option<int>(name);
+    }
+    int64_t get_option_int64(std::string const& name) const {
+        return get_option<int64_t>(name);
+    }
+    double get_option_double(std::string const& name) const {
+        return get_option<double>(name);
+    }
+    std::string get_option_string(std::string const& name) const {
+        return get_option<std::string>(name);
+    }
 
     template <typename T>
-    T get_argument(std::string const &name) const
-    {
+    T get_argument(std::string const& name) const {
         using namespace util;
-        auto pos = find_argument(name);
-        if (pos == arguments.cend()) {
-            pos = find_named_argument(name);
+        auto* p = pos_args.doGet(name);
+        if (p) {
+            if (p->strType != util::type_string<T>()) {
+                std::cerr << "(get error) argument type mismatch: set '" << p->strType
+                          << "' but you try get with '" << util::type_string<T>() << "'"
+                          << std::endl;
+                std::exit(-1);
+            }
+
+            return util::parse_value<T>(p->strValue);
         }
 
-        if (pos == named_arguments.cend()) {
+        p = named_args.doGet(name);
+        if (!p) {
             std::cerr << "(get error) argument not found: " << name << std::endl;
             std::exit(-1);
         }
-        
-        if (pos->type != type_string<T>()) {
-            std::cerr << "(get error) argument type mismatch: set '" << pos->type << "' but you try get with '"
-                      << type_string<T>() << "'" << std::endl;
+
+        if (p->strType != util::type_string<T>()) {
+            std::cerr << "(get error) argument type mismatch: set '" << p->strType
+                      << "' but you try get with '" << util::type_string<T>() << "'" << std::endl;
             std::exit(-1);
         }
 
-        return parse_value<T>(pos->value);
+        return util::parse_value<T>(p->strValue);
     }
 
     // some alias for get_argument
-    int get_argument_int(std::string const &name) const { return get_argument<int>(name); }
-    int64_t get_argument_int64(std::string const &name) const { return get_argument<int64_t>(name); }
-    double get_argument_double(std::string const &name) const { return get_argument<double>(name); }
-    std::string get_argument_string(std::string const &name) const { return get_argument<std::string>(name); }
+    int get_argument_int(std::string const& name) const {
+        return get_argument<int>(name);
+    }
+    int64_t get_argument_int64(std::string const& name) const {
+        return get_argument<int64_t>(name);
+    }
+    double get_argument_double(std::string const& name) const {
+        return get_argument<double>(name);
+    }
+    std::string get_argument_string(std::string const& name) const {
+        return get_argument<std::string>(name);
+    }
 
     // parse arguments
-    argparser& parse(int argc, char const* argv[])
-    {
+    parser& parse(int argc, char const* argv[]) {
         std::vector<std::string> vecArgs;
-        for (int i = 0; i < argc; ++i) {
-            vecArgs.emplace_back(argv[i]);
-        }
+        for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
 
         parse(vecArgs.size(), std::move(vecArgs), {});
     }
 
-    argparser& parse(int argc, char const* argv[], char*envp[])
-    {
+    parser& parse(int argc, char const* argv[], char* envp[]) {
         std::vector<std::string> vecArgs;
-        for (int i = 0; i < argc; ++i) {
-            vecArgs.emplace_back(argv[i]);
-        }
+        for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
 
         std::vector<std::string> vecEnv;
-        for (int i = 0; envp[i]; ++i) {
-            vecEnv.emplace_back(envp[i]);
-        }
+        for (int i = 0; envp[i]; ++i) { vecEnv.emplace_back(envp[i]); }
 
         parse(vecArgs.size(), std::move(vecArgs), std::move(vecEnv));
     }
 
-    argparser& parse(size_t argc, std::vector<std::string> &&argv, std::vector<std::string>  &&envp)
-    {
+    parser& parse(size_t argc, std::vector<std::string>&& argv, std::vector<std::string>&& envp) {
         parse(argc, argv, envp);
     }
 
-    argparser &parse(size_t argc, std::vector<std::string> &argv, std::vector<std::string> &envp)
-    {
+    parser& parse(size_t argc, std::vector<std::string>& argv, std::vector<std::string>& envp) {
         if (program_name == "") {
             // if not set program name, use argv[0]
             program_name = argv[0];
         }
+
         if (argc == 1) {
             print_usage();
             std::exit(0);
         }
 
-        // kv supported
+        // env supported
         for (auto& e : envp) setEnvs.emplace(e);
-        
+
         std::vector<std::string> tokens;
-        for (int i = 1; i < argc; ++i) {
-            tokens.emplace_back(argv[i]);
-        }
+        for (int i = 1; i < argc; ++i) { tokens.emplace_back(argv[i]); }
         // start parse short circuit options
-        for (auto &&sc_opt : short_circuit_options) {
-            auto pos = std::find_if(tokens.cbegin(), tokens.cend(),
-                                    [&sc_opt](std::string const &tok)
-                                    { return tok == sc_opt.short_name || tok == sc_opt.long_name; });
-            if (pos != tokens.cend())
-            {
+        for (auto&& sc_opt : short_circuit_options) {
+            auto pos =
+                std::find_if(tokens.cbegin(), tokens.cend(), [&sc_opt](std::string const& tok) {
+                    return tok == sc_opt.short_name || tok == sc_opt.long_name;
+                });
+            if (pos != tokens.cend()) {
                 sc_opt.callback();
                 std::exit(0);
             }
         }
         // start parse options
-        for (auto &&opt : options) {
-            auto pos =
-                std::find_if(tokens.cbegin(), tokens.cend(),
-                             [&opt](std::string const &tok) { return tok == opt.short_name || tok == opt.long_name; }
-                );
-            if (pos == tokens.cend()) {
-                continue;
-            }
+        for (auto&& opt : options) {
+            auto pos = std::find_if(tokens.cbegin(), tokens.cend(), [&opt](std::string const& tok) {
+                return tok == opt.short_name || tok == opt.long_name;
+            });
+            if (pos == tokens.cend()) { continue; }
             pos = tokens.erase(pos);
             if (opt.type == "bool") {
                 opt.value = "1";
-            }
-            else {
+            } else {
                 // other types need to parse next token
-                if (pos == tokens.cend())
-                {
+                if (pos == tokens.cend()) {
                     std::cerr << "(parse error) option " << opt.short_name << " " << opt.long_name
                               << " should have value" << std::endl;
                     std::exit(-1);
@@ -413,8 +350,8 @@ public:
         }
         // if there are short name like options, parse it as aggregation short name options
         {
-            auto pos =
-                std::find_if(tokens.cbegin(), tokens.cend(), [](std::string const &tok) { return tok.front() == '-'; });
+            auto pos = std::find_if(tokens.cbegin(), tokens.cend(),
+                                    [](std::string const& tok) { return tok.front() == '-'; });
             if (pos != tokens.cend()) {
                 if (pos->length() == 1) {
                     std::cerr << "(parse error) bare unexcepted '-'" << std::endl;
@@ -427,8 +364,8 @@ public:
                 std::string short_names = pos->substr(1);
                 for (char ch : short_names) {
                     std::size_t index = short_name_index[ch];
-                    if (index < short_circuit_options.size() && short_circuit_options[index].short_name.back() == ch)
-                    {
+                    if (index < short_circuit_options.size() &&
+                        short_circuit_options[index].short_name.back() == ch) {
                         short_circuit_options[index].callback();
                         std::exit(0);
                     }
@@ -437,16 +374,15 @@ public:
                 for (char ch : short_names) {
                     std::size_t index = short_name_index[ch];
                     if (index < options.size() && options[index].short_name.back() == ch) {
-                        if (options[index].type != "bool")
-                        {
-                            std::cerr << "(parse error) aggregation short name option must be bool" << std::endl;
+                        if (options[index].type != "bool") {
+                            std::cerr << "(parse error) aggregation short name option must be bool"
+                                      << std::endl;
                             std::exit(-1);
                         }
                         options[index].value = "1";
-                    }
-                    else {
-                        std::cerr << "(parse error) unrecognized short name option '" << ch << "' in " << (*pos)
-                                  << std::endl;
+                    } else {
+                        std::cerr << "(parse error) unrecognized short name option '" << ch
+                                  << "' in " << (*pos) << std::endl;
                         std::exit(-1);
                     }
                 }
@@ -454,152 +390,98 @@ public:
             }
         }
         // start parse named arguments
-        if (tokens.size() < named_arguments.size()) {
+        if (tokens.size() < named_args.doSize()) {
             std::cerr << "(parse error) not enough named_arguments" << std::endl;
             std::exit(-1);
         }
-        for (auto &named_arg : named_arguments) {
-            for (auto pos = tokens.begin(); pos != tokens.end();) {
-                if (try_parse_named_argument(*pos, named_arg))
-                {
-                    pos = tokens.erase(pos);
-                    break;
-                }
-                ++pos;
+
+        for (auto pos = tokens.begin(); pos != tokens.end();) {
+            if (named_args.set(*pos)) {
+                pos = tokens.erase(pos);
+                break;
             }
-            if (named_arg.value == "") {
-                std::cerr << "(parse error) named_argument " << named_arg.name << " should have value" << std::endl;
-                std::exit(-1);
-            }
+            ++pos;
         }
 
         // start parse position arguments
-        if (tokens.size() != arguments.size()) {
-            std::cerr << "(parse error) position argument number missmatching, give " << tokens.size() << ", but need "
-                      << arguments.size() << '\n';
+        if (tokens.size() != pos_args.doSize()) {
+            std::cerr << "(parse error) position argument number missmatching, give "
+                      << tokens.size() << ", but need " << pos_args.doSize() << '\n';
             std::cerr << "uncaptured command line arguments:\n";
-            for (auto const &tok : tokens)
-            {
-                std::cerr << tok << '\n';
-            }
+            for (auto const& tok : tokens) { std::cerr << tok << '\n'; }
             std::cerr << std::flush;
             std::exit(-1);
         }
 
-        for (std::size_t i = 0; i < tokens.size(); ++i) {
-            arguments[i].value = tokens[i];
-        }
+        for (std::size_t i = 0; i < tokens.size(); ++i) { pos_args.set(i, tokens[i]); }
 
         return *this;
     }
 
 private:
-    bool try_parse_named_argument(std::string const &line, argument &named_arg)
-    {
-        auto pos = line.find('=');
-        if (pos == std::string::npos) {
-            return false;
-        }
-        auto name = line.substr(0, pos);
-        auto value = line.substr(pos + 1);
-        if (name != named_arg.name)
-        {
-            return false;
-        }
-        else
-        {
-            named_arg.value = value;
-            return true;
-        }
-    }
-
-    std::string replace(std::string const &str, std::string const &from, std::string const &to) const
-    {
-        std::string ret;
-        std::size_t pos = 0, pre_pos = 0;
-        while ((pos = str.find(from, pre_pos)) != std::string::npos)
-        {
-            ret += str.substr(pre_pos, pos - pre_pos) + to;
-            pre_pos = pos + from.length();
-        }
-        ret += str.substr(pre_pos);
-        return ret;
-    }
-
-    using argument_iterator = std::vector<argument>::const_iterator;
     using option_iterator = std::vector<option>::const_iterator;
     using sc_option_iterator = std::vector<short_circuit_option>::const_iterator;
 
-    auto find_argument(std::string const &key) const -> argument_iterator
-    {
-        return std::find_if(arguments.cbegin(), arguments.cend(),
-                            [&key](const argument &arg) { return arg.name == key; });
+    auto find_sc_option_sname(std::string const& key) const -> sc_option_iterator {
+        return std::find_if(
+            short_circuit_options.cbegin(), short_circuit_options.cend(),
+            [&key](const short_circuit_option& opt) { return opt.short_name == key; });
     }
 
-    auto find_named_argument(std::string const &key) const -> argument_iterator
-    {
-        return std::find_if(named_arguments.cbegin(), named_arguments.cend(),
-                            [&key](const argument &arg) { return arg.name == key; });
+    auto find_sc_option_lname(std::string const& key) const -> sc_option_iterator {
+        return std::find_if(
+            short_circuit_options.cbegin(), short_circuit_options.cend(),
+            [&key](const short_circuit_option& opt) { return opt.long_name == key; });
     }
 
-    auto find_sc_option_sname(std::string const &key) const -> sc_option_iterator
-    {
-        return std::find_if(short_circuit_options.cbegin(), short_circuit_options.cend(),
-                            [&key](const short_circuit_option &opt) { return opt.short_name == key; });
-    }
-
-    auto find_sc_option_lname(std::string const &key) const -> sc_option_iterator
-    {
-        return std::find_if(short_circuit_options.cbegin(), short_circuit_options.cend(),
-                            [&key](const short_circuit_option &opt) { return opt.long_name == key; });
-    }
-
-    auto find_option_sname(std::string const &key) const -> option_iterator
-    {
+    auto find_option_sname(std::string const& key) const -> option_iterator {
         return std::find_if(options.cbegin(), options.cend(),
-                            [&key](const option &opt) { return opt.short_name == key; });
+                            [&key](const option& opt) { return opt.short_name == key; });
     }
 
-    auto find_option_lname(std::string const &key) const -> option_iterator
-    {
+    auto find_option_lname(std::string const& key) const -> option_iterator {
         return std::find_if(options.cbegin(), options.cend(),
-                            [&key](const option &opt) { return opt.long_name == key; });
+                            [&key](const option& opt) { return opt.long_name == key; });
     }
 
-    void check_add_option_sname(std::string const &key) const
-    {
+    void check_add_option_sname(std::string const& key) const {
         if (key.size() != 2 || key.front() != '-') {
-            std::cerr << "(build error) short option name must be `-` followed by one character" << std::endl;
+            std::cerr << "(build error) short option name must be `-` followed by one character"
+                      << std::endl;
             std::exit(-1);
         }
         char ch = key.back();
         if (short_name_index.find(ch) != short_name_index.end()) {
-            std::cerr << "(build error) short option name " << key << " already exists" << std::endl;
+            std::cerr << "(build error) short option name " << key << " already exists"
+                      << std::endl;
             std::exit(-1);
         }
     }
 
-    void check_add_option_lname(std::string const &key) const
-    {
+    void check_add_option_lname(std::string const& key) const {
         if (key == "") {
             std::cerr << "(build error) long option name cannot be empty" << std::endl;
             std::exit(-1);
         }
         if (key.substr(0, 2) != "--") {
-            std::cerr << "(build error) long option name must be `--` followed by one or more characters" << std::endl;
+            std::cerr
+                << "(build error) long option name must be `--` followed by one or more characters"
+                << std::endl;
             std::exit(-1);
         }
-        if (find_option_lname(key) != options.cend() || find_sc_option_lname(key) != short_circuit_options.cend()) {
+        if (find_option_lname(key) != options.cend() ||
+            find_sc_option_lname(key) != short_circuit_options.cend()) {
             std::cerr << "(build error) long option name " << key << " already exists" << std::endl;
             std::exit(-1);
         }
     }
 
     template <typename T>
-    void check_add_argument_name(std::string const &key) const
-    {
+    void check_add_argument_name(std::string const& key) const {
+        using namespace util;
         if (type_string<T>() == "null") {
-            std::cerr << "(build error) argument type is not supported: " << typeid(T).name() << std::endl;
+            std::cerr << "(build error) argument type is not supported: " << typeid(T).name()
+                      << std::endl;
             std::exit(-1);
         }
         if (type_string<T>() == "bool") {
@@ -610,20 +492,20 @@ private:
             std::cerr << "(build error) argument name cannot be empty" << std::endl;
             std::exit(-1);
         }
-        if (find_argument(key) != arguments.cend() || find_named_argument(key) != named_arguments.cend()) {
+        if (pos_args.doFind(key) || named_args.doFind(key)) {
             std::cerr << "(build error) argument name " << key << " already exists" << std::endl;
             std::exit(-1);
         }
     }
 
 private:
-    std::string                             description;
-    std::string                             program_name;
-    std::vector<short_circuit_option>       short_circuit_options;
-    std::vector<option>                     options;
-    std::unordered_map<char, std::size_t>   short_name_index;
-    arguments_t named_arguments;
-    arguments_t arguments;
+    std::string description;
+    std::string program_name;
+    std::vector<short_circuit_option> short_circuit_options;
+    std::vector<option> options;
+    std::map<char, std::size_t> short_name_index;
+    named_arg_mgr named_args;
+    position_arg_mgr pos_args;
     envs_t setEnvs;
 };
 

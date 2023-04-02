@@ -8,7 +8,7 @@ CMD_ARGS_NAMESPACE_BEGIN
 
 struct environment {
     std::string strKey;
-    std::string strValue;
+    mutable std::string strValue;
 
     environment(std::string const& _Env) {
         auto p = util::parse_line(_Env);

@@ -91,22 +91,33 @@ public:
     }
 
     void print_env() const {
-        std::ostringstream oss;
-        oss << "usage: " << program_name << " [environments]";
-        oss << m_environments__.env_string();
-
-        std::cout << oss.str() << std::endl;
+        std::cout << __descEnv() << std::endl;
     }
 
     void print_usage() const {
-        std::ostringstream oss;
-        oss << "usage: " << program_name << " [arguments]";
-        oss << m_arguments__.usage_string();
-
-        std::cout << oss.str() << std::endl;
+        std::cout << __descUsage() << std::endl;
     }
 
-    std::string help_desc() const {
+    void print_help() const {
+        std::cout << __descHelp() << std::endl;
+    }
+
+private:
+    std::string __descEnv() const {
+        std::ostringstream oss;
+        oss << "environments: " << program_name << "\nNo. : \"key\" = \"value\"\n";
+        oss << m_environments__.env_string();
+        return oss.str();
+    }
+
+    std::string __descUsage() const {
+        std::ostringstream oss;
+        oss << "usage: " << program_name << " [arguments]\n";
+        oss << m_arguments__.usage_string();
+        return oss.str();
+    }
+
+    std::string __descHelp() const {
         std::ostringstream oss(m_arguments__.usage_string(), std::ios::app);
         oss << "\n" << description << "\n\n";
         oss << "Options:\n";
@@ -118,11 +129,6 @@ public:
         return oss.str();
     }
 
-    void print_help() const {
-        std::cout << help_desc() << std::endl;
-    }
-
-private:
     std::string program_name;
     std::string description;
 

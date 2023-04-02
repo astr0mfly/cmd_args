@@ -1,0 +1,1 @@
+call ../scripts/build_project.bat

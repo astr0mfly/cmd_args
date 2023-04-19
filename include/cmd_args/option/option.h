@@ -3,6 +3,8 @@
 #include <string>
 #include <functional>
 #include <sstream>
+#include <vector>
+#include <algorithm>
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
 

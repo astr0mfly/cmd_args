@@ -1,1 +1,2 @@
-call ../scripts/build_project.bat
+call ../scripts/build_debug.bat
+pause

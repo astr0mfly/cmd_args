@@ -15,7 +15,7 @@ public:
                     std::exit(0);
                 }
             } else if (t.find_first_not_of('-') == 1) {
-                for (int i = 1; i < t.size(); ++i) {
+                for (decltype(t.size()) i = 1; i < t.size(); ++i) {
                     auto const* pSc = short_circuit_options.doGet(t[i]);
                     if (pSc) {
                         dynamic_cast<option_action const*>(pSc)->callback();
@@ -45,7 +45,7 @@ public:
                     }
                 }
             } else if (it->find_first_not_of('-') == 1) {
-                for (int i = 1; i < it->size(); ++i) {
+                for (decltype(it->size()) i = 1; i < it->size(); ++i) {
                     auto const* p = options.doGet(it->at(i));
                     if (p) {
                         auto* pValue = dynamic_cast<option_value const*>(p);

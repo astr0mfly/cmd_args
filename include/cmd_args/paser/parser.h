@@ -54,6 +54,8 @@ public:
         for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
 
         parse(vecArgs.size(), std::move(vecArgs), {});
+
+        return *this;
     }
 
     parser& parse(int argc, char const* argv[], char* envp[]) {
@@ -64,10 +66,14 @@ public:
         for (int i = 0; envp[i]; ++i) { vecEnv.emplace_back(envp[i]); }
 
         parse(vecArgs.size(), std::move(vecArgs), std::move(vecEnv));
+
+        return *this;
     }
 
     parser& parse(size_t argc, std::vector<std::string>&& argv, std::vector<std::string>&& envp) {
         parse(argc, argv, envp);
+
+        return *this;
     }
 
     parser& parse(size_t argc, std::vector<std::string>& argv, std::vector<std::string>& envp) {
@@ -84,9 +90,10 @@ public:
         m_environments__.parse(envp);
 
         std::vector<std::string> tokens;
-        for (int i = 1; i < argc; ++i) { tokens.emplace_back(argv[i]); }
+        for (decltype(argc) i = 1; i < argc; ++i) { tokens.emplace_back(argv[i]); }
         m_options__.parse(tokens);
         m_arguments__.parse(tokens);
+
         return *this;
     }
 

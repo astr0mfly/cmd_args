@@ -24,8 +24,8 @@ struct argument {
 
     argument(std::string _name, std::string _Type, std::string _Help)
         : strName(std::move(_name))
-        , strHelp(std::move(_Help))
-        , strType(std::move(_Type)) {}
+        , strType(std::move(_Type))
+        , strHelp(std::move(_Help)) {}
     virtual ~argument() = default;
     bool hasValue() const noexcept {
         return !strValue.empty();

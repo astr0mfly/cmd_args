@@ -4,9 +4,14 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+class Errors;
+
 class envirionment_parser
 {
 public:
+    envirionment_parser(Errors *_Obj)
+        : m_pErrs__(_Obj)
+    {}
     void parse(std::vector<std::string> &_Envp)
     {
         for (auto &e : _Envp) m_setEnvs__.emplace(e);
@@ -31,7 +36,8 @@ public:
     }
 
 private:
-    envs_t m_setEnvs__;
+    envs_t  m_setEnvs__;
+    Errors *m_pErrs__ = nullptr;
 };
 
 CMD_ARGS_NAMESPACE_END

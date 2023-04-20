@@ -1,12 +1,21 @@
 #pragma once
 
+#include <vector>
+
+#include "cmd_args/base/errc.h"
+
 #include "cmd_args/argment/argument.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-class argument_parse
+class Errors;
+
+class argument_parser
 {
 public:
+    argument_parser(Errors *_Obj)
+        : m_pErrs__(_Obj)
+    {}
     void parse(std::vector<std::string> &_Tokens)
     {
         if (_Tokens.size() < named_args.doSize()) {
@@ -125,6 +134,7 @@ public:
 private:
     named_arg_mgr    named_args;
     position_arg_mgr pos_args;
+    Errors          *m_pErrs__ = nullptr;
 };
 
 CMD_ARGS_NAMESPACE_END

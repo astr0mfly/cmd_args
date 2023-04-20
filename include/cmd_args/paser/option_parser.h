@@ -3,10 +3,14 @@
 #include "cmd_args/option/option.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
+class Errors;
 
 class option_parser
 {
 public:
+    option_parser(Errors *_Obj)
+        : m_pErrs__(_Obj)
+    {}
     void parse(std::vector<std::string> &_Tokens)
     {
         for (auto &t : _Tokens) {
@@ -219,6 +223,7 @@ private:
     action_opt_mgr              short_circuit_options;
     value_opt_mgr               options;
     std::map<char, std::string> short_name_index;
+    Errors                     *m_pErrs__ = nullptr;
 };
 
 CMD_ARGS_NAMESPACE_END

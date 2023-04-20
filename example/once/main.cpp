@@ -12,5 +12,5 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
     a.add_env_option();
     a.parse(vecArgs.size(), vecArgs, vecEnv);
 
-    return 3;
+    return 0;
 }

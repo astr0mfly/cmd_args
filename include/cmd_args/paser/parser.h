@@ -13,12 +13,15 @@
 #include <typeinfo>
 #include <vector>
 
-#include "argument_parser.h"
-#include "cmd_args/argment/argument.h"
 #include "cmd_args/base/def.h"
+#include "cmd_args/base/errors.h"
 #include "cmd_args/base/util.h"
+
+#include "cmd_args/argment/argument.h"
 #include "cmd_args/env/environment.h"
 #include "cmd_args/option/option.h"
+
+#include "argument_parser.h"
 #include "environment_parse.h"
 #include "option_parser.h"
 
@@ -29,6 +32,9 @@ class parser
 public:
     parser(std::string description)
         : description(std::move(description))
+        , m_arguments__(&m_erros__)
+        , m_options__(&m_erros__)
+        , m_environments__(&m_erros__)
     {}
 
     parser &set_program_name(std::string name)
@@ -104,6 +110,8 @@ public:
         return *this;
     }
 
+    bool exist(char _Name) const { return false; }
+
     void print_env() const { std::cout << __descEnv() << std::endl; }
 
     void print_usage() const { std::cout << __descUsage() << std::endl; }
@@ -143,9 +151,10 @@ private:
     std::string program_name;
     std::string description;
 
-    argument_parse      m_arguments__;
+    argument_parser     m_arguments__;
     option_parser       m_options__;
     envirionment_parser m_environments__;
+    Errors              m_erros__;
 };
 
 CMD_ARGS_NAMESPACE_END

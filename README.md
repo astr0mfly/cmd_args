@@ -63,13 +63,34 @@ usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
 - 支持`loop`模式运行命令，持续执行对应的命令
 - 支持`env`环境变量交互
 - 支持`xmake`编译
+- 支持配置文件(`json`)加载，动态化选项
+- 支持`option with action`, 使用`lua` `luajit`来解释运行，也可以尝试考虑加入编译。
+
+## 编译步骤
+
+```shell
+# 进入build文件夹
+cd build
+
+# 展开编译
+build.cmd
+
+# 删除临时文件
+clean.cmd
+```
 
 ## 参考
 
 [Xmake参考手册](https://xmake.io/#/getting_started)
+
 [argpars](https://github.com/0382/util/tree/main/cpp/argparse)
+
 [cmdline](https://github.com/tanakh/cmdline)
+
 [CLI11](https://github.com/CLIUtils/CLI11)
+
 [lyra](https://github.com/bfgroup/Lyra)
+
 [Clara](https://github.com/catchorg/Clara)
+
 [Catch 使用教程](https://github.com/catchorg/Catch2/blob/master/docs/tutorial.md)

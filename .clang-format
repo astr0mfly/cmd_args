@@ -140,11 +140,11 @@ IncludeCategories:
     Priority:        4
     SortPriority:    0
     CaseSensitive:   false
-
-  - Regex:	'"common'
+  - Regex:	'^"cmd_args/base'
     SortPriority:    0
     Priority:	7
-  - Regex:	'common'
+  - Regex:	'^"cmd_args'
+    Priority:	8
     SortPriority:    0
   - Regex:           '.*'
     Priority:        1000

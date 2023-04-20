@@ -4,29 +4,40 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
 {
     using namespace cmd_args;
 
-    parser      a("test_once");
+    parser      a("test_once");  // add the name of program
     char const *args[] = { "once.exe", "-!" };
 
     std::string env1("hello=world");
     std::string env2("foo=2");
+    char       *envs[2] = { env1.data(), env2.data() };
 
-    char *envs[2] = { env1.data(), env2.data() };
-    a.add_help_option();
-    a.add_env_option();
-    a.parse(ARRAY_SIZE(args), args, envs);
+    a.add_help_option();  // add the option of help
+    a.add_env_option();   // add the option of env
 
-    a.add("debug", 'd', "open debug mode.");
+    a.parse(ARRAY_SIZE(args), args, envs);  // parse args and throw
 
-    /*
-        TODO:
-        parser    a{
-        "test_once" ,
-        add_help_option() ,
-        add_env_option ,
-        parse(vecArgs.size(),
-        vecArgs, vecEnv)
-        };
-    */
+    // auto r = a.tryParse(ARRAY_SIZE(args), args, envs);  // try to parse and return errc
+
+    // -d, --debug support, it's mean that be true when input
+    a.add(
+        "debug",             // full name
+        "open debug mode.",  // some help description
+        'd'                  // short name
+    );
+
+    // --dummy support, it's mean that be true when input
+    a.add(
+        "dummy",       // full name
+        "a bool flag"  // some help description
+    );
+
+    // a.add<Required>("full_name", "usage", 'f') ;
+    // a.add<Required, int>("full_name", "usage", 'f') ;
+    // a.add<Option, int>("full_name", "usage", 'f', default_value) ;
+    // a.add<Option, int>("full_name", "usage", 'f', Action) ;
+    // a.config({add<Required>("full_name", "usage", 'f'),
+    //    add<Required>("full_name", "usage", 'f'), ...
+    //})
 
     return 0;
 }

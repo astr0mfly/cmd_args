@@ -32,7 +32,7 @@ class parser final :
     private argument_parser,
     private option_parser,
     private envirionment_parser,
-    public Errors
+    private Errors
 {
 public:
     parser(std::string description)
@@ -43,17 +43,15 @@ public:
     {}
 
     // parse arguments
-    parser &parse(int argc, char const *argv[])
+    void parse(int argc, char const *argv[])
     {
         Tokens_T vecArgs;
         for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
 
         __parse(vecArgs.size(), vecArgs, {});
-
-        return *this;
     }
 
-    parser &parse(int argc, char const *argv[], char *envp[])
+    void parse(int argc, char const *argv[], char *envp[])
     {
         Tokens_T vecArgs;
         for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
@@ -62,17 +60,29 @@ public:
         for (int i = 0; envp[i]; ++i) { vecEnv.emplace_back(envp[i]); }
 
         __parse(vecArgs.size(), vecArgs, vecEnv);
+    }
 
-        return *this;
+    [[nodiscard]] std::error_code tryParse(int argc, char const *argv[]) noexcept
+    {
+        return make_error_code(ParseError_E::OK);
+    }
+
+    [[nodiscard]] std::error_code tryParse(int argc, char const *argv[], char *envp[]) noexcept
+    {
+        return make_error_code(ParseError_E::OK);
     }
 
     bool parsed(NameShort_T _Name) const { return false; }
     bool parsed(NameLong_T _Name) const { return false; }
 
-    void add(NameLong_T _Long, NameShort_T _Short, Desc_T _Desc)
+    void add(NameLong_T _Long, Desc_T _Desc) { option_parser::add_option(' ', _Long, _Desc); }
+    void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short)
     {
         option_parser::add_option(_Short, _Long, _Desc);
     }
+
+    // add argument or option
+    void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short, bool _Required) {}
 
     parser &set_program_name(Name_T name)
     {
@@ -98,9 +108,18 @@ public:
         return *this;
     }
 
+    // be used in once mode and return last_val
+    [[noreturn]] void once() const noexcept { exit(getLastVal()); }
+
+    using Errors::getLast;
+    using Errors::getLastMsg;
+    using Errors::getLastVal;
+    using Errors::isOk;
+
     void print_usage() const { std::cout << __descUsage() << std::endl; }
     void print_help() const { std::cout << __descHelp() << std::endl; }
     void print_env() const { std::cout << __descEnv() << std::endl; }
+    void print_error() const { std::cout << Errors::desc() << std::endl; }
 
 private:
     void __parse(size_t _CntArg, Tokens_T &_Args, std::vector<std::string> const &_Env)

@@ -47,8 +47,8 @@ public:
                         continue;
                     }
                     else if (it == _Tokens.cend()) {
-                        std::cerr << "(parse error) option " << pValue->short_name << " " << pValue->long_name
-                                  << " should have value" << std::endl;
+                        std::cerr << "(parse error) option " << pValue->short_name << " "
+                                  << pValue->long_name << " should have value" << std::endl;
                         std::exit(-1);
                     }
                     else {
@@ -68,13 +68,14 @@ public:
                             continue;
                         }
                         else {
-                            std::cerr << "(parse error) aggregation short name option must be bool" << std::endl;
+                            std::cerr << "(parse error) aggregation short name option must be bool"
+                                      << std::endl;
                             std::exit(-1);
                         }
                     }
                     else {
-                        std::cerr << "(parse error) unrecognized short name option '" << it->at(i) << "' in " << (*it)
-                                  << std::endl;
+                        std::cerr << "(parse error) unrecognized short name option '" << it->at(i)
+                                  << "' in " << (*it) << std::endl;
                         std::exit(-1);
                     }
                 }
@@ -106,7 +107,8 @@ public:
     void check_add_option_sname(char _Key) const
     {
         if (short_name_index.find(_Key) != short_name_index.end()) {
-            std::cerr << "(build error) short option name " << _Key << " already exists" << std::endl;
+            std::cerr << "(build error) short option name " << _Key << " already exists"
+                      << std::endl;
             std::exit(-1);
         }
     }
@@ -114,12 +116,14 @@ public:
     void check_add_option_sname(std::string const &key) const
     {
         if (key.size() != 2 || key.front() != '-') {
-            std::cerr << "(build error) short option name must be `-` followed by one character" << std::endl;
+            std::cerr << "(build error) short option name must be `-` followed by one character"
+                      << std::endl;
             std::exit(-1);
         }
         char ch = key.back();
         if (short_name_index.find(ch) != short_name_index.end()) {
-            std::cerr << "(build error) short option name " << key << " already exists" << std::endl;
+            std::cerr << "(build error) short option name " << key << " already exists"
+                      << std::endl;
             std::exit(-1);
         }
     }
@@ -131,7 +135,9 @@ public:
             std::exit(-1);
         }
         if (key.substr(0, 2) != "--") {
-            std::cerr << "(build error) long option name must be `--` followed by one or more characters" << std::endl;
+            std::cerr << "(build error) long option name must be `--` followed by one or more "
+                         "characters"
+                      << std::endl;
             std::exit(-1);
         }
 
@@ -142,7 +148,8 @@ public:
     }
 
     // add short circuit option
-    void add_sc_option(std::string sname, std::string lname, std::string desc, std::function<void(void)> callback)
+    void add_sc_option(
+        std::string sname, std::string lname, std::string desc, std::function<void(void)> callback)
     {
         // long name must not be empty
         check_add_option_lname(lname);
@@ -150,7 +157,8 @@ public:
         if (sname != "") {
             check_add_option_sname(sname);
             short_name_index[sname.back()] = lname;
-            short_circuit_options.push(sname.back(), std::move(lname), std::move(desc), std::move(callback));
+            short_circuit_options
+                .push(sname.back(), std::move(lname), std::move(desc), std::move(callback));
         }
         else {
             short_circuit_options.push(std::move(lname), std::move(desc), std::move(callback));
@@ -162,7 +170,8 @@ public:
     {
         using namespace util;
         if (type_string<T>() == "null") {
-            std::cerr << "(build error) unsupport type for option: " << typeid(T).name() << std::endl;
+            std::cerr << "(build error) unsupport type for option: " << typeid(T).name()
+                      << std::endl;
             std::exit(-1);
         }
 
@@ -172,16 +181,26 @@ public:
             short_name_index[sname.back()] = lname;
         }
 
-        options.push(std::move(sname), std::move(lname), std::move(help), type_string<T>(), to_string(default_value));
+        options.push(
+            std::move(sname),
+            std::move(lname),
+            std::move(help),
+            type_string<T>(),
+            to_string(default_value));
     }
 
-    void add_option(char sname, std::string lname, std::string help)
+    void add_option(NameShort_T sname, NameLong_T lname, std::string help)
     {
         check_add_option_lname(lname);
         if (sname != ' ') {
             check_add_option_sname(sname);
             short_name_index[sname] = lname;
-            options.push(sname, std::move(lname), std::move(help), std::string("bool"), std::string("0"));
+            options.push(
+                sname,
+                std::move(lname),
+                std::move(help),
+                std::string("bool"),
+                std::string("0"));
         }
         else {
             options.push(std::move(lname), std::move(help), std::string("bool"), std::string("0"));
@@ -200,8 +219,8 @@ public:
         }
 
         if (pos->type != type_string<T>()) {
-            std::cerr << "(get error) option type mismatch: set '" << pos->type << "' but you try get with '"
-                      << type_string<T>() << "'" << std::endl;
+            std::cerr << "(get error) option type mismatch: set '" << pos->type
+                      << "' but you try get with '" << type_string<T>() << "'" << std::endl;
             std::exit(-1);
         }
 
@@ -209,12 +228,15 @@ public:
     }
 
     // some alias for get_option
-    bool        has_option(std::string const &name) const { return get_option<bool>(name); }
-    bool        get_option_bool(std::string const &name) const { return get_option<bool>(name); }
-    int         get_option_int(std::string const &name) const { return get_option<int>(name); }
-    int64_t     get_option_int64(std::string const &name) const { return get_option<int64_t>(name); }
-    double      get_option_double(std::string const &name) const { return get_option<double>(name); }
-    std::string get_option_string(std::string const &name) const { return get_option<std::string>(name); }
+    bool    has_option(std::string const &name) const { return get_option<bool>(name); }
+    bool    get_option_bool(std::string const &name) const { return get_option<bool>(name); }
+    int     get_option_int(std::string const &name) const { return get_option<int>(name); }
+    int64_t get_option_int64(std::string const &name) const { return get_option<int64_t>(name); }
+    double  get_option_double(std::string const &name) const { return get_option<double>(name); }
+    std::string get_option_string(std::string const &name) const
+    {
+        return get_option<std::string>(name);
+    }
 
     std::size_t calc_desc_max_length() const noexcept
     {

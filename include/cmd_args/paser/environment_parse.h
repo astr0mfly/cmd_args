@@ -4,15 +4,18 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-class envirionment_parser {
+class envirionment_parser
+{
 public:
-    void parse(std::vector<std::string>& _Envp) {
-        for (auto& e : _Envp) m_setEnvs__.emplace(e);
+    void parse(std::vector<std::string> &_Envp)
+    {
+        for (auto &e : _Envp) m_setEnvs__.emplace(e);
     }
-    std::string env_string() const {
+    std::string env_string() const
+    {
         std::ostringstream oss;
-        size_t i = 0;
-        for (auto& e : m_setEnvs__) {
+        size_t             i = 0;
+        for (auto &e : m_setEnvs__) {
             oss << i << " : " << e.strKey << " = " << e.strValue << std::endl;
             ++i;
         }
@@ -20,7 +23,8 @@ public:
         return oss.str();
     }
 
-    void set(std::string _Key, std::string _Value) {
+    void set(std::string _Key, std::string _Value)
+    {
         auto it = m_setEnvs__.find(_Key);
         if (it == m_setEnvs__.end()) return;
         it->strValue = _Value;

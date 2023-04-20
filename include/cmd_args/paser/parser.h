@@ -7,49 +7,53 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <typeinfo>
-#include <map>
 #include <vector>
 
+#include "argument_parser.h"
+#include "cmd_args/argment/argument.h"
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
-#include "cmd_args/option/option.h"
-#include "cmd_args/argment/argument.h"
 #include "cmd_args/env/environment.h"
-#include "argument_parser.h"
+#include "cmd_args/option/option.h"
 #include "environment_parse.h"
 #include "option_parser.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-class parser {
+class parser
+{
 public:
     parser(std::string description)
-        : description(std::move(description)) {}
+        : description(std::move(description))
+    {}
 
-    parser& set_program_name(std::string name) {
+    parser &set_program_name(std::string name)
+    {
         program_name = std::move(name);
         return *this;
     }
 
-    parser& add_help_option() {
-        m_options__.add_sc_option("-?", "--help", "show this help message",
-                                  [this]() { print_help(); });
+    parser &add_help_option()
+    {
+        m_options__.add_sc_option("-?", "--help", "show this help message", [this]() { print_help(); });
 
         return *this;
     }
 
-    parser& add_env_option() {
-        m_options__.add_sc_option("-!", "--env", "show this env message",
-                                  [this]() { print_env(); });
+    parser &add_env_option()
+    {
+        m_options__.add_sc_option("-!", "--env", "show this env message", [this]() { print_env(); });
 
         return *this;
     }
 
     // parse arguments
-    parser& parse(int argc, char const* argv[]) {
+    parser &parse(int argc, char const *argv[])
+    {
         std::vector<std::string> vecArgs;
         for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
 
@@ -58,7 +62,8 @@ public:
         return *this;
     }
 
-    parser& parse(int argc, char const* argv[], char* envp[]) {
+    parser &parse(int argc, char const *argv[], char *envp[])
+    {
         std::vector<std::string> vecArgs;
         for (int i = 0; i < argc; ++i) { vecArgs.emplace_back(argv[i]); }
 
@@ -70,13 +75,15 @@ public:
         return *this;
     }
 
-    parser& parse(size_t argc, std::vector<std::string>&& argv, std::vector<std::string>&& envp) {
+    parser &parse(size_t argc, std::vector<std::string> &&argv, std::vector<std::string> &&envp)
+    {
         parse(argc, argv, envp);
 
         return *this;
     }
 
-    parser& parse(size_t argc, std::vector<std::string>& argv, std::vector<std::string>& envp) {
+    parser &parse(size_t argc, std::vector<std::string> &argv, std::vector<std::string> &envp)
+    {
         if (program_name == "") {
             // if not set program name, use argv[0]
             program_name = argv[0];
@@ -97,34 +104,31 @@ public:
         return *this;
     }
 
-    void print_env() const {
-        std::cout << __descEnv() << std::endl;
-    }
+    void print_env() const { std::cout << __descEnv() << std::endl; }
 
-    void print_usage() const {
-        std::cout << __descUsage() << std::endl;
-    }
+    void print_usage() const { std::cout << __descUsage() << std::endl; }
 
-    void print_help() const {
-        std::cout << __descHelp() << std::endl;
-    }
+    void print_help() const { std::cout << __descHelp() << std::endl; }
 
 private:
-    std::string __descEnv() const {
+    std::string __descEnv() const
+    {
         std::ostringstream oss;
         oss << "environments: " << program_name << "\nNo. : \"key\" = \"value\"\n";
         oss << m_environments__.env_string();
         return oss.str();
     }
 
-    std::string __descUsage() const {
+    std::string __descUsage() const
+    {
         std::ostringstream oss;
         oss << "usage: " << program_name << " [arguments]\n";
         oss << m_arguments__.usage_string();
         return oss.str();
     }
 
-    std::string __descHelp() const {
+    std::string __descHelp() const
+    {
         std::ostringstream oss(m_arguments__.usage_string(), std::ios::app);
         oss << "\n" << description << "\n\n";
         oss << "Options:\n";
@@ -139,8 +143,8 @@ private:
     std::string program_name;
     std::string description;
 
-    argument_parse m_arguments__;
-    option_parser m_options__;
+    argument_parse      m_arguments__;
+    option_parser       m_options__;
     envirionment_parser m_environments__;
 };
 

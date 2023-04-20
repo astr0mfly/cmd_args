@@ -27,14 +27,16 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-class parser
+class parser final : argument_parser, option_parser, envirionment_parser, Errors
+
 {
 public:
     parser(std::string description)
         : description(std::move(description))
-        , m_arguments__(&m_erros__)
-        , m_options__(&m_erros__)
-        , m_environments__(&m_erros__)
+        , argument_parser(this)
+        , option_parser(this)
+        , envirionment_parser(this)
+        , Errors()
     {}
 
     parser &set_program_name(std::string name)
@@ -45,14 +47,14 @@ public:
 
     parser &add_help_option()
     {
-        m_options__.add_sc_option("-?", "--help", "show this help message", [this]() { print_help(); });
+        option_parser::add_sc_option("-?", "--help", "show this help message", [this]() { print_help(); });
 
         return *this;
     }
 
     parser &add_env_option()
     {
-        m_options__.add_sc_option("-!", "--env", "show this env message", [this]() { print_env(); });
+        option_parser::add_sc_option("-!", "--env", "show this env message", [this]() { print_env(); });
 
         return *this;
     }
@@ -100,19 +102,19 @@ public:
             std::exit(0);
         }
 
-        m_environments__.parse(envp);
+        envirionment_parser::parse(envp);
 
         std::vector<std::string> tokens;
         for (decltype(argc) i = 1; i < argc; ++i) { tokens.emplace_back(argv[i]); }
-        m_options__.parse(tokens);
-        m_arguments__.parse(tokens);
+        option_parser::parse(tokens);
+        argument_parser::parse(tokens);
 
         return *this;
     }
 
     bool exist(char _Name) const { return false; }
 
-    void add(std::string _Long, char _Short, std::string _Desc) { m_options__.add_option(_Short, _Long, _Desc); }
+    void add(std::string _Long, char _Short, std::string _Desc) { option_parser::add_option(_Short, _Long, _Desc); }
 
     void print_env() const { std::cout << __descEnv() << std::endl; }
 
@@ -125,7 +127,7 @@ private:
     {
         std::ostringstream oss;
         oss << "environments: " << program_name << "\nNo. : \"key\" = \"value\"\n";
-        oss << m_environments__.env_string();
+        oss << env_string();
         return oss.str();
     }
 
@@ -133,30 +135,25 @@ private:
     {
         std::ostringstream oss;
         oss << "usage: " << program_name << " [arguments]\n";
-        oss << m_arguments__.usage_string();
+        oss << usage_string();
         return oss.str();
     }
 
     std::string __descHelp() const
     {
-        std::ostringstream oss(m_arguments__.usage_string(), std::ios::app);
+        std::ostringstream oss(usage_string(), std::ios::app);
         oss << "\n" << description << "\n\n";
         oss << "Options:\n";
         // calculate the longest option name
-        auto max_name_length = m_options__.calc_desc_max_length();
-        m_options__.appendHelp(oss, max_name_length);
-        m_arguments__.appendHelp(oss, max_name_length);
+        auto max_name_length = option_parser::calc_desc_max_length();
+        option_parser::appendHelp(oss, max_name_length);
+        argument_parser::appendHelp(oss, max_name_length);
 
         return oss.str();
     }
 
     std::string program_name;
     std::string description;
-
-    argument_parser     m_arguments__;
-    option_parser       m_options__;
-    envirionment_parser m_environments__;
-    Errors              m_erros__;
 };
 
 CMD_ARGS_NAMESPACE_END

@@ -11,6 +11,18 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
     a.add_help_option();
     a.add_env_option();
     a.parse(vecArgs.size(), vecArgs, vecEnv);
+    a.add("debug", 'd', "open debug mode.");
+
+    /*
+        TODO:
+        parser    a{
+        "test_once" ,
+        add_help_option() ,
+        add_env_option ,
+        parse(vecArgs.size(),
+        vecArgs, vecEnv)
+        };
+    */
 
     return 0;
 }

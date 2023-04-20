@@ -99,6 +99,14 @@ public:
         }
     }
 
+    void check_add_option_sname(char _Key) const
+    {
+        if (short_name_index.find(_Key) != short_name_index.end()) {
+            std::cerr << "(build error) short option name " << _Key << " already exists" << std::endl;
+            std::exit(-1);
+        }
+    }
+
     void check_add_option_sname(std::string const &key) const
     {
         if (key.size() != 2 || key.front() != '-') {
@@ -163,13 +171,13 @@ public:
         options.push(std::move(sname), std::move(lname), std::move(help), type_string<T>(), to_string(default_value));
     }
 
-    void add_option(std::string sname, std::string lname, std::string help)
+    void add_option(char sname, std::string lname, std::string help)
     {
         check_add_option_lname(lname);
-        if (sname != "") {
+        if (sname != ' ') {
             check_add_option_sname(sname);
-            short_name_index[sname.back()] = lname;
-            options.push(sname.back(), std::move(lname), std::move(help), std::string("bool"), std::string("0"));
+            short_name_index[sname] = lname;
+            options.push(sname, std::move(lname), std::move(help), std::string("bool"), std::string("0"));
         }
         else {
             options.push(std::move(lname), std::move(help), std::string("bool"), std::string("0"));

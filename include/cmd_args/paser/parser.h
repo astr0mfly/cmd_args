@@ -112,6 +112,8 @@ public:
 
     bool exist(char _Name) const { return false; }
 
+    void add(std::string _Long, char _Short, std::string _Desc) { m_options__.add_option(_Short, _Long, _Desc); }
+
     void print_env() const { std::cout << __descEnv() << std::endl; }
 
     void print_usage() const { std::cout << __descUsage() << std::endl; }

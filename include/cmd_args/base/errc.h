@@ -7,47 +7,7 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-// 用于执行的错误码
-enum class ActionError_E
-{
-    SUCC = 0,
-    NOT_FOUND,
-    MISMATCH
-};
-
-class ActionErrorCategory : public std::error_category
-{
-public:
-    ActionErrorCategory()
-        : error_category()
-    {}
-    const char *name() const noexcept override { return "action error"; }
-    std::string message(int ev) const override
-    {
-        switch (static_cast<ActionError_E>(ev)) {
-        case ActionError_E::SUCC: return "no error";
-        case ActionError_E::NOT_FOUND: return "target not found";
-        case ActionError_E::MISMATCH: return "target's type mismatch";
-        default: return "unknown error";
-        }
-    }
-
-    static ActionErrorCategory const &instance()
-    {
-        static ActionErrorCategory instance;
-        return instance;
-    }
-};
-
-std::error_code make_error_code(ActionError_E code)
-{
-    return {
-        static_cast<int>(code),
-        ActionErrorCategory::instance(),  // 这里暂时用自带的 category
-    };
-}
-
-enum class ParseCondition_E
+enum class ParseError_E
 {
     OK = 0,
     UNRECOGNIZED_NAME,
@@ -57,113 +17,74 @@ enum class ParseCondition_E
     WRONG_PREFIX
 };
 
-class ParseConditionCategory : public std::error_category
+static inline char const *mapParseError(int _ErrCode) noexcept
+{
+    switch (static_cast<ParseError_E>(_ErrCode)) {
+    case ParseError_E::OK: return "no error";
+    case ParseError_E::UNRECOGNIZED_NAME: return "create a libmodbus context for TCP/IPv4 failed";
+    case ParseError_E::NEED_VALUE: return "The slave number is invalid";
+    case ParseError_E::MUST_BE_BOOL: return "establish a Modbus connection failed";
+    case ParseError_E::UNEXCEPTED_BARE: return "set timeout for response failed";
+    case ParseError_E::WRONG_PREFIX: return "set timeout for response failed";
+    default: return "unknwon error";
+    }
+}
+
+class ParseErrorCategory : public std::error_category
 {
 public:
-    ParseConditionCategory()
+    ParseErrorCategory()
         : error_category()
     {}
     const char *name() const noexcept override { return "parse error"; }
-    std::string message(int ev) const override
-    {
-        switch (static_cast<ParseCondition_E>(ev)) {
-        case ParseCondition_E::OK: return "no error";
-        case ParseCondition_E::UNRECOGNIZED_NAME: return "create a libmodbus context for TCP/IPv4 failed";
-        case ParseCondition_E::NEED_VALUE: return "The slave number is invalid";
-        case ParseCondition_E::MUST_BE_BOOL: return "establish a Modbus connection failed";
-        case ParseCondition_E::UNEXCEPTED_BARE: return "set timeout for response failed";
-        case ParseCondition_E::WRONG_PREFIX: return "set timeout for response failed";
-        default: return "unknown error";
-        }
-    }
+    std::string message(int _V) const override { return mapParseError(_V); }
 
-    bool equivalent(std::error_code const &code, int condition) const noexcept override
+    static ParseErrorCategory const &instance()
     {
-        auto const &category = std::error_code(ParseCondition_E{}).category();
-        if (code.category() == category) {
-            switch (static_cast<ParseCondition_E>(condition)) {
-            case ParseCondition_E::OK: return code == ActionError_E::OK;
-            }
-        }
-        return false;
-    }
-
-    static ParseConditionCategory const &instance()
-    {
-        static ParseConditionCategory instance;
+        static ParseErrorCategory instance;
         return instance;
     }
 };
 
-std::error_code make_error_code(ParseCondition_E code)
+std::error_code make_error_code(ParseError_E code)
 {
     return {
         static_cast<int>(code),
-        ParseConditionCategory::instance(),  // 这里暂时用自带的 category
+        ParseErrorCategory::instance(),  // 这里暂时用自带的 category
     };
 }
 
-enum class BuildCondition_E
+std::error_condition make_error_condition(ParseError_E code)
 {
-    OK = 0,
-    already_exists,
-    cannot_be_empty
-};
+    return {
+        static_cast<int>(code),
+        ParseErrorCategory::instance(),  // 这里暂时用自带的 category
+    };
+}
 
-class BuildConditionCategory : public std::error_category
+class parse_error : public std::logic_error
 {
 public:
-    BuildConditionCategory()
-        : error_category()
+    explicit parse_error(std::error_code _Ec)
+        : logic_error("")
+        , m_ec__(_Ec)
     {}
-    const char *name() const noexcept override { return "parse error"; }
-    std::string message(int ev) const override
-    {
-        switch (static_cast<BuildCondition_E>(ev)) {
-        case BuildCondition_E::OK: return "no error";
-        default: return "unknown error";
-        }
-    }
+    explicit parse_error(ParseError_E _E)
+        : logic_error("")
+        , m_ec__(make_error_code(_E))
+    {}
 
-    bool equivalent(std::error_code const &code, int condition) const noexcept override
-    {
-        auto const &category = std::error_code(BuildCondition_E{}).category();
-        if (code.category() == category) {
-            switch (static_cast<BuildCondition_E>(condition)) {
-            case BuildCondition_E::OK: return code == BuildCondition_E::OK;
-            }
-        }
-        return false;
-    }
+    std::error_code const &code() const noexcept { return m_ec__; }
+    char const            *what() const noexcept override { return mapParseError(m_ec__.value()); }
 
-    static BuildConditionCategory const &instance()
-    {
-        static BuildConditionCategory instance;
-        return instance;
-    }
+private:
+    std::error_code m_ec__;
 };
-
-std::error_code make_error_code(BuildCondition_E code)
-{
-    return {
-        static_cast<int>(code),
-        BuildConditionCategory::instance(),  // 这里暂时用自带的 category
-    };
-}
 
 CMD_ARGS_NAMESPACE_END
 
 namespace std {
 template <>
-struct is_error_code_enum<ActionError_E> : true_type
+struct is_error_code_enum<CMD_ARGS_NAMESPACE(ParseError_E)> : public true_type
 {};
-
-template <>
-struct is_error_condition_enum<ParseCondition_E> : public true_type
-{};
-
-template <>
-struct is_error_condition_enum<BuildCondition_E> : public true_type
-{};
-
 }  // namespace std

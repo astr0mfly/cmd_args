@@ -30,19 +30,35 @@ public:
         m_ecDefault__ = m_stkErros__.top();
     }
 
-    ErrCode_T &getLast() { return m_ecDefault__; }
-    auto       getLastVal() { return getLast().value(); }
-    auto       getLastMsg() { return getLast().message(); }
-    void       clearLast() noexcept
+    ErrCode_T const &getLast() const noexcept { return m_ecDefault__; }
+    auto             getLastVal() const noexcept { return getLast().value(); }
+    auto             getLastMsg() const noexcept { return getLast().message(); }
+
+    void clearLast() noexcept
     {
         while (!m_stkErros__.empty()) m_stkErros__.pop();
         m_ecDefault__ = ErrCode_T{};
     }
 
+    /*
+        the default errc.value is uqual to 0
+    */
+    bool isOk() const noexcept { return m_ecDefault__.value() == 0; }
+
+    /*
+        raise when has error_code
+    */
+    void tryRaise() const
+    {
+        if (isOk()) return;
+        throw m_ecDefault__;
+    }
+
 private:
     // nocopyable
-    Errors(Errors const &)              = delete;
-    Errors   &operator=(Errors const &) = delete;
+    Errors(Errors const &)            = delete;
+    Errors &operator=(Errors const &) = delete;
+
     ErrCode_T m_ecDefault__;
     ConEC_T   m_stkErros__;
 };

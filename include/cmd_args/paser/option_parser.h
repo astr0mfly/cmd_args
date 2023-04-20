@@ -2,7 +2,10 @@
 
 #include "cmd_args/option/option.h"
 
+#include "parse_fwd.h"
+
 CMD_ARGS_NAMESPACE_BEGIN
+
 class Errors;
 
 class option_parser
@@ -11,14 +14,15 @@ public:
     option_parser(Errors *_Obj)
         : m_pErrs__(_Obj)
     {}
-    void parse(std::vector<std::string> &_Tokens)
+
+    void parse(Tokens_T &_Tokens)
     {
         for (auto &t : _Tokens) {
             if (t.find_first_not_of('-') == 2) {
                 auto const *pSc = short_circuit_options.doGet(t);
                 if (pSc) {
                     dynamic_cast<option_action const *>(pSc)->callback();
-                    std::exit(0);
+                    return;
                 }
             }
             else if (t.find_first_not_of('-') == 1) {
@@ -26,7 +30,7 @@ public:
                     auto const *pSc = short_circuit_options.doGet(t[i]);
                     if (pSc) {
                         dynamic_cast<option_action const *>(pSc)->callback();
-                        std::exit(0);
+                        return;
                     }
                 }
             }

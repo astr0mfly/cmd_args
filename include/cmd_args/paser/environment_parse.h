@@ -2,9 +2,9 @@
 
 #include "cmd_args/env/environment.h"
 
-CMD_ARGS_NAMESPACE_BEGIN
+#include "parse_fwd.h"
 
-class Errors;
+CMD_ARGS_NAMESPACE_BEGIN
 
 class envirionment_parser
 {
@@ -12,10 +12,12 @@ public:
     envirionment_parser(Errors *_Obj)
         : m_pErrs__(_Obj)
     {}
-    void parse(std::vector<std::string> &_Envp)
+
+    void parse(Envs_T const &_Envp)
     {
         for (auto &e : _Envp) m_setEnvs__.emplace(e);
     }
+
     std::string env_string() const
     {
         std::ostringstream oss;

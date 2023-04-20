@@ -6,6 +6,8 @@
 
 #include "cmd_args/argment/argument.h"
 
+#include "parse_fwd.h"
+
 CMD_ARGS_NAMESPACE_BEGIN
 
 class Errors;
@@ -16,7 +18,7 @@ public:
     argument_parser(Errors *_Obj)
         : m_pErrs__(_Obj)
     {}
-    void parse(std::vector<std::string> &_Tokens)
+    void parse(Tokens_T &_Tokens)
     {
         if (_Tokens.size() < named_args.doSize()) {
             std::cerr << "(parse error) not enough named_arguments" << std::endl;
@@ -33,15 +35,16 @@ public:
 
         // start parse position arguments
         if (_Tokens.size() != pos_args.doSize()) {
-            std::cerr << "(parse error) position argument number missmatching, give " << _Tokens.size() << ", but need "
-                      << pos_args.doSize() << '\n';
+            std::cerr << "(parse error) position argument number missmatching, give "
+                      << _Tokens.size() << ", but need " << pos_args.doSize() << '\n';
             std::cerr << "uncaptured command line arguments:\n";
             for (auto const &tok : _Tokens) { std::cerr << tok << '\n'; }
             std::cerr << std::flush;
             std::exit(-1);
         }
 
-        for (std::size_t i = 0; i < _Tokens.size(); ++i) { pos_args.set(i, _Tokens[i]); }
+        std::size_t i = 0;
+        for (auto it{ _Tokens.begin() }; it != _Tokens.end(); ++i, ++it) { pos_args.set(i, *it); }
     }
 
     template <typename T>
@@ -49,7 +52,8 @@ public:
     {
         using namespace util;
         if (type_string<T>() == "null") {
-            std::cerr << "(build error) argument type is not supported: " << typeid(T).name() << std::endl;
+            std::cerr << "(build error) argument type is not supported: " << typeid(T).name()
+                      << std::endl;
             std::exit(-1);
         }
         if (type_string<T>() == "bool") {
@@ -73,8 +77,9 @@ public:
         auto *p = pos_args.doGet(name);
         if (p) {
             if (p->strType != util::type_string<T>()) {
-                std::cerr << "(get error) argument type mismatch: set '" << p->strType << "' but you try get with '"
-                          << util::type_string<T>() << "'" << std::endl;
+                std::cerr << "(get error) argument type mismatch: set '" << p->strType
+                          << "' but you try get with '" << util::type_string<T>() << "'"
+                          << std::endl;
                 std::exit(-1);
             }
 
@@ -88,8 +93,8 @@ public:
         }
 
         if (p->strType != util::type_string<T>()) {
-            std::cerr << "(get error) argument type mismatch: set '" << p->strType << "' but you try get with '"
-                      << util::type_string<T>() << "'" << std::endl;
+            std::cerr << "(get error) argument type mismatch: set '" << p->strType
+                      << "' but you try get with '" << util::type_string<T>() << "'" << std::endl;
             std::exit(-1);
         }
 
@@ -111,10 +116,16 @@ public:
     }
 
     // some alias for get_argument
-    int         get_argument_int(std::string const &name) const { return get_argument<int>(name); }
-    int64_t     get_argument_int64(std::string const &name) const { return get_argument<int64_t>(name); }
-    double      get_argument_double(std::string const &name) const { return get_argument<double>(name); }
-    std::string get_argument_string(std::string const &name) const { return get_argument<std::string>(name); }
+    int     get_argument_int(std::string const &name) const { return get_argument<int>(name); }
+    int64_t get_argument_int64(std::string const &name) const
+    {
+        return get_argument<int64_t>(name);
+    }
+    double get_argument_double(std::string const &name) const { return get_argument<double>(name); }
+    std::string get_argument_string(std::string const &name) const
+    {
+        return get_argument<std::string>(name);
+    }
 
     std::string usage_string() const
     {

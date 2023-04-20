@@ -4,13 +4,17 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
 {
     using namespace cmd_args;
 
-    parser                   a("test_once");
-    std::vector<std::string> vecArgs = { "once.exe", "-!" };
-    std::vector<std::string> vecEnv;
-    for (int i = 0; _Envp[i]; ++i) { vecEnv.emplace_back(_Envp[i]); }
+    parser      a("test_once");
+    char const *args[] = { "once.exe", "-!" };
+
+    std::string env1("hello=world");
+    std::string env2("foo=2");
+
+    char *envs[2] = { env1.data(), env2.data() };
     a.add_help_option();
     a.add_env_option();
-    a.parse(vecArgs.size(), vecArgs, vecEnv);
+    a.parse(ARRAY_SIZE(args), args, envs);
+
     a.add("debug", 'd', "open debug mode.");
 
     /*

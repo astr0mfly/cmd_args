@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stack>
 #include <system_error>
 #include <vector>
 
@@ -12,8 +11,10 @@ class Errors
 {
 public:
     using ErrCode_T = std::error_code;
-    using ConEC_T   = std::stack<ErrCode_T, std::vector<ErrCode_T>>;
-    Errors()        = default;
+    using ConEC_T   = std::vector<ErrCode_T>;
+    using Desc_T    = std::string;
+
+    Errors() = default;
 
     // moveable
     Errors(Errors &&)            = default;
@@ -21,13 +22,13 @@ public:
 
     void setLast(ErrCode_T &&_V)
     {
-        m_stkErros__.emplace(std::move(_V));
-        m_ecDefault__ = m_stkErros__.top();
+        m_stkErros__.emplace_back(std::move(_V));
+        m_ecDefault__ = m_stkErros__.back();
     }
     void setLast(ErrCode_T const &_V)
     {
-        m_stkErros__.emplace(_V);
-        m_ecDefault__ = m_stkErros__.top();
+        m_stkErros__.emplace_back(_V);
+        m_ecDefault__ = m_stkErros__.back();
     }
 
     ErrCode_T const &getLast() const noexcept { return m_ecDefault__; }
@@ -36,7 +37,7 @@ public:
 
     void clearLast() noexcept
     {
-        while (!m_stkErros__.empty()) m_stkErros__.pop();
+        while (!m_stkErros__.empty()) m_stkErros__.clear();
         m_ecDefault__ = ErrCode_T{};
     }
 
@@ -52,6 +53,21 @@ public:
     {
         if (isOk()) return;
         throw m_ecDefault__;
+    }
+
+    Desc_T desc() const
+    {
+        Desc_T r;
+        r += "{\n";
+        for (auto &e : m_stkErros__) {
+            r += std::to_string(e.value());
+            r += " : ";
+            r += e.message();
+            r += '\n';
+        }
+        r += "}\n";
+
+        return r;
     }
 
 private:

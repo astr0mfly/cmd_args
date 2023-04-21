@@ -51,6 +51,14 @@ usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
     - `internal` dfx 构建所需要的相关头文件
 6.  `scripts` 主要存放当前项目启动时可能需要的脚本
 
+## 核心对象
+
+1. `builder`  负责构建`argument`、`option`、`env`等选项
+2. `lexer` 负责解析命令行输入，是否符合词法规则
+3. `parser` 负责解析`tokens`，是否满足需要
+4. `interpreter` 负责运行`actions`, 常驻后台时运行命令
+5. `loader` 负责加载脚本等配置
+
 ## 特色
 
 - 基于`cpp`的跨平台项目工程框架
@@ -65,6 +73,7 @@ usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
 - 支持`xmake`编译
 - 支持配置文件(`json`)加载，动态化选项
 - 支持`option with action`, 使用`lua` `luajit`来解释运行，也可以尝试考虑加入编译。
+- 支持`dll`动态加载补丁，运行期间可以直接当作`action`使用
 
 ## 编译步骤
 

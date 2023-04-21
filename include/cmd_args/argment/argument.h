@@ -296,7 +296,11 @@ public:
         it->second->set(std::move(_Value));
     }
 
-    void doPush(Argument::ptr _Arg) override { mapArgs.emplace(mapArgs.size(), std::move(_Arg)); }
+    void doPush(Argument::ptr _Arg) override
+    {
+        auto seq = dynamic_cast<position_argument *>(_Arg.get())->getSeq();
+        mapArgs.emplace(seq, std::move(_Arg));
+    }
     std::string doGetUsage() const override
     {
         std::ostringstream oss;

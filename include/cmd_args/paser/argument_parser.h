@@ -20,17 +20,17 @@ public:
     {}
 
     template <typename T>
-    void add_argument(std::string name, std::string help)
+    void add(std::string _Name, std::string _Help)
     {
-        check_add_argument_name<T>(name);
-        pos_args.doPush(std::move(name), std::move(help), util::type_string<T>());
-    }
-
-    template <typename T>
-    void add_named_argument(std::string name, std::string help)
-    {
-        check_add_argument_name<T>(name);
-        named_args.doPush(std::move(name), std::move(help), util::type_string<T>());
+        if constexpr (std::is_same_v<T, ArgumentNamed>) {
+            named_args.doPush(std::make_unique<ArgumentNamed>(_Name, _Help));
+        }
+        else if constexpr (std::is_same_v<T, position_argument>) {
+            pos_args.doPush(std::make_unique<position_argument>(pos_args.doSize(), _Name, _Help));
+        }
+        else {
+            static_assert(true, "Failed to construct Argument::ptr.");
+        }
     }
 
     void parse(Tokens_T &_Tokens)

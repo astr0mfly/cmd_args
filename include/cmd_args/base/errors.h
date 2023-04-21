@@ -65,7 +65,7 @@ public:
         throw m_ecDefault__;
     }
 
-    Desc_T desc() const
+    Desc_T dump() const
     {
         Desc_T r;
         r += "{\n";

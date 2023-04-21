@@ -38,6 +38,27 @@ public:
         , envirionment_parser(this)
     {}
 
+    parser &set_program_name(Name_T name)
+    {
+        program_name = std::move(name);
+        return *this;
+    }
+    template <typename T = option>
+    void add(NameLong_T _Long, Desc_T _Desc)
+    {
+        if constexpr (std::is_base_of_v<Argument, T>) { argument_parser::add<T>(_Long, _Desc); }
+        else {
+            option_parser::add_option(' ', _Long, _Desc);
+        }
+    }
+    void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short)
+    {
+        option_parser::add_option(_Short, _Long, _Desc);
+    }
+
+    // add argument or option
+    void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short, bool _Required) {}
+
     // parse arguments
     void parse(int argc, char const *argv[])
     {
@@ -71,21 +92,6 @@ public:
     bool parsed(NameShort_T _Name) const { return false; }
     bool parsed(NameLong_T _Name) const { return false; }
 
-    void add(NameLong_T _Long, Desc_T _Desc) { option_parser::add_option(' ', _Long, _Desc); }
-    void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short)
-    {
-        option_parser::add_option(_Short, _Long, _Desc);
-    }
-
-    // add argument or option
-    void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short, bool _Required) {}
-
-    parser &set_program_name(Name_T name)
-    {
-        program_name = std::move(name);
-        return *this;
-    }
-
     parser &add_help_option()
     {
         option_parser::add_sc_option("-?", "--help", "show this help message", [this]() {
@@ -107,6 +113,7 @@ public:
     // be used in once mode and return last_val
     [[noreturn]] void once() const noexcept { exit(getLastVal()); }
 
+    using Errors::dump;
     using Errors::getLast;
     using Errors::getLastMsg;
     using Errors::getLastVal;
@@ -115,7 +122,6 @@ public:
     void print_usage() const { std::cout << __descUsage() << std::endl; }
     void print_help() const { std::cout << __descHelp() << std::endl; }
     void print_env() const { std::cout << __descEnv() << std::endl; }
-    void print_error() const { std::cout << Errors::desc() << std::endl; }
 
 private:
     void __parse(size_t _CntArg, Tokens_T &_Args, std::vector<std::string> const &_Env)

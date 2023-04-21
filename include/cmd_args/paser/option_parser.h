@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cmd_args/base/errors.h"
+
 #include "cmd_args/option/option.h"
 
 #include "parse_fwd.h"

@@ -16,7 +16,8 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
 
     a.parse(ARRAY_SIZE(args), args, envs);  // parse args and throw
 
-    // auto r = a.tryParse(ARRAY_SIZE(args), args, envs);  // try to parse and return errc
+    // try to parse and return errc
+    // auto r = a.tryParse(ARRAY_SIZE(args), args, envs);
 
     // -d, --debug support, it's mean that be true when input
     a.add(

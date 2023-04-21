@@ -13,10 +13,6 @@
 #include <typeinfo>
 #include <vector>
 
-#include "cmd_args/base/def.h"
-#include "cmd_args/base/errors.h"
-#include "cmd_args/base/util.h"
-
 #include "cmd_args/argment/argument.h"
 #include "cmd_args/env/environment.h"
 #include "cmd_args/option/option.h"
@@ -139,8 +135,8 @@ private:
         envirionment_parser::parse(_Env);
 
         _Args.pop_front();
-        option_parser::parse(_Args);
         argument_parser::parse(_Args);
+        option_parser::parse(_Args);
 
         return;
     }

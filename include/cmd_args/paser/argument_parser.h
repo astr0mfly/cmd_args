@@ -1,8 +1,9 @@
 #pragma once
 
+#include <sstream>
 #include <vector>
 
-#include "cmd_args/base/errc.h"
+#include "cmd_args/base/errors.h"
 
 #include "cmd_args/argment/argument.h"
 
@@ -10,41 +11,50 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-class Errors;
-
 class argument_parser
 {
+private:
 public:
     argument_parser(Errors *_Obj)
         : m_pErrs__(_Obj)
     {}
+
+    template <typename T>
+    void add_argument(std::string name, std::string help)
+    {
+        check_add_argument_name<T>(name);
+        pos_args.doPush(std::move(name), std::move(help), util::type_string<T>());
+    }
+
+    template <typename T>
+    void add_named_argument(std::string name, std::string help)
+    {
+        check_add_argument_name<T>(name);
+        named_args.doPush(std::move(name), std::move(help), util::type_string<T>());
+    }
+
     void parse(Tokens_T &_Tokens)
     {
-        if (_Tokens.size() < named_args.doSize()) {
-            std::cerr << "(parse error) not enough named_arguments" << std::endl;
-            std::exit(-1);
-        }
+        __parse(
+            std::bind(
+                &argument_parser::__throwErr,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2),
+            _Tokens);
+    }
 
-        for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
-            if (named_args.set(*pos)) {
-                pos = _Tokens.erase(pos);
-                break;
-            }
-            ++pos;
-        }
+    void parse(std::error_code &_Errc, Tokens_T &_Tokens) noexcept
+    {
+        __parse(
+            std::bind(
+                &argument_parser::__LastErr,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2),
+            _Tokens);
 
-        // start parse position arguments
-        if (_Tokens.size() != pos_args.doSize()) {
-            std::cerr << "(parse error) position argument number missmatching, give "
-                      << _Tokens.size() << ", but need " << pos_args.doSize() << '\n';
-            std::cerr << "uncaptured command line arguments:\n";
-            for (auto const &tok : _Tokens) { std::cerr << tok << '\n'; }
-            std::cerr << std::flush;
-            std::exit(-1);
-        }
-
-        std::size_t i = 0;
-        for (auto it{ _Tokens.begin() }; it != _Tokens.end(); ++i, ++it) { pos_args.set(i, *it); }
+        _Errc = m_pErrs__->getLast();
     }
 
     template <typename T>
@@ -76,14 +86,14 @@ public:
         using namespace util;
         auto *p = pos_args.doGet(name);
         if (p) {
-            if (p->strType != util::type_string<T>()) {
-                std::cerr << "(get error) argument type mismatch: set '" << p->strType
+            if (p->getType() != util::type_string<T>()) {
+                std::cerr << "(get error) argument type mismatch: set '" << p->getType()
                           << "' but you try get with '" << util::type_string<T>() << "'"
                           << std::endl;
                 std::exit(-1);
             }
 
-            return util::parse_value<T>(p->strValue);
+            return util::parse_value<T>(p->getValue());
         }
 
         p = named_args.doGet(name);
@@ -92,27 +102,13 @@ public:
             std::exit(-1);
         }
 
-        if (p->strType != util::type_string<T>()) {
-            std::cerr << "(get error) argument type mismatch: set '" << p->strType
+        if (p->getType() != util::type_string<T>()) {
+            std::cerr << "(get error) argument type mismatch: set '" << p->getType()
                       << "' but you try get with '" << util::type_string<T>() << "'" << std::endl;
             std::exit(-1);
         }
 
-        return util::parse_value<T>(p->strValue);
-    }
-
-    template <typename T>
-    void add_argument(std::string name, std::string help)
-    {
-        check_add_argument_name<T>(name);
-        pos_args.doPush(std::move(name), std::move(help), util::type_string<T>());
-    }
-
-    template <typename T>
-    void add_named_argument(std::string name, std::string help)
-    {
-        check_add_argument_name<T>(name);
-        named_args.doPush(std::move(name), std::move(help), util::type_string<T>());
+        return util::parse_value<T>(p->getValue());
     }
 
     // some alias for get_argument
@@ -143,6 +139,46 @@ public:
     }
 
 private:
+    inline void __throwErr(ParseError_E _E, std::string _Msg)
+    {
+        if (!_Msg.empty()) { m_pErrs__->setMsg(std::move(_Msg)); }
+        throw ErrorParse(_E);
+    }
+
+    inline void __LastErr(ParseError_E _E, std::string _Msg) noexcept
+    {
+        if (!_Msg.empty()) { m_pErrs__->setMsg(std::move(_Msg)); }
+        m_pErrs__->setLast(_E);
+    }
+
+    void __parse(std::function<void(ParseError_E, std::string)> &&_ProcErr, Tokens_T &_Tokens)
+    {
+        if (_Tokens.size() < named_args.doSize()) { _ProcErr(ParseError_E::NOT_ENOUGH_ARGS, ""); }
+
+        for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
+            std::error_code ec;
+            named_args.parse(ec, *pos);
+            if (ec) {
+                pos = _Tokens.erase(pos);
+                break;
+            }
+            ++pos;
+        }
+
+        // start parse position arguments
+        if (_Tokens.size() != pos_args.doSize()) {
+            std::ostringstream oss;
+            oss << "give " << _Tokens.size() << ", but need " << pos_args.doSize() << '\n';
+            oss << "uncaptured command line arguments:\n";
+            for (auto const &tok : _Tokens) { oss << tok << '\n'; }
+
+            _ProcErr(ParseError_E::UNKNWON_ARGS, oss.str());
+        }
+
+        std::size_t i = 0;
+        for (auto it{ _Tokens.begin() }; it != _Tokens.end(); ++i, ++it) { pos_args.parse(i, *it); }
+    }
+
     named_arg_mgr    named_args;
     position_arg_mgr pos_args;
     Errors          *m_pErrs__ = nullptr;

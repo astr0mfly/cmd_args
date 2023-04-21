@@ -10,3 +10,4 @@ char (&fakeArraySize(T (&)[N]))[N];
 }
 
 #define ARRAY_SIZE(_A) sizeof(::detail::fakeArraySize(_A))
+#define ENUM_NAME(_E)  #_E

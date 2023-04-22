@@ -32,20 +32,37 @@ CMD_ARGS_NAMESPACE_BEGIN
 /*
     核心服务对象
 */
-class Context :
-    public Model,
-    public Builder,
-    public Lexer,
-    public Parser,
-    public Interpreter,
-    private Errors
+class Context : public Lexer, public Interpreter, private Errors
 {
 public:
+    Context(std::string _Name)
+        : m_strPrjName__(_Name)
+    {}
+
+    template <class Select_T, typename... Args_T>
+    Context &build(Args_T &&..._Args)
+    {
+        Builder(&m_instData__).build<Select_T>(std::forward<Args_T>(_Args)...);
+
+        return *this;
+    }
+    template <class T>
+    Context &builds(GroupBuilds<T> &&_Builds)
+    {
+        Builder(&m_instData__).build<T>(std::move(_Builds));
+
+        return *this;
+    }
+
     using Errors::dump;
     using Errors::getLast;
     using Errors::getLastMsg;
     using Errors::getLastVal;
     using Errors::isOk;
+
+private:
+    std::string m_strPrjName__;
+    Model       m_instData__;
 };
 
 CMD_ARGS_NAMESPACE_END

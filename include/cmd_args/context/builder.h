@@ -25,6 +25,16 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+template <class T>
+class GroupBuilds : public std::initializer_list<T>
+{
+public:
+    GroupBuilds() = default;
+    GroupBuilds(std::initializer_list<T> _Builds)
+        : std::initializer_list<T>(std::move(_Builds))
+    {}
+};
+
 /*
     构筑参数，选项，环境变量的对象
 */
@@ -33,18 +43,26 @@ class Builder : public ArgumentBuilder
 public:
     Builder(Model *);
     ~Builder();
-    // template <typename T = option>
-    //  void add(NameLong_T _Long, Desc_T _Desc)
+
+    template <typename T>
+    void build(GroupBuilds<T> &&_Builds)
+    {
+        for (auto const &e : _Builds) { ArgumentBuilder::build(e); }
+    }
+
+    template <typename T>
+    void build(Argument::Name_T _Long, Argument::Desc_T _Desc)
+    {
+        if constexpr (std::is_base_of_v<Argument, T>) { ArgumentBuilder::build<T>(_Long, _Desc); }
+        else {
+            // option_parser::add_option(' ', _Long, _Desc);
+        }
+    }
+
+    // void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short)
     //{
-    //      if constexpr (std::is_base_of_v<Argument, T>) { argument_parser::add<T>(_Long, _Desc); }
-    //      else {
-    //          option_parser::add_option(' ', _Long, _Desc);
-    //      }
-    //  }
-    //  void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short)
-    //{
-    //      option_parser::add_option(_Short, _Long, _Desc);
-    //  }
+    //     option_parser::add_option(_Short, _Long, _Desc);
+    // }
 
     //// add argument or option
     // void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short, bool _Required) {}

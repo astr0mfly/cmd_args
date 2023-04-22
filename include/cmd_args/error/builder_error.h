@@ -24,6 +24,7 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+namespace detail {
 enum class BuildError_E
 {
     OK = 0,
@@ -92,6 +93,10 @@ public:
 private:
     std::error_code m_ec__;
 };
+}  // namespace detail
+
+using detail::BuildError_E;
+using detail::ErrorArgument;
 
 CMD_ARGS_NAMESPACE_END
 

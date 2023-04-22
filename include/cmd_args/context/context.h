@@ -54,6 +54,43 @@ public:
         return *this;
     }
 
+    Context &parse(int _Argc, char const *_Argv[], char *_Envp[])
+    {
+        // Lexer
+
+        // parser
+        return *this;
+    }
+
+    Context &parse(std::error_code _Ec, int _Argc, char const *_Argv[], char *_Envp[]) noexcept
+    {
+        try {
+            return parse(_Argc, _Argv, _Envp);
+        }
+        catch (ErrorParse const &e) {
+            _Ec = e.code();
+            // TODO  print stack exception
+        }
+        catch (std::exception const &ex) {
+        }
+
+        return *this;
+    }
+
+    // run once and exit(0)
+    Context &once()
+    {
+        // TODO interpreter
+        return *this;
+    }
+
+    // call loop and util input exit
+    Context &loop()
+    {
+        // TODO interpreter and set error last
+        return *this;
+    }
+
     using Errors::dump;
     using Errors::getLast;
     using Errors::getLastMsg;

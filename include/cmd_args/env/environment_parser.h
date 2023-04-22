@@ -17,20 +17,15 @@
  */
 #pragma once
 
-#include "cmd_args/base/errors.h"
-
+#include "cmd_args/context/parse_fwd.h"
 #include "cmd_args/env/environment.h"
-
-#include "parse_fwd.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
 class envirionment_parser
 {
 public:
-    envirionment_parser(Errors *_Obj)
-        : m_pErrs__(_Obj)
-    {}
+    envirionment_parser() {}
 
     void parse(Envs_T const &_Envp)
     {
@@ -57,8 +52,7 @@ public:
     }
 
 private:
-    envs_t  m_setEnvs__;
-    Errors *m_pErrs__ = nullptr;
+    envs_t m_setEnvs__;
 };
 
 CMD_ARGS_NAMESPACE_END

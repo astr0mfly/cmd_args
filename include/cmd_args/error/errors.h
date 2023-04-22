@@ -1,5 +1,5 @@
 /*
- * Copyright[2023][ValenciaFly]
+ * Copyright [2023] [ValenciaFly]
  * Email: pengwanring@live.com
  *
  *     Licensed under the Apache License,
@@ -24,6 +24,21 @@
 #include "cmd_args/base/def.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
+
+class ErrorGeneral : public std::runtime_error
+{
+public:
+    explicit ErrorGeneral(std::error_code _Ec)
+        : runtime_error("")
+        , m_ec__(_Ec)
+    {}
+
+    std::error_code const &code() const noexcept { return m_ec__; }
+    char const            *what() const noexcept override { return m_ec__.message().c_str(); }
+
+private:
+    std::error_code m_ec__;
+};
 
 class Errors
 {
@@ -73,13 +88,13 @@ public:
     void tryRaise() const
     {
         if (isOk()) return;
-        throw m_ecDefault__;
+        throw ErrorGeneral(m_ecDefault__);
     }
 
     void raise(ErrCode_T _Ec)
     {
         setLast(_Ec);
-        throw m_ecDefault__;
+        throw ErrorGeneral(m_ecDefault__);
     }
 
     Desc_T dump() const

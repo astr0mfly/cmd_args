@@ -55,7 +55,7 @@ usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
 
 1. `builder`  负责构建`argument`、`option`、`env`等选项
 2. `lexer` 负责解析命令行输入，是否符合词法规则
-3. `parser` 负责解析`tokens`，是否满足需要
+3. `parser` 负责解析`tokens`，是否满足对象需要
 4. `interpreter` 负责运行`actions`, 常驻后台时运行命令
 5. `loader` 负责加载脚本等配置
 
@@ -74,6 +74,7 @@ usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
 - 支持配置文件(`json`)加载，动态化选项
 - 支持`option with action`, 使用`lua` `luajit`来解释运行，也可以尝试考虑加入编译。
 - 支持`dll`动态加载补丁，运行期间可以直接当作`action`使用
+- 支持异常捕获规范，用airbag， throw_with_nest()...
 
 ## 编译步骤
 

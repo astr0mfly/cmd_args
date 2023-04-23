@@ -1,6 +1,7 @@
 #include <source_location>
 
 #include "cmd_args/cmd_args.hpp"
+#include "cmd_args/error/exception_handler.h"
 
 int main(int _Argc, char const *_Argv[], char *_Envp[])
 {

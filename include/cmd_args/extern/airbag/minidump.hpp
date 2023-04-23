@@ -22,11 +22,13 @@
 
 #pragma once
 
-#include <cstdio>
+// clang-format off
+
 #include <filesystem>
 #include <system_error>
-
+#include <cstdio>
 #include "system_failure.hpp"
+
 
 #if defined(_WIN32)
 
@@ -42,15 +44,16 @@
 #endif
 #endif
 
-#include <DbgHelp.h>
+#include <minwindef.h>
+#include <windows.h>
+#include <libloaderapi.h>
 #include <errhandlingapi.h>
+#include <sysinfoapi.h>
 #include <fileapi.h>
 #include <handleapi.h>
-#include <libloaderapi.h>
-#include <minwindef.h>
 #include <processthreadsapi.h>
-#include <sysinfoapi.h>
 #include <timezoneapi.h>
+#include <DbgHelp.h>
 
 #pragma comment(lib, "Dbghelp.lib")
 
@@ -59,6 +62,8 @@
 #error Unsupported system
 
 #endif
+
+// clang-format on
 
 namespace airbag {
 
@@ -88,10 +93,10 @@ struct minidump
         executable_name_ = path.stem().string();
     }
 
-    minidump(minidump const &) = default;
-    minidump &operator=(minidump const &) = default;
-    minidump(minidump &&)                 = default;
-    minidump &       operator=(minidump &&) = default;
+    minidump(minidump const &)              = default;
+    minidump &operator=(minidump const &)   = default;
+    minidump(minidump &&)                   = default;
+    minidump        &operator=(minidump &&) = default;
     void             directory(path_type const &dir) { dump_dir_ = dir; }
     path_type const &directory() const noexcept { return dump_dir_; }
 
@@ -112,17 +117,14 @@ struct minidump
         std::snprintf(
             dump_name,
             sizeof(dump_name),
-            "%s[%d-%d]-%u_%02u_%02u-%02u_%02u_%02u_%03u.dmp",
+            "%s-%u_%02u_%02u-%02u_%02u_%02u.dmp",
             executable_name_.data(),
-            GetCurrentProcessId(),
-            GetCurrentThreadId(),
             time.wYear,
             time.wMonth,
             time.wDay,
             time.wHour,
             time.wMinute,
-            time.wSecond,
-            time.wMilliseconds);
+            time.wSecond);
 
         path_type path = dump_dir_;
         path /= dump_name;
@@ -131,7 +133,7 @@ struct minidump
         auto constexpr generic_write         = 0x40000000;
         auto constexpr file_attribute_normal = 0x00000080;
 
-        HANDLE file = CreateFile(
+        HANDLE file = CreateFileA(
             path.string().data(),
             generic_read | generic_write,
             0,
@@ -154,8 +156,9 @@ struct minidump
             pmdei = nullptr;
         }
 
-        int const mdt = MiniDumpWithPrivateReadWriteMemory | MiniDumpWithDataSegs | MiniDumpWithHandleData
-                        | MiniDumpWithFullMemoryInfo | MiniDumpWithThreadInfo;
+        int const mdt = MiniDumpWithPrivateReadWriteMemory | MiniDumpWithDataSegs
+                        | MiniDumpWithHandleData | MiniDumpWithFullMemoryInfo
+                        | MiniDumpWithThreadInfo;
 
         BOOL const written = MiniDumpWriteDump(
             GetCurrentProcess(),

@@ -1,6 +1,5 @@
 /*
- * Copyright [2023] [ValenciaFly]
- * Email: pengwanring@live.com
+ * Copyright [2023] [ValenciaFly] <pengwanring@live.com>
  *
  *     Licensed under the Apache License,
  *     Version 2.0(the "License");
@@ -32,24 +31,9 @@ CMD_ARGS_NAMESPACE_BEGIN
 /*
     核心服务对象
 */
-class Context : public Lexer, public Interpreter, private Errors
+class Context : public Interpreter, private Errors
 {
 public:
-    struct BuildHelper
-    {
-        Model *pCon = nullptr;
-
-        BuildHelper(Model *_Data)
-            : pCon(_Data)
-        {}
-
-        BuildHelper &operator()(ArgumentNamed &&_Arg)
-        {
-            Builder(pCon).build(std::move(_Arg));
-            return *this;
-        }
-        BuildHelper &operator()(ArgumentNamed const &_Arg) { Builder(pCon).build(_Arg); }
-    };
     Context(std::string _Name)
         : m_strPrjName__(_Name)
     {}

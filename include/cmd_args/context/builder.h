@@ -79,6 +79,22 @@ public:
     //}
 };
 
+struct BuildHelper
+{
+    Model *pCon = nullptr;
+
+    BuildHelper(Model *_Data)
+        : pCon(_Data)
+    {}
+
+    BuildHelper &operator()(ArgumentNamed &&_Arg)
+    {
+        Builder(pCon).build(std::move(_Arg));
+        return *this;
+    }
+    BuildHelper &operator()(ArgumentNamed const &_Arg) { Builder(pCon).build(_Arg); }
+};
+
 Builder::Builder(Model *_Data)
     : ArgumentBuilder(&_Data->m_args__)
 {}

@@ -70,14 +70,6 @@ public:
         return *this;
     }
 
-    template <class T>
-    Context &builds(Group<T> &&_Builds)
-    {
-        Builder(&m_instData__).build<T>(std::move(_Builds));
-
-        return *this;
-    }
-
     BuildHelper build() { return { &this->m_instData__ }; }
 
     Context &parse(int _Argc, char const *_Argv[], char *_Envp[])

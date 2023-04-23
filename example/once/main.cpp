@@ -15,7 +15,8 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
     Context a("sample_once");
 
     a.build<ArgumentNamed>("hello", "Say hello").build<ArgumentNamed>("world", "say world");
-    a.builds<ArgumentNamed>({ ArgumentNamed("foo", "has foo"), ArgumentNamed("foo", "has foo") });
+    a.build<Group<ArgumentNamed>>(
+        { ArgumentNamed("foo", "has foo"), ArgumentNamed("foo", "has foo") });
     a.build()(ArgumentNamed())(Argument().name("a").help(" has a "));
 
     return 0;

@@ -18,22 +18,13 @@
 #pragma once
 
 #include "cmd_args/base/def.h"
+#include "cmd_args/base/util.h"
 
 #include "cmd_args/argument/argument_builder.h"
 
 #include "model.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
-
-template <class T>
-class GroupBuilds : public std::initializer_list<T>
-{
-public:
-    GroupBuilds() = default;
-    GroupBuilds(std::initializer_list<T> _Builds)
-        : std::initializer_list<T>(std::move(_Builds))
-    {}
-};
 
 /*
     构筑参数，选项，环境变量的对象
@@ -45,7 +36,7 @@ public:
     ~Builder();
 
     template <typename T>
-    void build(GroupBuilds<T> &&_Builds)
+    void build(Group<T> &&_Builds)
     {
         for (auto const &e : _Builds) { ArgumentBuilder::build(e); }
     }
@@ -58,6 +49,8 @@ public:
             // option_parser::add_option(' ', _Long, _Desc);
         }
     }
+
+    using ArgumentBuilder::build;
 
     // void add(NameLong_T _Long, Desc_T _Desc, NameShort_T _Short)
     //{

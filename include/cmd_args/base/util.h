@@ -98,6 +98,21 @@ std::pair<std::string, std::string> parse_line(std::string const &_Line)
     return { _Line.substr(0, pos), _Line.substr(pos + 1) };
 }
 
+template <class T>
+class Group : public std::initializer_list<T>
+{
+public:
+    using Super_T   = std::initializer_list<T>;
+    using Element_T = typename Super_T::value_type;
+
+    Group() = default;
+    Group(std::initializer_list<T> _Builds)
+        : std::initializer_list<T>(std::move(_Builds))
+    {}
+};
+
 }  // namespace util
+
+using util::Group;
 
 CMD_ARGS_NAMESPACE_END

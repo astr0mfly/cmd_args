@@ -35,6 +35,21 @@ CMD_ARGS_NAMESPACE_BEGIN
 class Context : public Lexer, public Interpreter, private Errors
 {
 public:
+    struct BuildHelper
+    {
+        Model *pCon = nullptr;
+
+        BuildHelper(Model *_Data)
+            : pCon(_Data)
+        {}
+
+        BuildHelper &operator()(ArgumentNamed &&_Arg)
+        {
+            Builder(pCon).build(std::move(_Arg));
+            return *this;
+        }
+        BuildHelper &operator()(ArgumentNamed const &_Arg) { Builder(pCon).build(_Arg); }
+    };
     Context(std::string _Name)
         : m_strPrjName__(_Name)
     {}
@@ -46,13 +61,24 @@ public:
 
         return *this;
     }
+
+    template <class G, typename T = typename G::Element_T>
+    Context &build(std::initializer_list<T> _Args)
+    {
+        Builder(&m_instData__).build(std::move(_Args));
+
+        return *this;
+    }
+
     template <class T>
-    Context &builds(GroupBuilds<T> &&_Builds)
+    Context &builds(Group<T> &&_Builds)
     {
         Builder(&m_instData__).build<T>(std::move(_Builds));
 
         return *this;
     }
+
+    BuildHelper build() { return { &this->m_instData__ }; }
 
     Context &parse(int _Argc, char const *_Argv[], char *_Envp[])
     {
@@ -72,6 +98,7 @@ public:
             // TODO  print stack exception
         }
         catch (std::exception const &ex) {
+            ( void )ex;
         }
 
         return *this;

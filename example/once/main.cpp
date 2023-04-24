@@ -22,6 +22,7 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
         { ArgumentNamed("foo", "has foo"), ArgumentNamed("foo", "has foo") });
     a.build()(ArgumentNamed())(Argument().name("a").help(" has a "));
 
+    a.parse(ARRAY_SIZE(args), args, envs);
     // TODO Lexer and tokens of parser and interpreter
 
     return 0;

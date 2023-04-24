@@ -58,7 +58,7 @@ public:
 
     Context &parse(int _Argc, char const *_Argv[], char *_Envp[])
     {
-        // Lexer
+        auto tks = Lexer(_Argc, _Argv, _Envp);
 
         // parser
         return *this;

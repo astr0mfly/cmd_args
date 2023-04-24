@@ -3,6 +3,8 @@
 #include "cmd_args/cmd_args.hpp"
 #include "cmd_args/error/exception_handler.h"
 
+static exception_init sg_initor;
+
 int main(int _Argc, char const *_Argv[], char *_Envp[])
 {
     using namespace cmd_args;
@@ -19,6 +21,8 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
     a.build<Group<ArgumentNamed>>(
         { ArgumentNamed("foo", "has foo"), ArgumentNamed("foo", "has foo") });
     a.build()(ArgumentNamed())(Argument().name("a").help(" has a "));
+
+    // TODO Lexer and tokens of parser and interpreter
 
     return 0;
 }

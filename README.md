@@ -29,6 +29,13 @@ usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
            [--git-dir=<path>] [--work-tree=<path>] [--namespace=<name>]
            [--super-prefix=<path>] [--config-env=<name>=<envvar>]
            <command> [<args>]
+
+git merge [-n] [--stat] [--no-commit] [--squash] [--[no-]edit]
+        [--no-verify] [-s <strategy>] [-X <strategy-option>] [-S[<keyid>]]
+        [--[no-]allow-unrelated-histories]
+        [--[no-]rerere-autoupdate] [-m <msg>] [-F <file>]
+        [--into-name <branch>] [<commit>…​]
+git merge (--continue | --abort | --quit)
 ```
 
 - `[-v | --version]` 表示 短参数名`-v`和长参数名`--version` 都能生效，且可选

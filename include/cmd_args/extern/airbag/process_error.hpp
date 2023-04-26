@@ -52,9 +52,9 @@
 
 #endif
 
+#if !defined(__MINGW32__) || !defined(__MINGW64__)
 
 namespace airbag {
-
 
   class process_error {
   public:
@@ -133,5 +133,6 @@ namespace airbag {
   inline process_error::pure_call_handler process_error::pure_call_handler_;
   inline process_error::system_failure_handler process_error::system_failure_handler_;
 
-
 } // airbag
+
+#endif

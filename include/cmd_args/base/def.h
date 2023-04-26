@@ -19,7 +19,9 @@
 
 #define CMD_ARGS_NAMESPACE_BEGIN namespace cmd_args {
 #define CMD_ARGS_NAMESPACE_END   }  // end of namespace cmd_args
-#define CMD_ARGS_NAMESPACE(_X)   cmd_args::##_X
+// #define CMD_ARGS_NAMESPACE_PREFIX cmd_args::
+// #define CMD_ARGS_CONCAT(_A, _B) _A##_B
+// #define CMD_ARGS_NAMESPACE(_X)   CMD_ARGS_CONCAT(cmd_args::, _X)
 
 namespace detail {
 template <typename T, unsigned int N>

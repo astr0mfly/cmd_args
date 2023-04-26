@@ -191,7 +191,7 @@ private:
 
 struct OptionData
 {
-     action_opt_mgr              short_circuit_options;
+    action_opt_mgr              short_circuit_options;
     value_opt_mgr               options;
     std::map<char, std::string> short_name_index;
 

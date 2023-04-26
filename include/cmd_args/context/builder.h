@@ -92,7 +92,10 @@ struct BuildHelper
         Builder(pCon).build(std::move(_Arg));
         return *this;
     }
-    BuildHelper &operator()(ArgumentNamed const &_Arg) { Builder(pCon).build(_Arg); }
+    BuildHelper &operator()(ArgumentNamed const &_Arg) {
+        Builder(pCon).build(_Arg);
+        return *this; 
+    }
 };
 
 Builder::Builder(Model *_Data)

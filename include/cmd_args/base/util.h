@@ -19,6 +19,7 @@
 
 #include <string>
 #include <utility>
+#include <sstream>
 
 #include "def.h"
 

@@ -115,6 +115,6 @@ CMD_ARGS_NAMESPACE_END
 
 namespace std {
 template <>
-struct is_error_code_enum<CMD_ARGS_NAMESPACE(ParseError_E)> : true_type
+struct is_error_code_enum<cmd_args::ParseError_E> : true_type
 {};
 }  // namespace std

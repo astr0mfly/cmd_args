@@ -9,6 +9,7 @@ int main(int _Argc, char const *_Argv[], char *_Envp[])
 {
     using namespace cmd_args;
 
+    (void)sg_initor;
     char const *args[] = { "once.exe", "-!" };
 
     std::string env1("hello=world");

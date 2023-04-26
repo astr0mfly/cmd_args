@@ -102,6 +102,6 @@ CMD_ARGS_NAMESPACE_END
 
 namespace std {
 template <>
-struct is_error_code_enum<CMD_ARGS_NAMESPACE(BuildError_E)> : public true_type
+struct is_error_code_enum<cmd_args::BuildError_E> : public true_type
 {};
 }  // namespace std

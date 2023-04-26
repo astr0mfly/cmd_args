@@ -55,13 +55,15 @@
 #include <timezoneapi.h>
 #include <DbgHelp.h>
 
-#pragma comment(lib, "Dbghelp.lib")
-
 #else
 
 #error Unsupported system
 
 #endif
+
+#if !defined(__MINGW32__) || !defined(__MINGW64__)
+
+#pragma comment(lib, "Dbghelp.lib")
 
 // clang-format on
 
@@ -179,3 +181,6 @@ private:
 };  // minidump
 
 }  // namespace airbag
+
+
+#endif

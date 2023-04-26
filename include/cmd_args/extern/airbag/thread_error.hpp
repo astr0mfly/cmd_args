@@ -47,7 +47,6 @@
 
 #include <minwindef.h>
 #include <crtdbg.h>
-#include <consoleapi.h>
 
 #else
 
@@ -55,10 +54,9 @@
 
 #endif
 
-
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 
 namespace airbag {
-
 
   class thread_error : public std::runtime_error  {
   public:
@@ -147,3 +145,5 @@ namespace airbag {
 
 
 } // airbag
+
+#endif

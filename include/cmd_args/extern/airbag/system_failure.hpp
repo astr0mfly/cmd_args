@@ -50,6 +50,7 @@
 
 #endif
 
+#if !defined(__MINGW32__) || !defined(__MINGW64__)
 
 
 namespace airbag {
@@ -176,3 +177,5 @@ namespace airbag {
 
 
 } // airbag
+
+#endif

@@ -25,7 +25,7 @@
 
 #include <atomic>
 
-#if defined(_WIN32)
+#if defined(_WIN32) && (!defined(__MINGW32__) && !defined(__MINGW64__))
 
 #if !defined(_X86_) && !defined(_AMD64_) && !defined(_ARM_) && !defined(_ARM64_)
 #if defined(_M_IX86)
@@ -44,10 +44,6 @@
 #include <synchapi.h>
 
 #else
-
-#error Unsupported system
-
-#endif
 
 
 namespace airbag {
@@ -118,3 +114,5 @@ namespace airbag {
 
 
 } // airbag
+
+#endif

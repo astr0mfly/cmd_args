@@ -17,6 +17,14 @@
  */
 #pragma once
 
+/*
+    基础设施宏：命名空间开关 + 计数/名字工具。
+    - CMD_ARGS_NAMESPACE_BEGIN/END：整个库统一经该宏展开命名空间
+      （默认 cmd_args；改名/加前缀只需在此调整）
+    - ARRAY_SIZE(_A)   : 数组元素个数（编译期，经 detail::fakeArraySize 推导）
+    - ENUM_NAME(_E)    : 枚举名转字符串（如 ENUM_NAME(BuildError_E) -> "BuildError_E"，
+                          供 error_category::name() 返回）
+*/
 #define CMD_ARGS_NAMESPACE_BEGIN namespace cmd_args {
 #define CMD_ARGS_NAMESPACE_END   }  // end of namespace cmd_args
 // #define CMD_ARGS_NAMESPACE_PREFIX cmd_args::
@@ -24,6 +32,7 @@
 // #define CMD_ARGS_NAMESPACE(_X)   CMD_ARGS_CONCAT(cmd_args::, _X)
 
 namespace detail {
+/* 仅供 ARRAY_SIZE 推导数组长度，不生成实体 */
 template <typename T, unsigned int N>
 char (&fakeArraySize(T (&)[N]))[N];
 }

@@ -1,5 +1,12 @@
 #pragma once
 
+/*
+ * 通用函数式工具（遗留实用集，当前仓库内暂无引用，保留备用）：
+ * - func_util::Optional<T> 手写可选值（对齐存储，拷贝/移动/析构安全）
+ * - func_util::Lazy<T>     延迟求值（结果缓存：首次 Value() 计算，之后直接取）
+ * - func_util::lazy(...)   便捷工厂
+ */
+
 #include<type_traits>
 #include<iostream>
 #include<string>
@@ -7,6 +14,11 @@
 
 namespace func_util{
 
+/*
+    Optional<T>：有/无两种状态的可选容器（pre-C++17 手写版）。
+    - 未初始化时解引用抛 std::logic_error
+    - 拷贝/移动/赋值/析构均正确处理对象生命周期
+*/
 template<typename T>
 class Optional
 {

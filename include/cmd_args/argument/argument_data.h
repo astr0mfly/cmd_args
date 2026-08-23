@@ -25,6 +25,10 @@ CMD_ARGS_NAMESPACE_BEGIN
 
 namespace detail {
 
+/*
+    参数管理器的统一接口：命名参数管理器与方位参数管理器都实现它，
+    使 Parser / schema 导出等可以多态地统一访问（usage/help/查找/遍历/推送）。
+*/
 class arg_mgr_itf
 {
 public:
@@ -41,7 +45,7 @@ public:
 };
 
 /*
-    命名参数管理，该形式的参数拥有命名，需要被指定设置。
+    命名参数管理器：以名字为键（map）持有 ArgumentNamed。
 */
 class named_arg_mgr : arg_mgr_itf
 {
@@ -126,6 +130,10 @@ private:
     ConArgs_T mapArgs;
 };
 
+/*
+    方位参数管理器：以声明序号 iSeq 为键（map）持有 ArgumentPosition；
+    数量校验与"剩余 token 按序赋值"都依赖这个顺序。
+*/
 class position_arg_mgr : arg_mgr_itf
 {
 public:
@@ -231,6 +239,7 @@ private:
     ConArgs_T mapArgs;
 };
 
+/* 参数数据仓库：命名参数 + 方位参数两组管理器 */
 struct ArgumentData
 {
     named_arg_mgr    mgrName;

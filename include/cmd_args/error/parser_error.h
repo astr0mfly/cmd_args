@@ -17,6 +17,13 @@
  */
 #pragma once
 
+/*
+ * 语法期错误域（ParseError_E）：Parser 分配 token 时失败即抛 ErrorParse。
+ * 典型场景：参数数量不足/不匹配（NOT_ENOUGH_ARGS / UNKNWON_ARGS，后者为历史拼写勿改）、
+ * 选项缺值（NEED_VALUE）、聚合短选项含非 bool（MUST_BE_BOOL）、
+ * 裸 '-'（UNEXCEPTED_BARE）、非法前缀（WRONG_PREFIX）、未知选项（UNKNOWN_OPTION）。
+ * 三件套惯例与其它错误域一致（枚举 → 映射 → category → make_error_code 特化）。
+ */
 #include <cstring>
 #include <string>
 #include <system_error>
@@ -25,18 +32,20 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+/* 语法错误码：OK=0 表示无错 */
 enum class ParseError_E
 {
     OK = 0,
-    NOT_ENOUGH_ARGS,
-    UNKNWON_ARGS,
-    NEED_VALUE,
-    MUST_BE_BOOL,
-    UNEXCEPTED_BARE,
-    WRONG_PREFIX,
-    UNKNOWN_OPTION
+    NOT_ENOUGH_ARGS,   // 方位参数数量不足
+    UNKNWON_ARGS,      // 参数数量不匹配 / 找不到（历史拼写，勿改）
+    NEED_VALUE,        // 选项需要值但未给出
+    MUST_BE_BOOL,      // 聚合短选项只允许 bool 成员
+    UNEXCEPTED_BARE,   // 意外的裸 '-'
+    WRONG_PREFIX,      // 无法识别的选项前缀
+    UNKNOWN_OPTION     // 未注册的选项
 };
 
+/* 错误码 → 人类可读文本 */
 static inline char const *mapParseError(int _ErrCode) noexcept
 {
     switch (static_cast<ParseError_E>(_ErrCode)) {

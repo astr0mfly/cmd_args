@@ -80,7 +80,8 @@ include/cmd_args/
 │   └── argument_parser.h           # parseNamedOnly / parsePositionalOnly；数量不匹配报 "give X, but need Y"
 ├── option/
 │   ├── option.h / option_builder.h / option_data.h / option_parser.h
-│   └──            # 长/短选项、短回路选项、--long value 空格吃值
+│   └──            # 长/短选项、短回路选项、--long value 空格吃值、
+│                  # 选项 action（system_call 子进程，解析期命中即按顺序执行）
 ├── env/
 │   ├── environment.h               # environment：key/value + bReferenced__/bModified__/bNew__ 标记
 │   └── environment_parser.h        # environment_store：解析/展示/交互/展开/回写（差异模块）
@@ -123,6 +124,8 @@ app.add_flag('v', "verbose", "help");                    // 布尔标志
 // 句柄继续定制（在 parse 之前）
 app.argument("world")->env("CMD_ARGS_DEMO_WORLD");       // 绑定环境变量兜底
 app.option("timeout")->env("CMD_ARGS_DEMO_TIMEOUT");     // .on_set(cb) 可挂钩回调
+app.option("task")->action("make {value}");              // 绑定 system_call 子进程命令：
+                                                         // 解析期命中即执行；{value} 替换为本次值
 
 // ── 解析（三形态）────────────────────────────────────
 app.parse(argc, argv, envp);                            // 抛 ErrorParse/ErrorLexer
@@ -228,6 +231,9 @@ Parser 在 `__finalize` 阶段会对所有已赋值参数/选项值做展开（`
 - `--` 之后全部方位参数；此前命名参数先经 `parseNamedOnly` 消化，再 `parsePositionalOnly`。
 - 解析收尾（`__finalize`）：先 `__seedEnvDefaults`（CLI > 配置 > 环境 > 内置默认，跳过 `bExplicit__ || bExternal__`），
   再 `__expandEnvValues`，最后若有 `--save-config` 则写出 YAML。
+- 选项 action（system_call）：`.action("cmd {value}")` 绑定后，仅 CLI 显式命中触发
+  （`__assign` 路径，按 token 出现顺序执行）；环境变量兜底 / `set_external`（YAML）/ 内置默认均不触发；
+  `{value}` 原样替换为本次命中值；`std::system` 返回非 0 → stderr 告警不中断；不参与 schema/YAML 导出。
 - 剩余 `-` 开头 token → `UNKNOWN_OPTION`（"unrecognized option or argument: ..."）。
 - 方位参数数量：剩余 token 数须落在 `[未外部赋值数, 总数]` 区间；
   恰好等于未赋值数时跳过配置已填位，多余 token 覆盖配置值（CLI > 配置）。
@@ -290,7 +296,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    scope 取子系统（core / Lexer / Parser / builder / env / example / test / docs）。
 3. **仓库身份**：repo-local 配置为 `ValenciaFly <pengwanring@live.com>`（不要改成全局身份）。
 4. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`，二者保持一致。
-5. **测试门槛**：`dfx/unit_test/head.cpp` 目前 30 个 TEST_CASE / 170 条断言；
+5. **测试门槛**：`dfx/unit_test/head.cpp` 目前 34 个 TEST_CASE / 187 条断言；
    任何行为改动应保持或增加覆盖，禁止回退。
 6. **已知注意点**：`push` 到 GitHub 受当前网络限制（无代理、无 SSH key，连接被重置）——
    本地提交即可，推送受阻不是提交失败；不要反复重试 push。

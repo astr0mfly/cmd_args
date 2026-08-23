@@ -151,6 +151,9 @@ public:
         _Tokens.clear();
     }
 
+    /*
+        "KEY=VALUE" 单行形态：直接给指定命名参数赋值（不经过 token 流）。
+    */
     void parse(std::string const &_Line)
     {
         auto [k, v] = util::parse_line(_Line);
@@ -159,6 +162,7 @@ public:
         p->set(std::move(v));
     }
 
+    // 带类型校验的读取：类型未定型（空）时任何 T 均可；否则必须与 type_string<T> 一致
     template <typename T>
     T get_argument(std::string const &name) const
     {
@@ -186,7 +190,7 @@ public:
         return p && p->hasValue();
     }
 
-    // some alias for get_argument
+    // 一些 get_argument 的类型别名便捷入口
     int     get_argument_int(std::string const &name) const { return get_argument<int>(name); }
     int64_t get_argument_int64(std::string const &name) const
     {

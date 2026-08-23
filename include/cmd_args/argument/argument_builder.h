@@ -29,8 +29,10 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
-关于参数的构筑
-接受各种入参，并且做一定的检查
+    参数构筑：接受各种入参形态，做必要检查后写入 ArgumentData。
+    - build<ArgumentNamed>("name", "help")   命名参数（重名检查 / 空名空帮助检查）
+    - build<ArgumentPosition>(...)           方位参数（按追加顺序记录 iSeq）
+    - build(ArgumentNamed &&/const &/Group)  对象/批量形态
 */
 class ArgumentBuilder
 {

@@ -27,12 +27,17 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 namespace detail {
+/* 选项管理器统一接口（短名/长名查询），供 option_parser 多态使用 */
 struct opt_mgr_itf
 {
     virtual option const *doGet(char) const noexcept        = 0;
     virtual option const *doGet(std::string) const noexcept = 0;
 };
 
+/*
+    值选项管理器：持有全部 option_value（含 builtin 交互选项）。
+    提供查询（const / mutable）、遍历（for_each_value）、帮助排版（appendHelp）。
+*/
 class value_opt_mgr : opt_mgr_itf
 {
 public:
@@ -158,6 +163,10 @@ private:
     std::vector<option_value> m_vecValues;
 };
 
+/*
+    短回路选项管理器：持有全部 option_action（--help / --env 等）。
+    命中其一即回调并停止本次解析（fired）。
+*/
 class action_opt_mgr : opt_mgr_itf
 {
 public:
@@ -232,11 +241,12 @@ private:
     std::vector<option_action> m_vecActions;
 };
 
+/* 选项数据仓库：短回路选项 + 值选项 + 短名索引 */
 struct OptionData
 {
-    action_opt_mgr              short_circuit_options;
-    value_opt_mgr               options;
-    std::map<char, std::string> short_name_index;
+    action_opt_mgr              short_circuit_options;  // 短回路（命中即停，如 -?/--help）
+    value_opt_mgr               options;                // 值选项/标志（--long value / -x）
+    std::map<char, std::string> short_name_index;       // 短名 → 长名 索引（预留）
 
     bool empty() const noexcept
     {

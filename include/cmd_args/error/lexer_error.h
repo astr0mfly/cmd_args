@@ -17,6 +17,12 @@
  */
 #pragma once
 
+/*
+ * 词法期错误域（LexError_E）：Lexer/Scanner 对输入源做分词时失败即抛 ErrorLexer。
+ * 典型场景：空输入源（EMPTY_SOURCE）、未闭合字符串（UNTERMINATED_STRING）、
+ * 裸 '-'（BARE_DASH）、非法 token（INVALID_TOKEN）。
+ * 三件套惯例与其它错误域一致（枚举 → 映射 → category → make_error_code 特化）。
+ */
 #include <cstring>
 #include <string>
 #include <system_error>
@@ -25,15 +31,17 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+/* 词法错误码：OK=0 表示无错 */
 enum class LexError_E
 {
     OK = 0,
-    EMPTY_SOURCE,
-    UNTERMINATED_STRING,
-    BARE_DASH,
-    INVALID_TOKEN
+    EMPTY_SOURCE,         // 输入源为空（无任何可分词内容）
+    UNTERMINATED_STRING,  // 引号字符串缺少结束引号
+    BARE_DASH,            // 裸 '-'（应配短名或用作分隔符）
+    INVALID_TOKEN         // 无法识别的 token
 };
 
+/* 错误码 → 人类可读文本 */
 static inline char const *mapLexError(int _ErrCode) noexcept
 {
     switch (static_cast<LexError_E>(_ErrCode)) {

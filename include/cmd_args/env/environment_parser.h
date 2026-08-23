@@ -265,7 +265,7 @@ private:
     envs_t m_setEnvs__;
 };
 
-/* 兼容旧拼写 */
+/* 兼容旧拼写：原拼写错误（envirionment_parser）按项目约定保留，不得删除 */
 using envirionment_parser = environment_store;
 
 CMD_ARGS_NAMESPACE_END

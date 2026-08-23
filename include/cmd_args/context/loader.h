@@ -19,4 +19,8 @@
 
 #include "cmd_args/base/def.h"
 
-// 负责配置文件的加载，dll，等加载
+/*
+    加载器（占位）：负责配置文件的加载（dll 等扩展加载）。
+    当前配置（YAML）走 config/config_store.h 的 read_file/write_file；
+    此处保留给未来的 dll 动态补丁 / 额外源加载扩展。
+*/

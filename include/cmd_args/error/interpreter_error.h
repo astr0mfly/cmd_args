@@ -17,6 +17,12 @@
  */
 #pragma once
 
+/*
+ * 执行期错误域（InterpError_E）：once()/loop() 解释阶段的状态与错误码。
+ * 典型场景：未解析先执行（STOPPED——once() 在 parse 之前调用）、
+ * 请求退出（EXIT_REQUESTED / END_OF_INPUT）、未知命令（UNKNOWN_COMMAND，loop 预留）。
+ * 三件套惯例与其它错误域一致（枚举 → 映射 → category → make_error_code 特化）。
+ */
 #include <cstring>
 #include <string>
 #include <system_error>
@@ -25,15 +31,17 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+/* 执行错误码：OK=0 表示无错 */
 enum class InterpError_E
 {
     OK = 0,
-    EXIT_REQUESTED,
-    STOPPED,
-    UNKNOWN_COMMAND,
-    END_OF_INPUT
+    EXIT_REQUESTED,  // 用户请求退出（loop 的 exit/quit）
+    STOPPED,         // 解释器未就绪（如 once 前未 parse）
+    UNKNOWN_COMMAND, // 无法识别的命令（loop 预留）
+    END_OF_INPUT     // 输入流结束（EOF）
 };
 
+/* 错误码 → 人类可读文本 */
 static inline char const *mapInterpError(int _ErrCode) noexcept
 {
     switch (static_cast<InterpError_E>(_ErrCode)) {

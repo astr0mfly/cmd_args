@@ -16,6 +16,16 @@
  */
 #pragma once
 
+/*
+ * 异常兜底工具（可选引入，非强制）：
+ * - exception::Exception   带文件/行号信息的运行时异常
+ * - exception::Box         rethrow / Backtrace / handleException / print_nested_exception
+ * - ENSURE / EXCEPTION_THROW / PRINT_HANDLE_EXCEPTION 等快捷宏
+ * - exception_init         注册纯虚调用 / 系统故障 / 线程终止处理（Windows 生成 minidump）
+ *
+ * 依赖 vendored airbag（崩溃兜底），示例 target 在 Windows 需 /EHa。
+ */
+
 // clang-format off
 #include <functional>
 #include <iostream>
@@ -174,6 +184,13 @@ using detail::Exception;
 #undef EXPAND_A
 #undef EXPAND_B
 
+/*
+    exception_init：注册一套崩溃兜底钩子（仅 Windows/MSVC 生效）：
+    - 纯虚调用（on_pure_call）
+    - 系统故障（pre_system_failure，生成 minidump）
+    - 线程终止（on_terminate，打印 backtrace）
+    在 main 里定义静态实例即可（见 example/once/main.cpp）。
+*/
 struct exception_init
 {
 #if defined(_WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__)

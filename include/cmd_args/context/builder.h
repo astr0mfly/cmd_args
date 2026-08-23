@@ -30,7 +30,9 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
-    构筑参数，选项，环境变量的对象
+    Builder：把 Context::build<>()/add_option()/add_flag() 的调用
+    转交给 ArgumentBuilder / OptionBuilder，写入 Model。
+    是管线第一步（Context → Builder → Lexer → Parser → Model）的落点。
 */
 class Builder : public ArgumentBuilder, private OptionBuilder
 {
@@ -41,12 +43,14 @@ public:
     {}
     ~Builder();
 
+    /* 一组同构构筑（Group） */
     template <typename T>
     void build(Group<T> &&_Builds)
     {
         for (auto const &e : _Builds) { ArgumentBuilder::build(e); }
     }
 
+    /* build<ArgumentNamed>("x","h") / build<ArgumentPosition>(...) 形态 */
     template <typename T>
     void build(Argument::Name_T _Long, Argument::Desc_T _Desc)
     {
@@ -60,6 +64,10 @@ public:
     using OptionBuilder::add_short_circuit;
 };
 
+/*
+    BuildHelper：Context::build() 的链式小助手，
+    支持 build(ArgumentNamed{...})(ArgumentNamed{...}) 的链式对象构筑。
+*/
 struct BuildHelper
 {
     Model *pCon = nullptr;

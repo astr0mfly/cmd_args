@@ -17,6 +17,17 @@
  */
 #pragma once
 
+/*
+ * 构筑期错误域（BuildError_E）：
+ * 在 Builder 构筑参数/选项/标志时做合法性检查，失败即抛 ErrorArgument。
+ * 典型场景：重名（DUPLICATE_NAME）、缺名（NEED_NAME）、缺帮助（NEED_HELP）、
+ * 不支持的存储类型（UNSUPPORT_TYPE）、非法的名字前缀（BAD_PREFIX）。
+ *
+ * 三件套惯例（各错误域一致）：
+ *   enum 错误码 → mapXxxError 文本映射 → XxxErrorCategory::instance()
+ *   → make_error_code / make_error_condition（注册进 std::error_code 体系）
+ *   → is_error_code_enum 特化。
+ */
 #include <string>
 #include <system_error>
 
@@ -25,16 +36,18 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 namespace detail {
+/* 构筑期错误码：OK=0 表示无错（错误码体系要求 0 为成功态） */
 enum class BuildError_E
 {
     OK = 0,
-    NEED_NAME,
-    NEED_HELP,
-    DUPLICATE_NAME,
-    UNSUPPORT_TYPE,
-    BAD_PREFIX
+    NEED_NAME,      // 选项/参数缺少名字
+    NEED_HELP,      // 缺少帮助文案
+    DUPLICATE_NAME, // 名字重复（与已有参数/选项/短回路冲突）
+    UNSUPPORT_TYPE, // 该类型不允许作为选项存储类型
+    BAD_PREFIX      // 名字以 '-' 开头（应裸名构筑，勿带前缀）
 };
 
+/* 错误码 → 人类可读文本（what() 与 ec.message() 共用） */
 static inline char const *mapArgumentError(int _ErrCode) noexcept
 {
     switch (static_cast<BuildError_E>(_ErrCode)) {
@@ -49,6 +62,7 @@ static inline char const *mapArgumentError(int _ErrCode) noexcept
     }
 }
 
+/* 构筑期错误域的自定义 error_category 单例 */
 class ArgErrorCategory : public std::error_category
 {
 public:
@@ -65,6 +79,7 @@ public:
     }
 };
 
+/* 错误码 → std::error_code / std::error_condition（注册进标准错误体系） */
 std::error_code make_error_code(BuildError_E code)
 {
     return {
@@ -81,6 +96,7 @@ std::error_condition make_error_condition(BuildError_E code)
     };
 }
 
+/* 构筑期异常：携带 BuildError_E 错误码，what() 返回可读文本 */
 class ErrorArgument : public std::logic_error
 {
 public:

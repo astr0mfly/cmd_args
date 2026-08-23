@@ -29,7 +29,14 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
-    Argument 是必须提供的，没有对应的参数会报错
+    Argument 基类：一条"参数"的载体（命名参数 / 方位参数共用）。
+    - 名字 + 帮助 —— 构筑期填写，一经确定不再变化
+    - 类型 + 默认值 —— type<T>() 定类型（空 = 未定型），构造时缓存默认值
+    - 值（m_strValue__）—— 解析期被 CLI 赋值，或经 env() 绑定环境变量兜底，
+      或经 set_external() 被配置文件（YAML）外部赋值
+    - 标记：bExternal__（值来自配置，env 兜底跳过）；
+      hasValue() 即"当前已持有非空值"
+    - reset() 还原默认值并清外部标记（loop 每行调用前执行，等价一次 once 输入）
 */
 namespace detail {
 
@@ -209,8 +216,7 @@ private:
     mutable bool    bExternal__ = false;  // 值来自外部配置（YAML）而非命令行/环境变量
 };
 /*
-ArgumentNamed， 命名参数，指的是按照参数名字来设置值，“--name=valens”
-
+    ArgumentNamed：命名参数，按照参数名赋值，形如 "--name=value" / "--name value"。
 */
 struct ArgumentNamed : public Argument
 {
@@ -231,7 +237,8 @@ public:
 };
 
 /*
-ArgumentPosition, 方位参数，指的是，命令行解析完毕之后，依次把剩下的值传给方位参数
+    ArgumentPosition：方位参数，命令行解析完毕后剩余 token 按声明顺序依次赋值；
+    iSeq 记录声明顺序（0 起），用于数量校验与排序。
 */
 struct ArgumentPosition : public Argument
 {

@@ -69,6 +69,10 @@ struct option_value : option
     // 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
     mutable std::function<void(std::string const &)> fnOnSet__;
 
+    // 绑定的系统调用命令模板（action）：解析时该选项被显式命中后立即执行，
+    // 模板中的 {value} 占位符替换为该选项本次命中的值；空串表示未绑定。
+    std::string strActionTemplate__;
+
     option_value(
         char sname, std::string lname, std::string help, std::string type, std::string value)
         : option(sname, std::move(lname), std::move(help))
@@ -92,6 +96,23 @@ struct option_value : option
     option_value &on_set(std::function<void(std::string const &)> _Fn)
     {
         fnOnSet__ = std::move(_Fn);
+        return *this;
+    }
+
+    /*
+        绑定系统调用 action（命令模板）：解析期该选项被 CLI 显式命中时，
+        立即通过 std::system 以子进程方式执行（顺序 = 命令行出现顺序）。
+
+        - 模板中的 {value} 会被替换为该选项本次命中的值（原样替换，不含引号，
+          需要引用时请自行在模板里加引号，如 action("echo \"{value}\"")）；
+        - 仅显式命中触发：环境变量兜底、YAML 配置赋值（set_external）、
+          内置默认值均不触发；
+        - std::system 返回非 0 时向 stderr 打印告警，不中断解析；
+        - 空模板表示不绑定；同一选项多次命中则每次执行。
+    */
+    option_value &action(std::string _CmdTemplate)
+    {
+        strActionTemplate__ = std::move(_CmdTemplate);
         return *this;
     }
 

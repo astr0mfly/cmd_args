@@ -68,6 +68,10 @@ app.add_option<std::string>('o', "output", "output file path", "out.txt");
 app.add_option<int>("timeout", "timeout in seconds", 30);
 app.add_flag('v', "verbose", "enable verbose output");
 
+// 选项 action：命中即经 std::system 执行子进程命令（{value} 为本次命中的值）
+app.add_option<std::string>("task", "run a system command", "");
+app.option("task")->action("echo run: {value}");
+
 // 环境变量联动：命令行显式值 > 环境变量 > 内置默认值
 app.option("output")->env("MY_TOOL_OUTPUT");
 app.argument("world")->env("MY_TOOL_WORLD");
@@ -205,6 +209,35 @@ environment.MY_TOOL_WORLD: "hi"
 配置提供位置参数值后，CLI 可省略（数量落在 `[未赋值数, 总数]` 区间即可）；
 CLI 提供的 token 按序覆盖配置值（`CLI > 配置`）。
 
+## 选项 action（system_call 子进程执行）
+
+部分选项可以绑定一个 **action**——它本质上就是一次 `system_call`
+（`std::system` 的子进程命令）。解析时该选项被**显式命中**后立即执行；
+interpreter（`once()`/`loop()` 逐行解释脚本）按 token 出现顺序识别并执行，
+天然满足"按先后顺序执行对应命令"。
+
+### 绑定
+
+```cpp
+app.add_option<std::string>("task", "run a system command", "");
+app.option("task")->action("echo notify: {value}");   // {value} 替换为本次命中的值
+app.add_flag('r', "repeat", "repeat!");
+
+// 值含空格 / 路径时请在模板里自带引号（shell 会按空白切分参数）：
+app.option("task")->action("echo \"{value}\"");
+```
+
+### 语义约定
+
+- `action("...")` 经 `app.option("name")` 句柄绑定（`add_option`/`add_flag` 之后均可）；
+- 模板中的 `{value}` **原样**替换为该选项本次命中的值；不含 `{value}` 则是固定命令；
+- 仅 CLI 显式命中触发：环境变量兜底 / YAML 配置赋值（`set_external`）/ 内置默认值**不触发**；
+- 同一选项多次命中 → 每次执行；执行顺序 = 命令行出现顺序；
+- `std::system` 返回非 0 时向 stderr 打印 `(action) command exit ...` 告警，**不中断**解析；
+- action 属于执行配置，不进入 `schema()` / `to_yaml()` 导出（不影响配置往返）；
+- 平台行为即 `std::system` 固有语义：Windows 经 `cmd.exe`、POSIX 经 `sh`；
+  命令模板中的值请自行转义/加引号（`& | > <` 等在 shell 里有特殊含义）。
+
 ## 命令行语法速查
 
 - `--name=value` / `--name value` —— 命名参数
@@ -233,6 +266,7 @@ CLI 提供的 token 按序覆盖配置值（`CLI > 配置`）。
 
 当前已实现：命名/方位参数、值选项/标志/聚合短选项、`--` 分隔、短回路选项、
 环境变量展示/交互/展开/回写、**YAML 配置存储与反哺（save/load-config）**、
+**选项 action（system_call 子进程按顺序执行）**、
 参数格式 schema / 快照 snapshot、once/loop 模式、错误分类、异常捕获（airbag）。
 
 仍在展望（本期未做，见计划约束）：
@@ -255,8 +289,8 @@ xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 单元测试基于 vendored Catch2 v2，测试用例覆盖词法（token 归一化、KEY=VALUE 合并、
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
 （展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
-CLI>配置>环境>默认优先级链 / loop 独立调用语义**等，debug/release 均通过
-（30 个测试用例 / 170 条断言）。
+CLI>配置>环境>默认优先级链 / loop 独立调用语义 / 选项 action 执行语义**等，
+debug/release 均通过（34 个测试用例 / 187 条断言）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。

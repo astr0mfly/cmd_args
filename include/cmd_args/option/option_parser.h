@@ -18,6 +18,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <type_traits>
 
 #include "cmd_args/context/parse_fwd.h"
@@ -237,7 +239,7 @@ public:
     }
 
 private:
-    /* 赋值并联动：bExplicit__ 标记、fnOnSet__ 钩子 */
+    /* 赋值并联动：bExplicit__ 标记、fnOnSet__ 钩子、action 系统调用 */
     void __assign(option_value *_Opt, std::string const &_Value, bool _IsBool)
     {
         if (_IsBool) {
@@ -248,6 +250,20 @@ private:
         }
         _Opt->bExplicit__ = true;
         if (_Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->value); }
+
+        // 绑定了 action 的选项：命中即通过 std::system 执行子进程命令。
+        // __assign 仅在暴露词法 token 的显式赋值路径被调用，且按命令行出现顺序
+        // （长/短/聚合短选项逐一命中），因此 action 天然"按先后顺序"执行；
+        // 环境变量兜底 / YAML 外部赋值不会走到这里，不会触发 action。
+        if (!_Opt->strActionTemplate__.empty()) {
+            auto cmd = util::replace(_Opt->strActionTemplate__, "{value}", _Opt->value);
+            if (!cmd.empty()) {
+                int ret = std::system(cmd.c_str());
+                if (ret != 0) {
+                    std::cerr << "(action) command exit " << ret << ": " << cmd << "\n";
+                }
+            }
+        }
     }
 
     bool __fireOnLong(

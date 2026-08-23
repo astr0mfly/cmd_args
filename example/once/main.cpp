@@ -12,14 +12,17 @@
  *        set_env/env_string/expand_env/apply_env  会话内交互与回写操作系统
  *      内置选项：-?/--help、-!/--env、--env-set KEY=VALUE、
  *               --env-unset KEY、--env-apply
- *   5. 错误捕获  parse(std::error_code&, ...) 不抛异常，错误存 std::error_code
- *   6. once()    解析成功后以退出码退出
+ *   5. 选项 action：.action("cmd {value}") 绑定 system_call 子进程命令，
+ *      解析时命中即按命令行顺序执行（{value} 替换为本次命中的值）
+ *   6. 错误捕获  parse(std::error_code&, ...) 不抛异常，错误存 std::error_code
+ *   7. once()    解析成功后以退出码退出
  *
  * 运行示例（xmake）：
  *   xmake r once -- --hello hi --timeout 99 -v peter 3
  *   xmake r once -- -!                 # 只看本程序的环境变量快照
  *   xmake r once -- -?                 # 帮助
  *   xmake r once -- --env-set=A=1 --env-apply   # 新建并回写环境变量
+ *   xmake r once -- --notify "deploy done"      # 命中 action，执行系统命令
  */
 #include <iostream>
 #include <string>
@@ -53,6 +56,12 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
     demo.add_option<int>("timeout", "timeout in seconds", 30);
     demo.add_flag('v', "verbose", "enable verbose output");
 
+    // 选项 action（system_call 子进程命令）：解析时该选项被显式命中后，
+    // 立即按命令行出现顺序通过 std::system 执行；{value} 原样替换为本次命中的值
+    // （这里演示引用：echo 收到完整字符串；需要转义时不带引号会按 shell 切分）
+    demo.add_option<std::string>("notify", "run echo with the value as a system call", "");
+    demo.option("notify")->action("echo notify: {value}");
+
     /* ---------- 2. 环境变量联动 ---------- */
 
     // 选项/参数绑定环境变量：命令行显式值 > 环境变量 > 内置默认值
@@ -83,6 +92,9 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
     std::cout << "output  = " << demo.get_option<std::string>("output") << "\n";
     std::cout << "timeout = " << demo.get_option<int>("timeout") << "\n";
     std::cout << "verbose = " << (demo.get_option<bool>("verbose") ? "on" : "off") << "\n";
+
+    // 若命令行给了 --notify，其 action 已在解析时执行（看上面的 echo 输出）
+    std::cout << "notify  = " << demo.get_option<std::string>("notify") << "\n";
 
     /* ---------- 5. 环境变量交互（差异化能力） ---------- */
 

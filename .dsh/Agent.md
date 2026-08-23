@@ -296,7 +296,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    scope 取子系统（core / Lexer / Parser / builder / env / example / test / docs）。
 3. **仓库身份**：repo-local 配置为 `ValenciaFly <pengwanring@live.com>`（不要改成全局身份）。
 4. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`，二者保持一致。
-5. **测试门槛**：`dfx/unit_test/head.cpp` 目前 34 个 TEST_CASE / 187 条断言；
+5. **测试门槛**：`dfx/unit_test/head.cpp` 目前 37 个 TEST_CASE / 193 条断言；
    任何行为改动应保持或增加覆盖，禁止回退。
 6. **已知注意点**：`push` 到 GitHub 受当前网络限制（无代理、无 SSH key，连接被重置）——
    本地提交即可，推送受阻不是提交失败；不要反复重试 push。

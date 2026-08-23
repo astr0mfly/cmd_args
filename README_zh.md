@@ -290,7 +290,7 @@ xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
 （展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
 CLI>配置>环境>默认优先级链 / loop 独立调用语义 / 选项 action 执行语义**等，
-debug/release 均通过（34 个测试用例 / 187 条断言）。
+debug/release 均通过（37 个测试用例 / 193 条断言）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。

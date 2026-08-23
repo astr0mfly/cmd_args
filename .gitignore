@@ -35,6 +35,9 @@
 *.idb
 *.pdb
 
+# 示例产物（config_demo 生成的演示配置）
+/demo.yaml
+
 /.xmake
 /.vscode
 /vsxmake*

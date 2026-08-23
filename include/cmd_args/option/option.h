@@ -57,6 +57,15 @@ struct option_value : option
     // 绑定的环境变量名：命令行未显式给出时，用该变量的值兜底
     std::string strEnvName__;
 
+    // 值来自外部配置（YAML）而非命令行/环境变量：env 兜底跳过
+    bool bExternal__ = false;
+
+    // 懒注册的内置交互选项（--env-set 等）：不参与参数格式导出/配置序列化
+    bool bBuiltin__ = false;
+
+    // 构造时的内置默认值（loop reset 还原用）
+    std::string strDefault__;
+
     // 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
     mutable std::function<void(std::string const &)> fnOnSet__;
 
@@ -64,12 +73,14 @@ struct option_value : option
         char sname, std::string lname, std::string help, std::string type, std::string value)
         : option(sname, std::move(lname), std::move(help))
         , type(std::move(type))
-        , value(std::move(value))
+        , value(value)
+        , strDefault__(std::move(value))
     {}
     option_value(std::string lname, std::string help, std::string type, std::string value)
         : option(0, std::move(lname), (std::move(help)))
         , type(std::move(type))
-        , value(std::move(value))
+        , value(value)
+        , strDefault__(std::move(value))
     {}
 
     /* 绑定环境变量：命令行显式值 > 环境变量 > 内置默认值 */
@@ -81,6 +92,29 @@ struct option_value : option
     option_value &on_set(std::function<void(std::string const &)> _Fn)
     {
         fnOnSet__ = std::move(_Fn);
+        return *this;
+    }
+
+    /* 外部赋值（来自配置文件 YAML）：写入值并标记 bExternal__ */
+    option_value &set_external(std::string const &_V)
+    {
+        value      = _V;
+        bExternal__ = true;
+        return *this;
+    }
+    option_value &set_external(std::string &&_V)
+    {
+        value       = std::move(_V);
+        bExternal__ = true;
+        return *this;
+    }
+
+    /* 还原为内置默认、清除显式/外部标记（loop 每次调用前调用） */
+    option_value &reset() noexcept
+    {
+        value       = strDefault__;
+        bExplicit__ = false;
+        bExternal__ = false;
         return *this;
     }
 };

@@ -49,24 +49,35 @@ public:
             if (!util::starts_with(t, "-")) { vecPos.emplace_back(t); }
         }
 
-        if (vecPos.size() != m_pData__->mgrPos.doSize()) {
+        // 数量校验：剩余 token 须不少于"未由配置外部赋值"的位置参数数，
+        // 且不多于位置参数总数（配置已提供的位，CLI 可省略、也可覆盖）
+        size_t total = m_pData__->mgrPos.doSize();
+        size_t need  = 0;
+        m_pData__->mgrPos.doVisitC([&](Argument const &a) {
+            if (!a.isExternal()) ++need;
+        });
+        if (vecPos.size() < need || vecPos.size() > total) {
             std::ostringstream oss;
-            oss << "give " << vecPos.size() << ", but need " << m_pData__->mgrPos.doSize() << '\n';
+            oss << "give " << vecPos.size() << ", but need " << need << ".." << total << '\n';
             oss << "uncaptured command line arguments:\n";
             for (auto const &tok : _Tokens) { oss << tok << '\n'; }
             throw ErrorParse(ParseError_E::UNKNWON_ARGS, oss.str());
         }
 
-        size_t i = 0;
+        // 恰好满足未赋值者时，跳过配置已填的位；多余 token 覆盖配置值（CLI > 配置）
+        bool exact = (vecPos.size() == need);
+        size_t vi  = 0;
+        for (size_t seq = 0; seq < total && vi < vecPos.size(); ++seq) {
+            auto *p = m_pData__->mgrPos.mutGetBySeq(seq);
+            if (!p) continue;
+            if (exact && p->isExternal()) continue;
+            p->set(vecPos[vi++]);
+        }
+
+        // 已消费的非选项 token 全部移出
         for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
-            if (!util::starts_with(*pos, "-")) {
-                auto *p = m_pData__->mgrPos.mutGetBySeq(i);
-                if (p) { p->set(vecPos[i]); }
-                pos = _Tokens.erase(pos);
-                ++i;
-                continue;
-            }
-            ++pos;
+            if (!util::starts_with(*pos, "-")) { pos = _Tokens.erase(pos); }
+            else { ++pos; }
         }
     }
 
@@ -117,15 +128,25 @@ public:
     void parsePositionalOnly(Tokens_T &_Tokens)
     {
         std::vector<std::string> vecPos(_Tokens.begin(), _Tokens.end());
-        if (vecPos.size() != m_pData__->mgrPos.doSize()) {
+
+        size_t total = m_pData__->mgrPos.doSize();
+        size_t need  = 0;
+        m_pData__->mgrPos.doVisitC([&](Argument const &a) {
+            if (!a.isExternal()) ++need;
+        });
+        if (vecPos.size() < need || vecPos.size() > total) {
             std::ostringstream oss;
-            oss << "give " << vecPos.size() << ", but need " << m_pData__->mgrPos.doSize() << '\n';
+            oss << "give " << vecPos.size() << ", but need " << need << ".." << total << '\n';
             throw ErrorParse(ParseError_E::UNKNWON_ARGS, oss.str());
         }
 
-        for (size_t i = 0; i < vecPos.size(); ++i) {
-            auto *p = m_pData__->mgrPos.mutGetBySeq(i);
-            if (p) { p->set(vecPos[i]); }
+        bool   exact = (vecPos.size() == need);
+        size_t vi    = 0;
+        for (size_t seq = 0; seq < total && vi < vecPos.size(); ++seq) {
+            auto *p = m_pData__->mgrPos.mutGetBySeq(seq);
+            if (!p) continue;
+            if (exact && p->isExternal()) continue;
+            p->set(vecPos[vi++]);
         }
         _Tokens.clear();
     }

@@ -80,6 +80,12 @@ public:
         for (auto &&[k, a] : mapArgs) { _Fn(*a); }
     }
 
+    /* 公开只读遍历（参数格式导出等外部只读消费） */
+    void doVisitC(std::function<void(Argument const &)> const &_Fn) const
+    {
+        for (auto const &[k, a] : mapArgs) { _Fn(*a); }
+    }
+
     void doGetHelp(std::ostringstream &_Out, std::size_t _Max) const override
     {
         if (mapArgs.empty()) return;
@@ -163,6 +169,12 @@ public:
     void doMutVisit(std::function<void(Argument &)> const &_Fn)
     {
         for (auto &&e : mapArgs) { _Fn(*e.second); }
+    }
+
+    /* 公开只读遍历（参数格式导出等外部只读消费） */
+    void doVisitC(std::function<void(Argument const &)> const &_Fn) const
+    {
+        for (auto const &e : mapArgs) { _Fn(*e.second); }
     }
 
     void doGetHelp(std::ostringstream &_Out, std::size_t _Max) const override

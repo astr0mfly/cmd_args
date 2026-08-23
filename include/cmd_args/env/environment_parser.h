@@ -19,6 +19,7 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -129,6 +130,12 @@ public:
             if (e.bModified__) ++n;
         }
         return n;
+    }
+
+    /* 公开只读遍历（配置导出/快照提取等外部只读消费） */
+    void for_each(std::function<void(environment const &)> const &_Fn) const
+    {
+        for (auto const &e : m_setEnvs__) { _Fn(e); }
     }
 
     /*

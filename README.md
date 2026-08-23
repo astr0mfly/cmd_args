@@ -3,8 +3,13 @@
 一个 C++20 的**头文件式**命令行解析库（`.hpp` 即用，无需编译），Apache-2.0。
 
 主用于命令行的解析库已经有很多（argparse / cmdline / CLI11 / Lyra / Clara 等），
-`cmd_args` 广泛参考并借鉴了几个库的思路，**尝试融入对环境变量的展示与交互**：
-环境变量在这里是一等公民——可展示、可交互、可回写，而不仅仅是“读一眼”的孤儿功能。
+`cmd_args` 广泛参考并借鉴了几个库的思路，**尝试把三类"外界环境"统一起来**：
+
+1. **环境变量** —— 一等公民：可展示、可交互、可回写，而不只是"读一眼"的孤儿功能；
+2. **实时命令行输入** —— 解析后可存储到环境变量或脚本；
+3. **脚本文件（YAML 配置，JSON 未来）** —— build 完成后把参数/环境状态存为 YAML 供下次调用，调用时反哺回环境变量。
+
+参数格式一经 `build<>` 确定，三类输入源之间即可**自然转换**（解析、存储、反哺）。
 
 ## 管线
 
@@ -22,7 +27,8 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
                         │
                         ▼
   读取 get_argument<T> / get_option<T> / parsed() / has_env() / env_string()
-  执行 once()（解析完即退） / loop()（REPL 常驻）
+  存储/加载 schema() / snapshot() / save_config() / load_config()（YAML 配置）
+  执行 once()（单次输入即退） / loop()（REPL 常驻，每行等价一次 once 输入）
 ```
 
 ## 快速开始
@@ -31,10 +37,12 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
 # 初始配置 + 构建（示例与单测目标默认不参与全量构建，需显式指定）
 xmake
 xmake build once         # example/once
+xmake build config_demo  # example/config（YAML 配置往返演示）
 xmake build unit_test    # dfx/unit_test（后续会并入 xmake test）
 
 # 运行示例
 xmake r once -- --hello hi --timeout 99 -v peter 3
+xmake r config_demo -- --hello hi --timeout 99 -v peter 3   # 解析并生成 demo.yaml
 ```
 
 ## 用法示例
@@ -73,6 +81,13 @@ if (ec) { /* ec.message() 即错误说明 */ }
 std::string hello = app.get_argument<std::string>("hello");
 int         tout  = app.get_option<int>("timeout");
 bool        verb  = app.get_option<bool>("verbose");
+
+// 配置脚本（第三类外界环境）：参数 + 环境 ↔ YAML
+app.schema_string();              // 参数格式清单
+app.snapshot();                   // 当前取值快照
+std::string y = app.to_yaml();    // 参数 + 环境 → YAML 文本
+app.save_config("my_tool.yaml");  // 存为配置文件，供下一次调用
+app.load_config("my_tool.yaml");  // 下次调用：YAML → 环境变量反哺 + 参数赋值
 ```
 
 ## 环境变量一等公民
@@ -118,11 +133,11 @@ No. : "key" = "value"
 绑定 `env("VAR")` 后，取值优先级为：
 
 ```
-命令行显式值  >  环境变量  >  内置默认值
+命令行显式值  >  配置文件(YAML)  >  环境变量  >  内置默认值
 ```
 
-示例：`--timeout 99` 显式给出取 99；未给出但进程有 `MY_TOOL_TIMEOUT` 取环境值；
-都没有则取 `add_option<int>(..., 30)` 的 30。
+示例：`--timeout 99` 显式给出取 99；未给出但加载的 YAML 配置里有 `timeout` 取配置值；
+都没有但进程有 `MY_TOOL_TIMEOUT` 取环境值；全无则取 `add_option<int>(..., 30)` 的 30。
 
 ### 内置选项
 
@@ -134,8 +149,61 @@ No. : "key" = "value"
 - `--env-unset K`     删除会话环境变量
 - `--env-apply`       把会话中的修改/新建回写到操作系统环境（Windows
                       用 `_putenv_s`，POSIX 用 `setenv`）
+- `--load-config P`  按出现顺序导入 YAML 配置（后续 CLI 可覆盖）
+- `--save-config P`  解析完成后把参数 + 环境状态写出为 YAML 配置
 
 `set_builtin_options(false)` 可关闭内置选项，**必须在首次 parse 之前调用**。
+
+## 配置脚本（YAML）：第三类外界环境
+
+参数格式一经 `build<>` 完成，三类输入源即可互相转换：
+
+```
+        ┌───────────────────────────────────────────────┐
+        │         parameter_format（build 后固定）        │
+        └───────────────┬───────────────────────────────┘
+                        │
+ ① 环境变量  ────────────┼──► env 兜底
+ ② 实时命令行 ── parse ──┼──► 参数赋值
+ ③ YAML 配置 ── 新增 ────┼──► 外部赋值（bExternal__）
+                        ▼
+                parameter_snapshot（某次调用的结果）
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+    回写环境变量     存为 YAML       下次调用加载
+   (set_env/apply)  (save_config)   (load_config 反哺)
+```
+
+### YAML 存储格式（扁平点号分区键）
+
+```
+# cmd_args config for: my_tool
+# format: yaml v1
+arguments.hello: "hi"
+positionals.name: "peter"
+positionals.count: "3"
+options.timeout: "99"
+flags.verbose: "1"
+environment.MY_TOOL_WORLD: "hi"
+```
+
+- 分区避免命名参数与选项同名冲突；`environment` 分区只含**本程序相关**的键
+  （被引用/修改/新建的 ∪ `.env()` 绑定的），不倾倒全量 OS 环境；
+- 导入时 `environment` 分区反哺环境变量（`set_env`），参数分区按配置语义赋值
+  （优先级低于 CLI 显式值，且不再被环境变量覆盖）；
+- 未知键 / 类型不匹配记入错误栈（`dump()` 可查），**不中断**。
+
+### YAML 子集边界
+
+内置极简 YAML 解析器（header-only，无第三方依赖），仅支持扁平 map：
+`key: value`、`#` 注释、双引号字符串（`\"` `\\` `\n` 转义）、plain 值、空值。
+**不支持**嵌套 map/list、`---` 文档分隔、锚点、flow 集合、多行块（留给未来 JSON/扩展）。
+
+### 位置参数语义
+
+配置提供位置参数值后，CLI 可省略（数量落在 `[未赋值数, 总数]` 区间即可）；
+CLI 提供的 token 按序覆盖配置值（`CLI > 配置`）。
 
 ## 命令行语法速查
 
@@ -156,17 +224,20 @@ No. : "key" = "value"
 
 ## 执行模式
 
-- `once()` —— 解析成功后 `std::exit(退出码)`，一条命令跑完即退
-- `loop()` —— REPL 常驻，标准输入逐行解析，`exit`/`quit`/EOF 退出
+- `once()` —— 只接收**一次**参数，处理完毕后 `std::exit(退出码)` 退出进程
+- `loop()` —— REPL 常驻，标准输入**逐行**独立解析，`exit`/`quit`/EOF 退出；
+  每次调用（一行）等价于一次 once 的输入——解析前自动 `reset()` 还原参数默认值，
+  **绝不把多次输入合并成一条命令**；环境变量会话态跨行保留
 
 ## 已实现 / 展望
 
 当前已实现：命名/方位参数、值选项/标志/聚合短选项、`--` 分隔、短回路选项、
-环境变量展示/交互/展开/回写、once/loop 模式、错误分类、异常捕获（airbag）。
+环境变量展示/交互/展开/回写、**YAML 配置存储与反哺（save/load-config）**、
+参数格式 schema / 快照 snapshot、once/loop 模式、错误分类、异常捕获（airbag）。
 
 仍在展望（本期未做，见计划约束）：
 - `&&` / `||` 命令串联、`|` 管道、`...` 可重复项
-- json 配置加载、lua/luajit action、dll 动态补丁
+- json 配置加载（YAML 之外的第二种脚本格式）、lua/luajit action、dll 动态补丁
 - bench / meta / mock 工程
 
 ## 编译与测试
@@ -174,13 +245,18 @@ No. : "key" = "value"
 ```shell
 xmake                  # 全量配置（示例/单测为 set_default(false)，需显式构建）
 xmake build once
+xmake build config_demo
 xmake build unit_test
-xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑示例
+xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
+# config_demo 直接运行（xmake run 在 PowerShell 下传参受限时用可执行文件路径）：
+./build/windows/x64/release/config_demo.exe --hello hi --timeout 99 -v peter 3
 ```
 
 单元测试基于 vendored Catch2 v2，测试用例覆盖词法（token 归一化、KEY=VALUE 合并、
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
-（展示格式与标记、三种展开、apply 回写、优先级）等，debug/release 均通过。
+（展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
+CLI>配置>环境>默认优先级链 / loop 独立调用语义**等，debug/release 均通过
+（30 个测试用例 / 170 条断言）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。
@@ -194,9 +270,12 @@ include/cmd_args/          头文件库本体（header-only）
 ├── argument/              Argument / ArgumentNamed / ArgumentPosition + 数据/解析
 ├── option/                option_value / option_action + 数据/构筑/解析
 ├── env/                   environment / environment_store（一等公民核心）
+├── config/                yaml（极简 YAML 子集）/ parameter（schema/快照）/
+│                          config_store（三类输入源转换桥接）
 ├── context/               Context / Builder / Lexer / Parser / Model / Interpreter
 └── extern/                vendored：airbag（崩溃兜底）、magic_enum
 example/once/              once 模式示例
+example/config/            YAML 配置往返示例（config_demo）
 dfx/unit_test/             Catch2 单元测试
 scripts/                   构建运行脚本（build.bat / clean.bat 等）
 ```

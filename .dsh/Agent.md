@@ -14,8 +14,10 @@
 `cmd_args` 是一个 **C++20 头文件式（header-only）命令行解析库**（`.hpp` 即用、无需编译），Apache-2.0 许可。
 
 - 参考借鉴了 argparse / cmdline / CLI11 / Lyra / Clara 等库的思路。
-- **差异化核心**：环境变量在这里是**一等公民**——可展示（display）、可交互（set/unset）、可回写（apply to OS），
-  而不是大多数解析库那样"读一眼"的孤儿功能。
+- **差异化核心**：把三类"外界环境"统一起来，参数格式一经 `build<>` 确定即可**自然转换**：
+  ① **环境变量**（一等公民：可展示/交互/回写，而非"读一眼"的孤儿功能）；
+  ② **实时命令行输入**（解析后可存储到环境变量或脚本）；
+  ③ **脚本文件**（YAML 配置，JSON 未来：`save_config`/`load_config` 往返 + 反哺环境变量）。
 - 默认命名空间为 `cmd_args`（经 `CMD_ARGS_NAMESPACE_BEGIN/END` 宏展开，见 `include/cmd_args/base/def.h`）。
 
 ### 解析管线（架构必须保持）
@@ -34,7 +36,8 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
                         │
                         ▼
   读取 get_argument<T> / get_option<T> / parsed() / has_env() / env_string()
-  执行 once()（解析完即退） / loop()（REPL 常驻）
+  存储/加载 schema() / snapshot() / save_config() / load_config()（YAML 配置）
+  执行 once()（单次输入即退） / loop()（REPL 常驻，每行等价一次 once 输入）
 ```
 
 ---
@@ -50,7 +53,7 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
 | 5 | `--` 语义 | `--` 之后的所有 token 一律作为方位参数；`--` 之前的命名参数先行消化 |
 | 6 | argv[0] 原样保留 | argv[0] 是程序名（可能含盘符/路径），不是命令行语法，原样保留；只对 `argv[1..]` 做词法扫描 |
 | 7 | 测试只用公共 API | 禁止 `#define private public` 等访问黑魔法；测试必须经公开接口驱动 |
-| 8 | 环境变量兜底语义 | `.env("VAR")` 显式绑定后才参与兜底；优先级 **命令行显式值 > 环境变量 > 内置默认值**；仅在"未显式给出"时兜底 |
+| 8 | 环境变量兜底语义 | `.env("VAR")` 显式绑定后才参与兜底；优先级 **CLI 显式值 > 配置文件(YAML) > 环境变量 > 内置默认值**；配置导入走 `set_external`（记 `bExternal__`），env 兜底跳过，CLI 后续仍可覆盖 |
 | 9 | 兼容别名勿删 | `envirionment_parser` 是 `environment_store` 的历史拼写兼容别名（保留原拼写错误），不得删除 |
 | 10 | builtins 懒注册 | 内置选项在每个 Model 首次解析时注册一次；`set_builtin_options(false)` 只在**同一 Context 首次 parse 之前**调用才生效 |
 
@@ -81,6 +84,10 @@ include/cmd_args/
 ├── env/
 │   ├── environment.h               # environment：key/value + bReferenced__/bModified__/bNew__ 标记
 │   └── environment_parser.h        # environment_store：解析/展示/交互/展开/回写（差异模块）
+├── config/
+│   ├── yaml.h                      # 极简 YAML 子集（yaml_doc：解析/发射，扁平 map）
+│   ├── parameter.h                 # parameter_entry / parameter_schema / parameter_snapshot
+│   └── config_store.h              # 三类输入源转换桥接：schema/snapshot、to_yaml/from_yaml、env↔yaml
 ├── error/
 │   ├── errors.h                    # Context 错误堆栈（dump/getLast/getLastMsg/isOk）
 │   ├── builder_error.h             # detail::BuildError_E / ErrorArgument（DUPLICATE_NAME 等）
@@ -93,6 +100,7 @@ include/cmd_args/
     ├── airbag/                     # 内置异常/崩溃辅助（Windows 示例 target 需 /EHa）
     └── magic_enum/                 # 内置枚举反射（vendored）
 example/once/main.cpp               # 演示程序：env 一等公民完整故事
+example/config/main.cpp             # config_demo：三类输入源转换（YAML 往返 + 反哺）
 dfx/unit_test/head.cpp              # 单元测试（Catch2，仅公共 API）
 dfx/internal/catch2/ catch.hpp      # vendored 单测框架
 scripts/build_*.bat                 # 预留的构建脚本（bench/meta/mock 为路线图占位）
@@ -133,9 +141,18 @@ size_t n = app.apply_env();             // 返回实际写回条目数（不是 
 std::string e = app.expand_env("${VAR}!");
 std::cout << app.env_string();          // 或 app.print_env();
 
+// ── 参数格式 / 快照 / YAML 配置（第三类外界环境）────────
+app.schema_string();                    // 参数格式清单（schema() 结构化版本）
+app.snapshot();                         // 当前取值快照（parameter_snapshot）
+std::string y = app.to_yaml();          // 参数 + 环境 → YAML 文本
+app.save_config("cfg.yaml");            // 存配置，供下一次调用
+app.load_config("cfg.yaml");            // 加载：YAML → 环境反哺 + 参数外部赋值
+app.env_to_yaml();  app.yaml_to_env(text);
+app.reset();                            // 还原默认值/清标记/清错误（loop 每次调用前自动做）
+
 // ── 执行模式 ─────────────────────────────────────────
 app.once();                             // 解析后以退出码退出进程
-app.loop();                             // REPL：exit/quit/EOF 退出
+app.loop();                             // REPL：exit/quit/EOF 退出；每行独立解析
 ```
 
 要点：
@@ -143,8 +160,11 @@ app.loop();                             // REPL：exit/quit/EOF 退出
 - 选项长名可带 `--` 前缀查询，内部会剥离；短名 `char` 也可查询。
 - `get_argument<T>` / `get_option<T>` 有严格类型匹配检查（`type_string<T>()`），不匹配即抛错。
 - `once()` 未解析时抛 `ErrorInterp(InterpError_E::STOPPED)`。
-- `loop()` 逐行 `Lexer::tokensFromLine` 独立解析，错误打印到 stdout 并 `dump()`。
+- `loop()` 每次调用（一行）前自动 `reset()`：还原参数/选项默认值、清显式/外部标记、清错误栈；
+  逐行 `Lexer::tokensFromLine` 独立解析，**绝不把多行合并成一条命令**；环境变量会话态跨行保留。
+- `reset()` 依赖 `Argument`/`option_value` 的默认值缓存（`m_strDefault__`/`strDefault__`）。
 - 错误堆栈：`dump() / getLast() / getLastMsg() / isOk()`（由 `Context` 公开继承自 `Errors`）。
+- YAML 配置导入的未知键/类型不匹配记入错误栈（warning），不中断；`from_yaml` 返回 false 仅当解析失败。
 
 ---
 
@@ -189,8 +209,11 @@ Parser 在 `__finalize` 阶段会对所有已赋值参数/选项值做展开（`
 | `--env-set KEY=VALUE` | 设置环境变量（无 `=` 时值为空串），可新建 |
 | `--env-unset KEY` | 删除环境变量 |
 | `--env-apply` | 回写操作系统，逐行打印 `applied KEY=VALUE` 后再展示环境 |
+| `--load-config PATH` | 按出现顺序导入 YAML 配置（后续 CLI 可覆盖；值选项，非短路） |
+| `--save-config PATH` | 解析完成后把参数 + 环境状态写出为 YAML（`__finalize` 末尾执行） |
 
 短路选项命中即回调并停止（`fired()` 为 true），其余 token 不再分配。
+内置值选项带 `bBuiltin__` 标记，**不参与** `schema()`/`to_yaml()` 的格式导出。
 
 ---
 
@@ -203,9 +226,11 @@ Parser 在 `__finalize` 阶段会对所有已赋值参数/选项值做展开（`
 - 长选项支持 `--long value` 空格形式：下一个 token 非 `-` 开头则作为值，否则 `NEED_VALUE`；
   布尔长选项走 bool 赋值路径（`option_parser`）。
 - `--` 之后全部方位参数；此前命名参数先经 `parseNamedOnly` 消化，再 `parsePositionalOnly`。
-- 解析收尾（`__finalize`）：先 `__seedEnvDefaults`（命令行 > 环境 > 内置默认），再 `__expandEnvValues`。
+- 解析收尾（`__finalize`）：先 `__seedEnvDefaults`（CLI > 配置 > 环境 > 内置默认，跳过 `bExplicit__ || bExternal__`），
+  再 `__expandEnvValues`，最后若有 `--save-config` 则写出 YAML。
 - 剩余 `-` 开头 token → `UNKNOWN_OPTION`（"unrecognized option or argument: ..."）。
-- 方位参数数量不匹配 → 报 `"give X, but need Y"`（`NOT_ENOUGH_ARGS` / `UNKNWON_ARGS`）。
+- 方位参数数量：剩余 token 数须落在 `[未外部赋值数, 总数]` 区间；
+  恰好等于未赋值数时跳过配置已填位，多余 token 覆盖配置值（CLI > 配置）。
 
 ---
 
@@ -239,9 +264,9 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 | 意图 | 命令 |
 |------|------|
 | 配置 | `xmake f`（或直接 `xmake`） |
-| 全量默认目标 | `xmake` — 注意 `once` / `unit_test` 均为 `set_default(false)`，**不会**被全量构建，必须显式指定 |
-| 构建示例 | `xmake build once` |
-| 运行示例 | `xmake run once -- --hello hi --timeout 99 -v peter 3` |
+| 全量默认目标 | `xmake` — 注意 `once` / `config_demo` / `unit_test` 均为 `set_default(false)`，**不会**被全量构建，必须显式指定 |
+| 构建示例 | `xmake build once` / `xmake build config_demo` |
+| 运行示例 | `xmake run once -- --hello hi --timeout 99 -v peter 3`；PowerShell 传参受限时直接用 `build\windows\x64\release\*.exe` |
 | 构建单测 | `xmake build unit_test` |
 | 运行单测 | `xmake run unit_test` |
 | 清理 | `xmake clean` / `xmake f -c` |
@@ -265,12 +290,13 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    scope 取子系统（core / Lexer / Parser / builder / env / example / test / docs）。
 3. **仓库身份**：repo-local 配置为 `ValenciaFly <pengwanring@live.com>`（不要改成全局身份）。
 4. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`，二者保持一致。
-5. **测试门槛**：`dfx/unit_test/head.cpp` 目前 20 个 TEST_CASE / 98 条断言；
+5. **测试门槛**：`dfx/unit_test/head.cpp` 目前 30 个 TEST_CASE / 170 条断言；
    任何行为改动应保持或增加覆盖，禁止回退。
 6. **已知注意点**：`push` 到 GitHub 受当前网络限制（无代理、无 SSH key，连接被重置）——
    本地提交即可，推送受阻不是提交失败；不要反复重试 push。
 7. 根目录遗留 `vc140.idb` / `vc140.pdb` 已被 `.gitignore` 覆盖，可忽略或清理。
 8. 不得重建已删除的 `include/cmd_args/error/exception.h`；错误类型统一走 `error/` 下的现成头。
+9. 示例产物 `demo.yaml`（config_demo 生成）已在 `.gitignore`（`/demo.yaml`），勿入库。
 
 ---
 
@@ -278,7 +304,8 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 
 - 组合/管道语法：`&&`、`|`
 - 可变参数：`...`
-- 扩展模块：json、lua、dll、bench、meta、mock（`scripts/` 下已有占位 `build_*.bat`）
+- 扩展模块：**json 配置（YAML 之外的第二种脚本格式）**、lua、dll、bench、meta、mock
+  （`scripts/` 下已有占位 `build_*.bat`）；`config/` 目录为新增格式预留位置
 
 任何此类需求先记录到本节/README 的计划段落，再与用户确认是否立项。
 

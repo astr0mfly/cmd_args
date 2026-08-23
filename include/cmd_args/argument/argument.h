@@ -52,21 +52,26 @@ public:
         : m_strName__(std::move(_Name))
         , m_strHelp__(std::move(_Help))
         , m_strType__(std::move(_Type))
+        , m_strDefault__(_Default)
         , m_strValue__(std::move(_Default))
     {}
     Argument(Argument &&_Other) noexcept
         : m_strName__(std::move(_Other.m_strName__))
         , m_strHelp__(std::move(_Other.m_strHelp__))
         , m_strType__(std::move(_Other.m_strType__))
+        , m_strDefault__(std::move(_Other.m_strDefault__))
         , m_strValue__(std::move(_Other.m_strValue__))
         , m_strEnvName__(std::move(_Other.m_strEnvName__))
+        , bExternal__(_Other.bExternal__)
     {}
     Argument(Argument const &_Other) noexcept
         : m_strName__(_Other.m_strName__)
         , m_strHelp__(_Other.m_strHelp__)
         , m_strType__(_Other.m_strType__)
+        , m_strDefault__(_Other.m_strDefault__)
         , m_strValue__(_Other.m_strValue__)
         , m_strEnvName__(_Other.m_strEnvName__)
+        , bExternal__(_Other.bExternal__)
     {}
     Argument &operator=(Argument &&_Rhs) noexcept
     {
@@ -74,8 +79,10 @@ public:
         m_strName__    = std::move(_Rhs.m_strName__);
         m_strHelp__    = std::move(_Rhs.m_strHelp__);
         m_strType__    = std::move(_Rhs.m_strType__);
+        m_strDefault__ = std::move(_Rhs.m_strDefault__);
         m_strValue__   = std::move(_Rhs.m_strValue__);
         m_strEnvName__ = std::move(_Rhs.m_strEnvName__);
+        bExternal__    = _Rhs.bExternal__;
 
         return *this;
     }
@@ -85,8 +92,10 @@ public:
         m_strName__    = _Rhs.m_strName__;
         m_strHelp__    = _Rhs.m_strHelp__;
         m_strType__    = _Rhs.m_strType__;
+        m_strDefault__ = _Rhs.m_strDefault__;
         m_strValue__   = _Rhs.m_strValue__;
         m_strEnvName__ = _Rhs.m_strEnvName__;
+        bExternal__    = _Rhs.bExternal__;
 
         return *this;
     }
@@ -136,6 +145,31 @@ public:
         return *this;
     }
 
+    /* 外部赋值（来自配置文件 YAML）：写入值并标记 bExternal__，
+       使 env 兜底跳过本参数（优先级 CLI > 配置 > 环境变量 > 默认值） */
+    Argument &set_external(Value_T &&_V) noexcept
+    {
+        m_strValue__  = std::move(_V);
+        bExternal__   = true;
+        return *this;
+    }
+    Argument &set_external(Value_T const &_V)
+    {
+        m_strValue__ = _V;
+        bExternal__  = true;
+        return *this;
+    }
+    bool isExternal() const noexcept { return bExternal__; }
+
+    /* 还原为内置默认值、清除外部标记（loop 每次调用前调用，等价一次 once 输入）；
+       名称/说明/类型/env 绑定保持不变 */
+    Argument &reset() noexcept
+    {
+        m_strValue__ = m_strDefault__;
+        bExternal__  = false;
+        return *this;
+    }
+
     /* 绑定环境变量：命令行显式值 > 环境变量 > 未设置 */
     Argument &env(Name_T &&_EnvName) &
     {
@@ -169,8 +203,10 @@ private:
     Name_T          m_strName__;
     std::string     m_strHelp__;
     Type_T          m_strType__;  // 空 = 未定型，任何 get 均可
+    Value_T         m_strDefault__;  // 构造时的内置默认值（loop reset 还原用）
     mutable Value_T m_strValue__;
     Name_T          m_strEnvName__;
+    mutable bool    bExternal__ = false;  // 值来自外部配置（YAML）而非命令行/环境变量
 };
 /*
 ArgumentNamed， 命名参数，指的是按照参数名字来设置值，“--name=valens”

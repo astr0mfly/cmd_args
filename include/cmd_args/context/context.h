@@ -17,12 +17,14 @@
 #pragma once
 
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <type_traits>
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
 
+#include "cmd_args/config/config_store.h"
 #include "cmd_args/error/errors.h"
 #include "cmd_args/error/interpreter_error.h"
 #include "cmd_args/error/lexer_error.h"
@@ -234,6 +236,91 @@ public:
     }
     int exit_code() const noexcept { return m_nExitCode__; }
 
+    /* ---------- 参数格式 / 快照（三类外界环境的统一抽象） ---------- */
+
+    /* build 完成后的参数格式描述（与调用无关） */
+    parameter_schema schema() const { return config::schema_of(m_instData__); }
+
+    /* 人类可读的参数格式清单 */
+    std::string schema_string() const
+    {
+        std::ostringstream oss;
+        auto               sch = schema();
+        oss << "schema: " << (sch.program.empty() ? m_strPrjName__ : sch.program) << "\n";
+        for (auto const &e : sch.entries) {
+            oss << "  [" << e.kind << "] " << e.name;
+            if (!e.type.empty()) { oss << " <" << e.type << ">"; }
+            if (!e.value.empty()) { oss << " = \"" << e.value << "\""; }
+            if (!e.env.empty()) { oss << "  env: " << e.env; }
+            oss << "\n";
+        }
+        return oss.str();
+    }
+
+    /* 当前取值快照（某次调用后的参数 + 本程序相关环境） */
+    parameter_snapshot snapshot() const { return config::snapshot_of(m_instData__); }
+
+    /* 快照回填：参数走配置语义（env 兜底跳过），环境写入会话（不自动回写 OS） */
+    void apply_snapshot(parameter_snapshot const &_Snap)
+    {
+        config::apply_snapshot(m_instData__, _Snap);
+    }
+
+    /* ---------- 配置脚本（YAML，第三类外界环境） ---------- */
+
+    /* 当前参数 + 环境 → YAML 文本 */
+    std::string to_yaml() const { return config::to_yaml(m_instData__); }
+
+    /* 当前状态存为 YAML 配置文件，供下一次调用加载 */
+    bool save_config(std::string const &_Path) const
+    {
+        return config::write_file(_Path, config::to_yaml(m_instData__));
+    }
+
+    /* YAML 文本 → 会话：environment 分区反哺环境变量；
+       arguments/positionals/options/flags 分区按配置语义赋值（优先级低于 CLI）；
+       未知键/类型不匹配记入错误栈（dump() 可查），不中断 */
+    bool from_yaml(std::string const &_Text)
+    {
+        return config::from_yaml(m_instData__, _Text, static_cast<Errors *>(this));
+    }
+
+    /* 读配置文件并导入 */
+    bool load_config(std::string const &_Path)
+    {
+        auto text = config::read_file(_Path);
+        if (!text) {
+            setMsg("config: cannot read file: " + _Path);
+            return false;
+        }
+        return from_yaml(*text);
+    }
+
+    /* 仅环境分区 → YAML 文本 */
+    std::string env_to_yaml() const { return config::env_to_yaml(m_instData__); }
+
+    /* 仅 environment 分区 → set_env（其余分区忽略） */
+    bool yaml_to_env(std::string const &_Text)
+    {
+        return config::yaml_to_env(m_instData__, _Text, static_cast<Errors *>(this));
+    }
+
+    /* ---------- 执行状态 ---------- */
+
+    /*
+        还原参数/选项到内置默认值并清除显式/外部标记、清空错误栈。
+        loop() 每次调用前自动执行，保证"每次调用等同于一次 once 的输入"；
+        环境变量会话态保留。也可由用户手动调用以复位。
+    */
+    Context &reset()
+    {
+        m_instData__.m_args__.mgrName.doMutVisit([](Argument &a) { a.reset(); });
+        m_instData__.m_args__.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
+        m_instData__.m_opts__.options.for_each_value([](option_value &o) { o.reset(); });
+        clearLast();
+        return *this;
+    }
+
     /* ---------- 解析 ---------- */
 
     Context &parse(int _Argc, char const *_Argv[], char *_Envp[])
@@ -331,7 +418,9 @@ public:
 
     /*
         loop：常驻后台，标准输入逐行执行
-        exit / quit / EOF 退出；每行独立解析，错误进 Errors 堆栈
+        exit / quit / EOF 退出；每行独立解析，错误进 Errors 堆栈。
+        每次调用（一行）等价于一次 once 的输入：解析前 reset() 还原参数默认值，
+        绝不影响下一行、绝不把多行合并成一条命令；环境变量会话态跨行保留。
     */
     Context &loop()
     {
@@ -349,6 +438,8 @@ public:
                 continue;
             }
             if (cmd == "exit" || cmd == "quit" || cmd == "exit()") break;
+
+            reset();  // 每次调用 = 一次独立输入（等价 once 的单次输入）
 
             std::error_code ec;
             parse(ec, Lexer::tokensFromLine(cmd), {});

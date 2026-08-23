@@ -14,6 +14,7 @@
 
 #include "cmd_args/argument/argument_parser.h"
 #include "cmd_args/base/util.h"
+#include "cmd_args/config/config_store.h"
 #include "cmd_args/context/lexer.h"
 #include "cmd_args/option/option_builder.h"
 #include "cmd_args/option/option_parser.h"
@@ -186,6 +187,14 @@ private:
     {
         __seedEnvDefaults();
         __expandEnvValues();
+
+        // --save-config PATH：解析完成后把当前参数 + 环境状态写出为 YAML 配置
+        if (!m_strSaveConfig__.empty()) {
+            auto text = config::to_yaml(*m_pModel__);
+            if (!config::write_file(m_strSaveConfig__, text)) {
+                std::cerr << "(save-config) cannot write file: " << m_strSaveConfig__ << "\n";
+            }
+        }
     }
 
     /*
@@ -195,6 +204,8 @@ private:
         - --env-set     设置环境变量（KEY=VALUE），可新建
         - --env-unset   删除环境变量
         - --env-apply   把会话中的变更回写到操作系统环境
+        - --load-config 按出现顺序导入 YAML 配置（可被后续 CLI 覆盖）
+        - --save-config 解析完成后写出 YAML 配置
     */
     void __ensureBuiltins()
     {
@@ -215,26 +226,49 @@ private:
             std::cout << __descEnvOf(*m);
         });
         ob.add_option<std::string>("env-set", "set an environment variable, KEY=VALUE", "")
-            ->on_set([m](std::string const &_V) {
-                auto eq = _V.find('=');
-                if (eq == std::string::npos) {
-                    m->m_envs__.set(_V, "");
-                }
-                else {
-                    m->m_envs__.set(_V.substr(0, eq), _V.substr(eq + 1));
-                }
-            });
+            ->bBuiltin__ = true;
+        m_pModel__->m_opts__.options.mut_find("env-set")->on_set([m](std::string const &_V) {
+            auto eq = _V.find('=');
+            if (eq == std::string::npos) {
+                m->m_envs__.set(_V, "");
+            }
+            else {
+                m->m_envs__.set(_V.substr(0, eq), _V.substr(eq + 1));
+            }
+        });
         ob.add_option<std::string>("env-unset", "unset an environment variable, KEY", "")
-            ->on_set([m](std::string const &_V) { m->m_envs__.unset(_V); });
+            ->bBuiltin__ = true;
+        m_pModel__->m_opts__.options.mut_find("env-unset")->on_set(
+            [m](std::string const &_V) { m->m_envs__.unset(_V); });
+
+        /* YAML 配置：第三类外界环境。出现在 CLI 中的顺序即导入顺序，
+           后续 CLI token 仍可覆盖配置值（CLI > 配置 > 环境变量 > 默认值） */
+        ob.add_option<std::string>(
+              "load-config", "load a yaml config file before later args, PATH", "")
+            ->bBuiltin__ = true;
+        m_pModel__->m_opts__.options.mut_find("load-config")->on_set(
+            [m](std::string const &_Path) {
+                auto text = config::read_file(_Path);
+                if (!text) {
+                    std::cerr << "(load-config) cannot read file: " << _Path << "\n";
+                    return;
+                }
+                config::from_yaml(*m, *text);
+            });
+        ob.add_option<std::string>(
+              "save-config", "write the resolved parameter/env state to a yaml file, PATH", "")
+            ->bBuiltin__ = true;
+        m_pModel__->m_opts__.options.mut_find("save-config")->on_set(
+            [this](std::string const &_Path) { m_strSaveConfig__ = _Path; });
     }
 
-    /* 命令行 > 环境变量 > 内置默认值 */
+    /* 命令行 > 配置文件(YAML) > 环境变量 > 内置默认值 */
     void __seedEnvDefaults()
     {
         auto &env = m_pModel__->m_envs__;
 
         m_pModel__->m_args__.mgrName.doMutVisit([&](Argument &a) {
-            if (a.getEnvName().empty() || a.hasValue()) return;
+            if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
             auto const *p = env.find(a.getEnvName());
             if (p) {
                 p->bReferenced__ = true;
@@ -242,7 +276,7 @@ private:
             }
         });
         m_pModel__->m_args__.mgrPos.doMutVisit([&](Argument &a) {
-            if (a.getEnvName().empty() || a.hasValue()) return;
+            if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
             auto const *p = env.find(a.getEnvName());
             if (p) {
                 p->bReferenced__ = true;
@@ -250,7 +284,7 @@ private:
             }
         });
         m_pModel__->m_opts__.options.for_each_value([&](option_value &o) {
-            if (o.strEnvName__.empty() || o.bExplicit__) return;
+            if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;
             auto const *p = env.find(o.strEnvName__);
             if (p) {
                 p->bReferenced__ = true;
@@ -336,6 +370,7 @@ private:
     Name_T program_name;
     Desc_T description;
     bool   m_bFired__ = false;
+    std::string m_strSaveConfig__;  // --save-config 传入的路径，解析完成后写出
 };
 
 CMD_ARGS_NAMESPACE_END

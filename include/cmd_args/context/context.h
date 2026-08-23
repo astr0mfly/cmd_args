@@ -405,60 +405,46 @@ public:
     /* ---------- 执行模式 ---------- */
 
     /*
-        once：在解析完毕后以设定退出码退出进程
-        （内置 -?/--help、-!/--env 已在 parse 时打印输出）
+        解释执行（once/loop）由 Interpreter 基类实现（见 interpreter.h）；
+        本类通过下述 protected 钩子提供"解释一行"与"错误展示"能力：
+        once() 以设定退出码退出进程；loop() 逐行解释执行，直到 exit/quit/EOF。
     */
-    Context &once()
-    {
-        if (!m_bParsed__) { throw ErrorInterp(InterpError_E::STOPPED); }
-        std::exit(m_nExitCode__);
-
-        return *this;
-    }
-
-    /*
-        loop：常驻后台，标准输入逐行执行
-        exit / quit / EOF 退出；每行独立解析，错误进 Errors 堆栈。
-        每次调用（一行）等价于一次 once 的输入：解析前 reset() 还原参数默认值，
-        绝不影响下一行、绝不把多行合并成一条命令；环境变量会话态跨行保留。
-    */
-    Context &loop()
-    {
-        if (!m_bParsed__) {
-            // 首次解析装载进程环境，之后逐行复用
-            m_bParsed__ = true;
-        }
-
-        std::cout << "cmd_args> " << std::flush;
-        std::string line;
-        while (std::getline(std::cin, line)) {
-            auto cmd = util::trim(line);
-            if (cmd.empty()) {
-                std::cout << "cmd_args> " << std::flush;
-                continue;
-            }
-            if (cmd == "exit" || cmd == "quit" || cmd == "exit()") break;
-
-            reset();  // 每次调用 = 一次独立输入（等价 once 的单次输入）
-
-            std::error_code ec;
-            parse(ec, Lexer::tokensFromLine(cmd), {});
-            if (ec) {
-                std::cout << "(parse error) " << ec.message() << "\n";
-                std::cout << dump();
-            }
-            std::cout << "cmd_args> " << std::flush;
-        }
-        std::cout << "\n";
-
-        return *this;
-    }
 
     using Errors::dump;
     using Errors::getLast;
     using Errors::getLastMsg;
     using Errors::getLastVal;
     using Errors::isOk;
+
+protected:
+    /* ---------- Interpreter 基类的解释执行钩子 ---------- */
+
+    /*
+        解释执行一行：每次调用 = 一次独立输入。先 reset() 还原参数/选项
+        默认值并清空错误栈（保证行间互不合并），再逐行分词解析——
+        option action 在解析期按 token 顺序执行 system_call；
+        环境变量会话态跨行保留（reset 不清环境）。
+    */
+    std::error_code __interpret(std::string const &_Line) override
+    {
+        reset();
+
+        std::error_code ec;
+        parse(ec, Lexer::tokensFromLine(_Line), {});
+        return ec;
+    }
+
+    /* 行错误展示：错误消息 + 错误堆栈 dump（与历史 loop 输出格式一致） */
+    std::string __describeError(std::error_code const &_Ec) const override
+    {
+        return std::string("(parse error) ") + _Ec.message() + "\n" + dump();
+    }
+
+    /* once 前置条件：是否已成功解析过 */
+    bool __prepared() const noexcept override { return m_bParsed__; }
+
+    /* once 退出码 */
+    int __exitCode() const noexcept override { return m_nExitCode__; }
 
 private:
     void __doParse(int _Argc, char const *_Argv[], char *_Envp[])

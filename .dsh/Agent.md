@@ -72,7 +72,7 @@ include/cmd_args/
 │   ├── builder.h                   # Builder：构筑 Argument/Option/Flag 并写入 Model
 │   ├── lexer.h                     # Lexer/Scanner 状态机：argv/行文本 → token 流（含归一化）
 │   ├── parser.h                    # Parser：语法分配、内置选项注册、env 兜底默认、值展开
-│   ├── interpreter.h               # Interpreter 基类（once/loop 语义、退出码）
+│   ├── interpreter.h               # Interpreter 基类：once/loop 解释执行引擎（钩子由 Context 实现）
 │   ├── model.h                     # Model：ArgumentData + OptionData + environment_store
 │   ├── loader.h / parse_fwd.h      # 类型前置声明（Tokens_T / Envs_T / envs_t 等）
 ├── argument/

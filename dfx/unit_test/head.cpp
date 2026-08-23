@@ -780,3 +780,58 @@ TEST_CASE("context: action 命令失败向 stderr 告警且不中断解析", "[a
     REQUIRE(app.get_option<int>("b") == 2);    // 后续选项照常赋值
     REQUIRE(oss.str().find("(action)") != std::string::npos);  // 有告警输出
 }
+
+/* ==================== Interpreter 解释执行（基类引擎） ==================== */
+
+TEST_CASE("interpreter: once 未解释时抛 ErrorInterp(STOPPED)", "[interpreter]")
+{
+    Context app("ut_once_stopped");
+    app.add_option<int>("timeout", "t", 30);
+
+    // 未 parse 直接 once()：解释器未就绪，抛 STOPPED 而非退出进程
+    REQUIRE_THROWS_AS(app.once(), ErrorInterp);
+}
+
+TEST_CASE("interpreter: loop 逐行解释执行，exit 退出、行间不合并", "[interpreter]")
+{
+    Context app("ut_loop_interp");
+    app.build<ArgumentNamed>("hello", "h");
+    app.add_option<int>("timeout", "t", 30);
+
+    // 输入流重定向模拟 REPL：两行解释 + exit 退出
+    std::istringstream in("--hello a --timeout 9\n--hello b\nexit\n");
+    std::ostringstream out;
+    std::streambuf *oldIn  = std::cin.rdbuf(in.rdbuf());
+    std::streambuf *oldOut = std::cout.rdbuf(out.rdbuf());
+
+    app.loop();  // Interpreter 基类驱动：逐行解释执行直到 exit
+
+    std::cin.rdbuf(oldIn);
+    std::cout.rdbuf(oldOut);
+
+    // 两行都解释成功：无错误输出
+    REQUIRE(out.str().find("(parse error)") == std::string::npos);
+    // 循环结束状态 = 最后一次输入（行间 reset：hello=b，timeout 回默认）
+    REQUIRE(app.get_argument<std::string>("hello") == "b");
+    REQUIRE(app.get_option<int>("timeout") == 30);
+}
+
+TEST_CASE("interpreter: loop 行错误展示后继续下一行", "[interpreter]")
+{
+    Context app("ut_loop_err2");
+    app.build<ArgumentNamed>("hello", "h");
+
+    std::istringstream in("--nope x\n--hello ok\nexit\n");
+    std::ostringstream out;
+    std::streambuf *oldIn  = std::cin.rdbuf(in.rdbuf());
+    std::streambuf *oldOut = std::cout.rdbuf(out.rdbuf());
+
+    app.loop();
+
+    std::cin.rdbuf(oldIn);
+    std::cout.rdbuf(oldOut);
+
+    // 第一行错误被展示，第二行正常解释；状态为最后一次成功输入
+    REQUIRE(out.str().find("(parse error)") != std::string::npos);
+    REQUIRE(app.get_argument<std::string>("hello") == "ok");
+}

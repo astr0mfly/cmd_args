@@ -29,7 +29,10 @@ enum class BuildError_E
 {
     OK = 0,
     NEED_NAME,
-    NEED_HELP
+    NEED_HELP,
+    DUPLICATE_NAME,
+    UNSUPPORT_TYPE,
+    BAD_PREFIX
 };
 
 static inline char const *mapArgumentError(int _ErrCode) noexcept
@@ -38,6 +41,9 @@ static inline char const *mapArgumentError(int _ErrCode) noexcept
     case BuildError_E::OK: return "no error";
     case BuildError_E::NEED_NAME: return "need to named";
     case BuildError_E::NEED_HELP: return "need to set infomation of usage";
+    case BuildError_E::DUPLICATE_NAME: return "name already exists";
+    case BuildError_E::UNSUPPORT_TYPE: return "unsupported type";
+    case BuildError_E::BAD_PREFIX: return "option name must be `-` or `--` prefixed";
 
     default: return "unknwon error";
     }

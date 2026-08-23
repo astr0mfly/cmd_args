@@ -17,9 +17,12 @@
  */
 #pragma once
 
+#include <algorithm>
+#include <cctype>
+#include <sstream>
 #include <string>
 #include <utility>
-#include <sstream>
+#include <vector>
 
 #include "def.h"
 
@@ -58,6 +61,30 @@ inline std::string type_string<double>()
 }
 
 template <>
+inline std::string type_string<float>()
+{
+    return "float";
+}
+
+template <>
+inline std::string type_string<char>()
+{
+    return "char";
+}
+
+template <>
+inline std::string type_string<unsigned int>()
+{
+    return "unsigned int";
+}
+
+template <>
+inline std::string type_string<size_t>()
+{
+    return "size_t";
+}
+
+template <>
 inline std::string type_string<std::string>()
 {
     return "string";
@@ -75,9 +102,68 @@ template <typename T>
 T parse_value(std::string const &_Value)
 {
     std::istringstream iss(_Value);
-    T                  result;
+    T                  result{};
     iss >> result;
     return result;
+}
+
+inline bool parse_bool(std::string const &_Value)
+{
+    if (_Value == "true" || _Value == "TRUE" || _Value == "yes" || _Value == "on") return true;
+    if (_Value == "false" || _Value == "FALSE" || _Value == "no" || _Value == "off") return false;
+    return parse_value<bool>(_Value);
+}
+
+inline bool starts_with(std::string const &_Text, std::string const &_Prefix) noexcept
+{
+    return _Text.size() >= _Prefix.size()
+           && _Text.compare(0, _Prefix.size(), _Prefix) == 0;
+}
+
+inline bool ends_with(std::string const &_Text, std::string const &_Suffix) noexcept
+{
+    return _Text.size() >= _Suffix.size()
+           && _Text.compare(_Text.size() - _Suffix.size(), _Suffix.size(), _Suffix) == 0;
+}
+
+inline std::string trim(std::string const &_Text)
+{
+    auto first = _Text.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    auto last = _Text.find_last_not_of(" \t\r\n");
+    return _Text.substr(first, last - first + 1);
+}
+
+/*
+    按分隔符切分；空段保留，与 strtok 语义不同
+*/
+inline std::vector<std::string> split(std::string const &_Text, char _Delim)
+{
+    std::vector<std::string> parts;
+    std::string              cur;
+    for (char ch : _Text) {
+        if (ch == _Delim) {
+            parts.emplace_back(std::move(cur));
+            cur.clear();
+        }
+        else {
+            cur += ch;
+        }
+    }
+    parts.emplace_back(std::move(cur));
+    return parts;
+}
+
+/*
+    在头尾两端切掉一对括号类字符；不匹配则原样返回
+*/
+inline std::string unwrap(std::string const &_Text, char _Left, char _Right)
+{
+    std::string ret = _Text;
+    if (ret.size() >= 2 && ret.front() == _Left && ret.back() == _Right) {
+        ret = ret.substr(1, ret.size() - 2);
+    }
+    return ret;
 }
 
 std::string replace(std::string const &str, std::string const &from, std::string const &to)

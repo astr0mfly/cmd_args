@@ -17,6 +17,8 @@
  */
 #pragma once
 
+#include <type_traits>
+
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
 
@@ -41,6 +43,8 @@ public:
     void build(std::string _Name, std::string _Help)
     {
         if constexpr (std::is_same_v<T, ArgumentNamed>) {
+            check(_Name, _Help);
+            __checkDuplicate(_Name);
             m_pData__->mgrName.doPush(std::make_unique<ArgumentNamed>(_Name, _Help));
         }
         else if constexpr (std::is_same_v<T, ArgumentPosition>) {
@@ -55,12 +59,14 @@ public:
     void build(ArgumentNamed &&_Arg)
     {
         check(_Arg);
+        __checkDuplicate(_Arg.getName());
         m_pData__->mgrName.doPush(std::make_unique<ArgumentNamed>(std::move(_Arg)));
     }
 
     void build(ArgumentNamed const &_Arg)
     {
         check(_Arg);
+        __checkDuplicate(_Arg.getName());
         m_pData__->mgrName.doPush(std::make_unique<ArgumentNamed>(_Arg));
     }
 
@@ -69,10 +75,23 @@ public:
         for (auto &a : _Builds) { build(a); }
     }
 
+    static void check(std::string const &_Name, std::string const &_Help)
+    {
+        if (_Name.empty()) throw ErrorArgument(BuildError_E::NEED_NAME);
+        if (_Help.empty()) throw ErrorArgument(BuildError_E::NEED_HELP);
+    }
+
     static void check(ArgumentNamed const &_Arg)
     {
-        if (_Arg.getName().empty()) throw ErrorArgument(BuildError_E::NEED_NAME);
-        if (_Arg.getHelp().empty()) throw ErrorArgument(BuildError_E::NEED_HELP);
+        check(_Arg.getName(), _Arg.getHelp());
+    }
+
+private:
+    void __checkDuplicate(std::string const &_Name) const
+    {
+        if (m_pData__->mgrName.doFind(_Name)) {
+            throw ErrorArgument(BuildError_E::DUPLICATE_NAME);
+        }
     }
 
 private:

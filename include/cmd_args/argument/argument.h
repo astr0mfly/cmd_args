@@ -23,8 +23,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <typeindex>
-#include <typeinfo>
 
 #include "cmd_args/base/util.h"
 
@@ -40,7 +38,7 @@ class Argument
 public:
     using ptr     = std::unique_ptr<Argument>;
     using Name_T  = std::string;
-    using Type_T  = std::reference_wrapper<const std::type_info>;
+    using Type_T  = std::string;
     using Value_T = std::string;
     using Desc_T  = std::string;
 
@@ -48,44 +46,47 @@ public:
     Argument(std::string _name, std::string _Help)
         : m_strName__(std::move(_name))
         , m_strHelp__(std::move(_Help))
-        , m_idType__(typeid(bool))
     {}
 
-    Argument(std::string _Name, std::string _Help, std::type_info &&_Type, Value_T _Default = "")
+    Argument(std::string _Name, std::string _Help, Type_T _Type, Value_T _Default = "")
         : m_strName__(std::move(_Name))
         , m_strHelp__(std::move(_Help))
-        , m_idType__(_Type)
+        , m_strType__(std::move(_Type))
         , m_strValue__(std::move(_Default))
     {}
     Argument(Argument &&_Other) noexcept
         : m_strName__(std::move(_Other.m_strName__))
         , m_strHelp__(std::move(_Other.m_strHelp__))
-        , m_idType__(_Other.m_idType__)
+        , m_strType__(std::move(_Other.m_strType__))
         , m_strValue__(std::move(_Other.m_strValue__))
+        , m_strEnvName__(std::move(_Other.m_strEnvName__))
     {}
     Argument(Argument const &_Other) noexcept
         : m_strName__(_Other.m_strName__)
         , m_strHelp__(_Other.m_strHelp__)
-        , m_idType__(_Other.m_idType__)
+        , m_strType__(_Other.m_strType__)
         , m_strValue__(_Other.m_strValue__)
+        , m_strEnvName__(_Other.m_strEnvName__)
     {}
     Argument &operator=(Argument &&_Rhs) noexcept
     {
         if (this == &_Rhs) return *this;
-        m_strName__  = std::move(_Rhs.m_strName__);
-        m_strHelp__  = std::move(_Rhs.m_strHelp__);
-        m_idType__   = std::move(_Rhs.m_idType__);
-        m_strValue__ = std::move(_Rhs.m_strValue__);
+        m_strName__    = std::move(_Rhs.m_strName__);
+        m_strHelp__    = std::move(_Rhs.m_strHelp__);
+        m_strType__    = std::move(_Rhs.m_strType__);
+        m_strValue__   = std::move(_Rhs.m_strValue__);
+        m_strEnvName__ = std::move(_Rhs.m_strEnvName__);
 
         return *this;
     }
     Argument &operator=(Argument const &_Rhs) noexcept
     {
         if (this == &_Rhs) return *this;
-        m_strName__  = _Rhs.m_strName__;
-        m_strHelp__  = _Rhs.m_strHelp__;
-        m_idType__   = _Rhs.m_idType__;
-        m_strValue__ = _Rhs.m_strValue__;
+        m_strName__    = _Rhs.m_strName__;
+        m_strHelp__    = _Rhs.m_strHelp__;
+        m_strType__    = _Rhs.m_strType__;
+        m_strValue__   = _Rhs.m_strValue__;
+        m_strEnvName__ = _Rhs.m_strEnvName__;
 
         return *this;
     }
@@ -116,7 +117,12 @@ public:
     template <typename T>
     Argument &type()
     {
-        m_idType__ = typeid(T);
+        m_strType__ = util::type_string<T>();
+        return *this;
+    }
+    Argument &type(Type_T &&_Type)
+    {
+        m_strType__ = std::move(_Type);
         return *this;
     }
     Argument &set(Value_T &&_V) noexcept
@@ -130,17 +136,41 @@ public:
         return *this;
     }
 
+    /* 绑定环境变量：命令行显式值 > 环境变量 > 未设置 */
+    Argument &env(Name_T &&_EnvName) &
+    {
+        m_strEnvName__ = std::move(_EnvName);
+        return *this;
+    }
+    Argument env(Name_T &&_EnvName) &&
+    {
+        m_strEnvName__ = std::move(_EnvName);
+        return std::move(*this);
+    }
+    Argument &env(Name_T const &_EnvName) &
+    {
+        m_strEnvName__ = _EnvName;
+        return *this;
+    }
+    Argument env(Name_T const &_EnvName) &&
+    {
+        m_strEnvName__ = _EnvName;
+        return std::move(*this);
+    }
+
     Argument       copy() const { return *this; }
     Name_T const  &getName() const noexcept { return m_strName__; }
     Desc_T const  &getHelp() const noexcept { return m_strHelp__; }
-    char const    *getType() const noexcept { return m_idType__.get().name(); }
+    Type_T const  &getType() const noexcept { return m_strType__; }
+    Name_T const  &getEnvName() const noexcept { return m_strEnvName__; }
     Value_T const &getValue() const noexcept { return m_strValue__; }
 
 private:
     Name_T          m_strName__;
     std::string     m_strHelp__;
-    Type_T          m_idType__ = typeid(void);
+    Type_T          m_strType__;  // 空 = 未定型，任何 get 均可
     mutable Value_T m_strValue__;
+    Name_T          m_strEnvName__;
 };
 /*
 ArgumentNamed， 命名参数，指的是按照参数名字来设置值，“--name=valens”
@@ -161,6 +191,7 @@ public:
     {}
     using Argument::help;
     using Argument::name;
+    using Argument::env;
 };
 
 /*
@@ -178,10 +209,10 @@ struct ArgumentPosition : public Argument
     bool operator<(ArgumentPosition const &_Rhs) const noexcept { return iSeq < _Rhs.iSeq; }
     ArgumentPosition &No(size_t _Idx)
     {
-        iSeq = _Idx; 
+        iSeq = _Idx;
         return *this;
     }
-    size_t            getSeq() const noexcept { return iSeq; }
+    size_t getSeq() const noexcept { return iSeq; }
 };
 
 }  // namespace detail

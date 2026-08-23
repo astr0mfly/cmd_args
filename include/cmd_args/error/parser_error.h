@@ -17,6 +17,7 @@
  */
 #pragma once
 
+#include <cstring>
 #include <string>
 #include <system_error>
 
@@ -32,7 +33,8 @@ enum class ParseError_E
     NEED_VALUE,
     MUST_BE_BOOL,
     UNEXCEPTED_BARE,
-    WRONG_PREFIX
+    WRONG_PREFIX,
+    UNKNOWN_OPTION
 };
 
 static inline char const *mapParseError(int _ErrCode) noexcept
@@ -41,10 +43,11 @@ static inline char const *mapParseError(int _ErrCode) noexcept
     case ParseError_E::OK: return "no error";
     case ParseError_E::NOT_ENOUGH_ARGS: return "not enough named_arguments";
     case ParseError_E::UNKNWON_ARGS: return "argument number missmatching";
-    case ParseError_E::NEED_VALUE: return "argument need a value";
-    case ParseError_E::MUST_BE_BOOL: return "establish a Modbus connection failed";
-    case ParseError_E::UNEXCEPTED_BARE: return "set timeout for response failed";
-    case ParseError_E::WRONG_PREFIX: return "set timeout for response failed";
+    case ParseError_E::NEED_VALUE: return "option need a value";
+    case ParseError_E::MUST_BE_BOOL: return "aggregated short option must be bool";
+    case ParseError_E::UNEXCEPTED_BARE: return "bare '-' is not accepted";
+    case ParseError_E::WRONG_PREFIX: return "unrecognized option prefix";
+    case ParseError_E::UNKNOWN_OPTION: return "unrecognized option";
     default: return "unknwon error";
     }
 }

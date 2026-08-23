@@ -17,241 +17,282 @@
  */
 #pragma once
 
+#include <cstdint>
+#include <type_traits>
+
 #include "cmd_args/context/parse_fwd.h"
+#include "cmd_args/error/parser_error.h"
 #include "cmd_args/option/option.h"
+#include "cmd_args/option/option_data.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+/*
+    选项解析器：消费 Tokens 中形如
+        --long=value / --long value / -x value / -xvalue / -abc(聚合 bool)
+    的选项 token。
+
+    - 短回路选项优先级最高：命中其一立即回调并停止解析
+    - 未注册的长选项 token 原样保留（可能是命名参数，由上层决定）
+    - 未知的短选项在聚合串里直接报 UNKNOWN_OPTION
+    - `--` 之后的 token 一律不再作为选项处理
+*/
 class option_parser
 {
 public:
-    option_parser() {}
+    option_parser(OptionData *_Data)
+        : m_pData__(_Data)
+    {}
 
-    // void parse(Tokens_T &_Tokens)
-    //{
-    //     for (auto &t : _Tokens) {
-    //         if (t.find_first_not_of('-') == 2) {
-    //             auto const *pSc = short_circuit_options.doGet(t);
-    //             if (pSc) {
-    //                 dynamic_cast<option_action const *>(pSc)->callback();
-    //                 return;
-    //             }
-    //         }
-    //         else if (t.find_first_not_of('-') == 1) {
-    //             for (decltype(t.size()) i = 1; i < t.size(); ++i) {
-    //                 auto const *pSc = short_circuit_options.doGet(t[i]);
-    //                 if (pSc) {
-    //                     dynamic_cast<option_action const *>(pSc)->callback();
-    //                     return;
-    //                 }
-    //             }
-    //         }
-    //     }
+    bool parse(Tokens_T &_Tokens)
+    {
+        m_bFired__  = false;
+        m_bOptEnd__ = false;
 
-    //    for (auto it{ _Tokens.begin() }; it != _Tokens.end();) {
-    //        if (it->find_first_not_of('-') == 2) {
-    //            auto const *p = options.doGet(*it);
-    //            if (p) {
-    //                it           = _Tokens.erase(it);
-    //                auto *pValue = dynamic_cast<option_value const *>(p);
-    //                if (pValue->type == "bool") {
-    //                    pValue->value = "1";
-    //                    continue;
-    //                }
-    //                else if (it == _Tokens.cend()) {
-    //                    std::cerr << "(parse error) option " << pValue->short_name << " "
-    //                              << pValue->long_name << " should have value" << std::endl;
-    //                    std::exit(-1);
-    //                }
-    //                else {
-    //                    pValue->value = *it;
-    //                    it            = _Tokens.erase(it);
-    //                    continue;
-    //                }
-    //            }
-    //        }
-    //        else if (it->find_first_not_of('-') == 1) {
-    //            for (decltype(it->size()) i = 1; i < it->size(); ++i) {
-    //                auto const *p = options.doGet(it->at(i));
-    //                if (p) {
-    //                    auto *pValue = dynamic_cast<option_value const *>(p);
-    //                    if (pValue->type == "bool") {
-    //                        pValue->value = "1";
-    //                        continue;
-    //                    }
-    //                    else {
-    //                        std::cerr << "(parse error) aggregation short name option must be
-    //                        bool"
-    //                                  << std::endl;
-    //                        std::exit(-1);
-    //                    }
-    //                }
-    //                else {
-    //                    std::cerr << "(parse error) unrecognized short name option '" << it->at(i)
-    //                              << "' in " << (*it) << std::endl;
-    //                    std::exit(-1);
-    //                }
-    //            }
+        for (auto it = _Tokens.begin(); it != _Tokens.end();) {
+            std::string const &tok = *it;
 
-    //            it = _Tokens.erase(it);
-    //        }
-    //    }
+            if (tok == "--") {
+                // 结束选项区：其后的 token 全部留给位置参数
+                _Tokens.erase(it);
+                m_bOptEnd__ = true;
+                break;
+            }
 
-    //    // if there are short name like options, parse it as aggregation short name options
-    //    {
-    //        auto pos = std::find_if(_Tokens.cbegin(), _Tokens.cend(), [](std::string const &tok) {
-    //            return tok.front() == '-';
-    //        });
-    //        if (pos != _Tokens.cend()) {
-    //            if (pos->length() == 1) {
-    //                std::cerr << "(parse error) bare unexcepted '-'" << std::endl;
-    //                std::exit(-1);
-    //            }
-    //            if ((*pos)[1] == '-') {
-    //                std::cerr << "(parse error) unrecognized option" << (*pos) << std::endl;
-    //                std::exit(-1);
-    //            }
+            if (util::starts_with(tok, "--") && tok.size() > 2) {
+                auto          body = tok.substr(2);
+                auto          eq   = body.find('=');
+                std::string   name = (eq == std::string::npos) ? body : body.substr(0, eq);
+                std::string   value;
+                if (eq != std::string::npos) { value = body.substr(eq + 1); }
 
-    //            pos = _Tokens.erase(pos);
-    //        }
-    //    }
-    //}
+                if (__fireOnLong(name, it, _Tokens)) return true;
 
-    // void check_add_option_sname(char _Key) const
-    //{
-    //     if (short_name_index.find(_Key) != short_name_index.end()) {
-    //         std::cerr << "(build error) short option name " << _Key << " already exists"
-    //                   << std::endl;
-    //         std::exit(-1);
-    //     }
-    // }
+                auto *pOpt = m_pData__->options.mut_find(name);
+                if (pOpt) {
+                    // --long=value 与 --long value 两种形式都支持；
+                    // 未显式给值且非 bool 选项时，消费下一个 token 作为值
+                    if (value.empty() && pOpt->type != "bool") {
+                        auto nx = std::next(it);
+                        if (nx == _Tokens.end() || util::starts_with(*nx, "-")) {
+                            throw ErrorParse(
+                                ParseError_E::NEED_VALUE,
+                                "option --" + name + " need a value");
+                        }
+                        value = *nx;
+                        _Tokens.erase(nx);
+                    }
+                    __assign(pOpt, value, pOpt->type == "bool");
+                    it = _Tokens.erase(it);
+                    continue;
+                }
 
-    // void check_add_option_sname(std::string const &key) const
-    //{
-    //     if (key.size() != 2 || key.front() != '-') {
-    //         std::cerr << "(build error) short option name must be `-` followed by one character"
-    //                   << std::endl;
-    //         std::exit(-1);
-    //     }
-    //     char ch = key.back();
-    //     if (short_name_index.find(ch) != short_name_index.end()) {
-    //         std::cerr << "(build error) short option name " << key << " already exists"
-    //                   << std::endl;
-    //         std::exit(-1);
-    //     }
-    // }
+                // 不是选项：可能是命名参数（--name=value），留给上层
+                ++it;
+                continue;
+            }
 
-    // void check_add_option_lname(std::string const &key) const
-    //{
-    //     if (key == "") {
-    //         std::cerr << "(build error) long option name cannot be empty" << std::endl;
-    //         std::exit(-1);
-    //     }
-    //     if (key.substr(0, 2) != "--") {
-    //         std::cerr << "(build error) long option name must be `--` followed by one or more "
-    //                      "characters"
-    //                   << std::endl;
-    //         std::exit(-1);
-    //     }
+            if (util::starts_with(tok, "-") && tok.size() >= 2) {
+                if (__fireOnShort(tok, it, _Tokens)) return true;
 
-    //    if (options.doGet(key) || short_circuit_options.doGet(key)) {
-    //        std::cerr << "(build error) long option name " << key << " already exists" <<
-    //        std::endl; std::exit(-1);
-    //    }
-    //}
+                if (tok.size() == 2) {
+                    auto *pOpt = m_pData__->options.mut_find(tok[1]);
+                    if (!pOpt) {
+                        ++it;  // 可能是未识别短选项，交给上层统一报错
+                        continue;
+                    }
+                    if (pOpt->type == "bool") {
+                        __assign(pOpt, "", true);
+                    }
+                    else {
+                        auto nx = std::next(it);
+                        if (nx == _Tokens.end()) {
+                            throw ErrorParse(
+                                ParseError_E::NEED_VALUE,
+                                "option -" + std::string(1, tok[1]) + " need a value");
+                        }
+                        __assign(pOpt, *nx, false);
+                        _Tokens.erase(nx);
+                    }
+                    it = _Tokens.erase(it);
+                    continue;
+                }
 
-    //// add short circuit option
-    // void add_sc_option(
-    //     std::string sname, std::string lname, std::string desc, std::function<void(void)>
-    //     callback)
-    //{
-    //     // long name must not be empty
-    //     check_add_option_lname(lname);
-    //     // allow short name to be empty
-    //     if (sname != "") {
-    //         check_add_option_sname(sname);
-    //         short_name_index[sname.back()] = lname;
-    //         short_circuit_options
-    //             .push(sname.back(), std::move(lname), std::move(desc), std::move(callback));
-    //     }
-    //     else {
-    //         short_circuit_options.push(std::move(lname), std::move(desc), std::move(callback));
-    //     }
-    // }
+                // 聚合短选项：-abc 或 -tvalue
+                bool consumed = false;
+                for (size_t i = 1; i < tok.size() && !consumed; ++i) {
+                    char key = tok[i];
+                    if (__fireOnShortChar(key, it, _Tokens)) return true;
 
-    // template <typename T>
-    // void add_option(std::string sname, std::string lname, std::string help, T &&default_value)
-    //{
-    //     using namespace util;
-    //     if (type_string<T>() == "null") {
-    //         std::cerr << "(build error) unsupport type for option: " << typeid(T).name()
-    //                   << std::endl;
-    //         std::exit(-1);
-    //     }
+                    auto *pOpt = m_pData__->options.mut_find(key);
+                    if (!pOpt) {
+                        throw ErrorParse(
+                            ParseError_E::UNKNOWN_OPTION,
+                            "unrecognized short option '" + std::string(1, key) + "' in " + tok);
+                    }
+                    if (pOpt->type == "bool") {
+                        __assign(pOpt, "", true);
+                        continue;
+                    }
 
-    //    check_add_option_lname(lname);
-    //    if (sname != "") {
-    //        check_add_option_sname(sname);
-    //        short_name_index[sname.back()] = lname;
-    //    }
+                    // 值选项出现在聚合串中：余下部分就是它的值（-tvalue）
+                    std::string val = tok.substr(i + 1);
+                    if (!val.empty() && val.front() == '=') { val = val.substr(1); }
+                    if (val.empty()) {
+                        auto nx = std::next(it);
+                        if (nx == _Tokens.end()) {
+                            throw ErrorParse(
+                                ParseError_E::NEED_VALUE,
+                                "option -" + std::string(1, key) + " need a value");
+                        }
+                        val = *nx;
+                        _Tokens.erase(nx);
+                    }
+                    __assign(pOpt, val, false);
+                    consumed = true;
+                }
 
-    //    options.push(
-    //        std::move(sname),
-    //        std::move(lname),
-    //        std::move(help),
-    //        type_string<T>(),
-    //        to_string(default_value));
-    //}
+                it = _Tokens.erase(it);
+                continue;
+            }
 
-    // void add_option(NameShort_T sname, NameLong_T lname, std::string help)
-    //{
-    //     check_add_option_lname(lname);
-    //     if (sname != ' ') {
-    //         check_add_option_sname(sname);
-    //         short_name_index[sname] = lname;
-    //         options.push(
-    //             sname,
-    //             std::move(lname),
-    //             std::move(help),
-    //             std::string("bool"),
-    //             std::string("0"));
-    //     }
-    //     else {
-    //         options.push(std::move(lname), std::move(help), std::string("bool"),
-    //         std::string("0"));
-    //     }
-    // }
+            // 普通 token：留给参数解析
+            ++it;
+            continue;
+        }
 
-    // template <typename T>
-    // T get_option(std::string const &name) const
-    //{
-    //     using namespace util;
-    //     auto pos = options.find(name);
-    //     if (!pos) { pos = options.find(name.back()); }
-    //     if (!pos) {
-    //         std::cerr << "(get error) option not found: " << name << std::endl;
-    //         std::exit(-1);
-    //     }
+        return m_bFired__;
+    }
 
-    //    if (pos->type != type_string<T>()) {
-    //        std::cerr << "(get error) option type mismatch: set '" << pos->type
-    //                  << "' but you try get with '" << type_string<T>() << "'" << std::endl;
-    //        std::exit(-1);
-    //    }
+    bool fired() const noexcept { return m_bFired__; }
+    bool options_ended() const noexcept { return m_bOptEnd__; }
 
-    //    return parse_value<T>(pos->value);
-    //}
+    bool parsed(NameShort_T _Name) const noexcept
+    {
+        if (_Name == '\0') return false;
+        auto const *p = m_pData__->options.find(_Name);
+        return p && p->bExplicit__;
+    }
+    bool parsed(NameLong_T const &_Name) const noexcept
+    {
+        auto const *p = m_pData__->options.find(_Name);
+        return p && p->bExplicit__;
+    }
 
-    // some alias for get_option
-    // bool    has_option(std::string const &name) const { return get_option<bool>(name); }
-    // bool    get_option_bool(std::string const &name) const { return get_option<bool>(name); }
-    // int     get_option_int(std::string const &name) const { return get_option<int>(name); }
-    // int64_t get_option_int64(std::string const &name) const { return get_option<int64_t>(name); }
-    // double  get_option_double(std::string const &name) const { return get_option<double>(name); }
-    // std::string get_option_string(std::string const &name) const
-    //{
-    //    return get_option<std::string>(name);
-    //}
+    bool has_option(std::string const &_Name) const noexcept
+    {
+        auto key = _Name;
+        if (util::starts_with(key, "--")) { key = key.substr(2); }
+
+        if (auto const *p = m_pData__->options.find(key)) { (void)p; return true; }
+        if (key.size() == 1 && m_pData__->options.find(key[0])) { return true; }
+        return false;
+    }
+
+    template <typename T>
+    T get_option(std::string const &_Name) const
+    {
+        using namespace util;
+        auto key = _Name;
+        if (util::starts_with(key, "--")) { key = key.substr(2); }
+
+        auto const *p = m_pData__->options.find(key);
+        if (!p && key.size() == 1) { p = m_pData__->options.find(key[0]); }
+        if (!p) {
+            throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option not found: " + key);
+        }
+
+        if (p->type == "bool") {
+            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->value); }
+            throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option type mismatch: " + key);
+        }
+        if (p->type != util::type_string<T>()) {
+            throw ErrorParse(
+                ParseError_E::UNKNOWN_OPTION,
+                "option type mismatch: set '" + p->type + "' but try get with '"
+                    + util::type_string<T>() + "'");
+        }
+
+        return util::parse_value<T>(p->value);
+    }
+
+    bool    has_option_bool(std::string const &_Name) const { return get_option<bool>(_Name); }
+    bool    get_option_bool(std::string const &_Name) const { return get_option<bool>(_Name); }
+    int     get_option_int(std::string const &_Name) const { return get_option<int>(_Name); }
+    int64_t get_option_int64(std::string const &_Name) const { return get_option<int64_t>(_Name); }
+    double  get_option_double(std::string const &_Name) const { return get_option<double>(_Name); }
+    std::string get_option_string(std::string const &_Name) const
+    {
+        return get_option<std::string>(_Name);
+    }
+
+    std::string usage_string() const { return m_pData__->usage_string(); }
+
+    void appendHelp(std::ostringstream &_Out) const
+    {
+        if (m_pData__->short_circuit_options.doEmpty() && m_pData__->options.doEmpty()) return;
+        _Out << "\nOptions:\n";
+        auto max = m_pData__->calc_desc_max_length();
+        m_pData__->appendHelp(_Out, max);
+    }
+
+private:
+    /* 赋值并联动：bExplicit__ 标记、fnOnSet__ 钩子 */
+    void __assign(option_value *_Opt, std::string const &_Value, bool _IsBool)
+    {
+        if (_IsBool) {
+            _Opt->value = _Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0");
+        }
+        else {
+            _Opt->value = _Value;
+        }
+        _Opt->bExplicit__ = true;
+        if (_Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->value); }
+    }
+
+    bool __fireOnLong(
+        std::string const &_Name, Tokens_T::iterator &_It, Tokens_T &_Tokens)
+    {
+        auto const *pSc = m_pData__->short_circuit_options.doGet(_Name);
+        if (!pSc) return false;
+
+        auto const *pAct = static_cast<option_action const *>(pSc);
+        m_bFired__ = true;
+        _It        = _Tokens.erase(_It);
+        pAct->callback();
+        return true;
+    }
+
+    bool __fireOnShort(std::string const &_Tok, Tokens_T::iterator &_It, Tokens_T &_Tokens)
+    {
+        if (_Tok.size() != 2) return false;
+
+        auto const *pSc = m_pData__->short_circuit_options.doGet(_Tok[1]);
+        if (!pSc) return false;
+
+        auto const *pAct = static_cast<option_action const *>(pSc);
+        m_bFired__ = true;
+        _It        = _Tokens.erase(_It);
+        pAct->callback();
+        return true;
+    }
+
+    bool __fireOnShortChar(char _Key, Tokens_T::iterator &_It, Tokens_T &_Tokens)
+    {
+        auto const *pSc = m_pData__->short_circuit_options.doGet(_Key);
+        if (!pSc) return false;
+
+        auto const *pAct = static_cast<option_action const *>(pSc);
+        m_bFired__ = true;
+        _It        = _Tokens.erase(_It);
+        pAct->callback();
+        return true;
+    }
+
+private:
+    OptionData    *m_pData__ = nullptr;
+    bool           m_bFired__  = false;
+    bool           m_bOptEnd__ = false;
 };
 
 CMD_ARGS_NAMESPACE_END

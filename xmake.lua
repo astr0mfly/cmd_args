@@ -14,6 +14,9 @@ set_warnings("all")     -- -Wall
 add_rules("mode.debug", "mode.release")
 
 if is_plat("windows") then
+    -- 源文件含 UTF-8 中文注释，.clang 默认按当前代码页(936)读取会触发 C4819
+    -- 此处显式声明源字符集与执行字符集，规避 -Wall -Werror 下的编译失败
+    add_cxflags("/utf-8", {force = true})
     if is_mode("debug") then
         set_optimize("none")  -- faster: -O2  fastest: -Ox  none: -O0
         set_runtimes("MDd")

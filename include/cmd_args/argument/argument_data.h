@@ -74,6 +74,12 @@ public:
                   << "Failed to visit with unknown exception " << std::endl;
     }
 
+    /* 解析期可变遍历（env 兜底 / 展开） */
+    void doMutVisit(std::function<void(Argument &)> const &_Fn)
+    {
+        for (auto &&[k, a] : mapArgs) { _Fn(*a); }
+    }
+
     void doGetHelp(std::ostringstream &_Out, std::size_t _Max) const override
     {
         if (mapArgs.empty()) return;
@@ -95,7 +101,16 @@ public:
     Argument const *doGet(std::string const &_Key) const override
     {
         auto it = mapArgs.find(_Key);
-        if (it != mapArgs.end()) return nullptr;
+        if (it == mapArgs.end()) return nullptr;
+
+        return it->second.get();
+    }
+
+    /* 解析期可变查询 */
+    Argument *mutGet(std::string const &_Key)
+    {
+        auto it = mapArgs.find(_Key);
+        if (it == mapArgs.end()) return nullptr;
 
         return it->second.get();
     }
@@ -144,6 +159,12 @@ public:
                   << "Failed to visit with unknown exception " << std::endl;
     }
 
+    /* 解析期可变遍历（env 兜底 / 展开） */
+    void doMutVisit(std::function<void(Argument &)> const &_Fn)
+    {
+        for (auto &&e : mapArgs) { _Fn(*e.second); }
+    }
+
     void doGetHelp(std::ostringstream &_Out, std::size_t _Max) const override
     {
         if (mapArgs.empty()) return;
@@ -167,7 +188,28 @@ public:
             mapArgs.begin(),
             mapArgs.end(),
             [&](decltype(mapArgs)::const_reference _V) { return _V.second->getName() == _Key; });
-        if (it != mapArgs.end()) return nullptr;
+        if (it == mapArgs.end()) return nullptr;
+
+        return it->second.get();
+    }
+
+    /* 解析期可变查询 */
+    Argument *mutGet(std::string const &_Key)
+    {
+        auto it = std::find_if(
+            mapArgs.begin(),
+            mapArgs.end(),
+            [&](decltype(mapArgs)::reference _V) { return _V.second->getName() == _Key; });
+        if (it == mapArgs.end()) return nullptr;
+
+        return it->second.get();
+    }
+
+    /* 按序号取（方位参数赋值） */
+    Argument *mutGetBySeq(size_t _Seq)
+    {
+        auto it = mapArgs.find(_Seq);
+        if (it == mapArgs.end()) return nullptr;
 
         return it->second.get();
     }

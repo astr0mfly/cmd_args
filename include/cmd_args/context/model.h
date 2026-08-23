@@ -20,18 +20,33 @@
 #include "cmd_args/base/def.h"
 
 #include "cmd_args/argument/argument_data.h"
+#include "cmd_args/env/environment_parser.h"
+#include "cmd_args/option/option_data.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-// context的主要参数、选项等数据存储的地方
+/*
+    Context 的核心数据仓库：参数、选项、环境变量统一存放。
+    解析产生的值在这里跨多次 parse 持久保留。
+*/
 class Model
 {
-
 public:
     Model(/* args */);
     ~Model();
 
     ArgumentData m_args__;
+    OptionData   m_opts__;
+    environment_store m_envs__;
+
+    /* argv[0] 探测出的程序名，供内置帮助/环境展示使用 */
+    std::string m_strProgramName__;
+
+    /* 是否注册内置的 -?/--help、-!/--env 等选项 */
+    bool m_bBuiltinOptions__ = true;
+
+    /* 内置选项是否已注册（懒注册，仅一次） */
+    bool m_bBuiltinsRegistered__ = false;
 };
 
 Model::Model(/* args */) {}

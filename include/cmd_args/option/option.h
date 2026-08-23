@@ -48,8 +48,17 @@ FIXME 对于 bool选项，不需要默认值，有对应的命令行参数就是
 */
 struct option_value : option
 {
-    std::string         type;   // bool, int, double, std::string
+    std::string type;   // bool, int, double, std::string
     mutable std::string value;  // the defaut value
+
+    // 是否被命令行显式赋值过（区别于默认值/环境变量兜底）
+    mutable bool bExplicit__ = false;
+
+    // 绑定的环境变量名：命令行未显式给出时，用该变量的值兜底
+    std::string strEnvName__;
+
+    // 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
+    mutable std::function<void(std::string const &)> fnOnSet__;
 
     option_value(
         char sname, std::string lname, std::string help, std::string type, std::string value)
@@ -62,6 +71,18 @@ struct option_value : option
         , type(std::move(type))
         , value(std::move(value))
     {}
+
+    /* 绑定环境变量：命令行显式值 > 环境变量 > 内置默认值 */
+    option_value &env(std::string _EnvName)
+    {
+        strEnvName__ = std::move(_EnvName);
+        return *this;
+    }
+    option_value &on_set(std::function<void(std::string const &)> _Fn)
+    {
+        fnOnSet__ = std::move(_Fn);
+        return *this;
+    }
 };
 
 /*

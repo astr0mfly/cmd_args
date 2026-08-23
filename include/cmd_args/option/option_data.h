@@ -17,8 +17,12 @@
  */
 #pragma once
 
+#include <functional>
+
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
+
+#include "cmd_args/option/option.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -89,6 +93,38 @@ public:
         return nullptr;
     }
 
+    /* 可变访问：解析期需要写入 value / 标记 bExplicit__ / 触发 fnOnSet__ */
+    option_value *mut_find(char _Key)
+    {
+        for (auto &v : m_vecValues) {
+            if (v.short_name == 0) continue;
+            if (v.short_name == _Key) return std::addressof(v);
+        }
+
+        return nullptr;
+    }
+
+    option_value *mut_find(std::string _Key)
+    {
+        for (auto &v : m_vecValues) {
+            if (v.long_name == _Key) return std::addressof(v);
+        }
+
+        return nullptr;
+    }
+
+    void for_each_value(std::function<void(option_value &)> const &_Fn)
+    {
+        for (auto &v : m_vecValues) { _Fn(v); }
+    }
+
+    void for_each_value(std::function<void(option_value const &)> const &_Fn) const
+    {
+        for (auto const &v : m_vecValues) { _Fn(v); }
+    }
+
+    bool doEmpty() const noexcept { return m_vecValues.empty(); }
+
     std::size_t calc_desc_max_length() const noexcept
     {
         std::size_t max_name_length = 0;
@@ -157,6 +193,13 @@ public:
         m_vecActions.emplace_back(std::move(lname), std::move(help), std::move(callback));
     }
 
+    void for_each_action(std::function<void(option_action const &)> const &_Fn) const
+    {
+        for (auto const &v : m_vecActions) { _Fn(v); }
+    }
+
+    bool doEmpty() const noexcept { return m_vecActions.empty(); }
+
     std::size_t calc_desc_max_length() const noexcept
     {
         std::size_t max_name_length = 0;
@@ -195,13 +238,37 @@ struct OptionData
     value_opt_mgr               options;
     std::map<char, std::string> short_name_index;
 
-    
+    bool empty() const noexcept
+    {
+        return short_circuit_options.doEmpty() && options.doEmpty();
+    }
+
+    /*
+        选项部分的使用行片段：[-? | --help] [-x | --timeout <int>]
+    */
+    std::string usage_string() const
+    {
+        std::ostringstream oss;
+        short_circuit_options.for_each_action([&](option_action const &_A) {
+            oss << " [";
+            if (_A.short_name) { oss << "-" << _A.short_name << " | "; }
+            oss << "--" << _A.long_name << "]";
+        });
+        options.for_each_value([&](option_value const &_V) {
+            oss << " [";
+            if (_V.short_name) { oss << "-" << _V.short_name << " | "; }
+            oss << "--" << _V.long_name;
+            if (_V.type != "bool") { oss << " <" << _V.type << ">"; }
+            oss << "]";
+        });
+        return oss.str();
+    }
+
     std::size_t calc_desc_max_length() const noexcept
     {
-        std::size_t max_name_length = 0;
-
-        max_name_length = short_circuit_options.calc_desc_max_length();
-        max_name_length = std::max(options.calc_desc_max_length(), std::size_t(25));
+        std::size_t max_name_length = short_circuit_options.calc_desc_max_length();
+        max_name_length = std::max(max_name_length, options.calc_desc_max_length());
+        max_name_length = std::max(max_name_length, std::size_t(25));
 
         return max_name_length;
     }

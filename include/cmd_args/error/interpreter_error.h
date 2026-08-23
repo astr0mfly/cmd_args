@@ -16,3 +16,97 @@
  * limitations under the License.
  */
 #pragma once
+
+#include <cstring>
+#include <string>
+#include <system_error>
+
+#include "cmd_args/base/def.h"
+
+CMD_ARGS_NAMESPACE_BEGIN
+
+enum class InterpError_E
+{
+    OK = 0,
+    EXIT_REQUESTED,
+    STOPPED,
+    UNKNOWN_COMMAND,
+    END_OF_INPUT
+};
+
+static inline char const *mapInterpError(int _ErrCode) noexcept
+{
+    switch (static_cast<InterpError_E>(_ErrCode)) {
+    case InterpError_E::OK: return "no error";
+    case InterpError_E::EXIT_REQUESTED: return "exit requested";
+    case InterpError_E::STOPPED: return "interpreter stopped";
+    case InterpError_E::UNKNOWN_COMMAND: return "unknown command";
+    case InterpError_E::END_OF_INPUT: return "end of input";
+    default: return "unknwon error";
+    }
+}
+
+class InterpErrorCategory : public std::error_category
+{
+public:
+    InterpErrorCategory()
+        : error_category()
+    {}
+    const char *name() const noexcept override { return ENUM_NAME(InterpError_E); }
+    std::string message(int _V) const override { return mapInterpError(_V); }
+
+    static InterpErrorCategory const &instance()
+    {
+        static InterpErrorCategory instance;
+        return instance;
+    }
+};
+
+std::error_code make_error_code(InterpError_E code)
+{
+    return {
+        static_cast<int>(code),
+        InterpErrorCategory::instance(),
+    };
+}
+
+std::error_condition make_error_condition(InterpError_E code)
+{
+    return {
+        static_cast<int>(code),
+        InterpErrorCategory::instance(),
+    };
+}
+
+class ErrorInterp : public std::logic_error
+{
+public:
+    explicit ErrorInterp(std::error_code _Ec)
+        : logic_error("")
+        , m_ec__(_Ec)
+    {}
+    explicit ErrorInterp(InterpError_E _E)
+        : logic_error("")
+        , m_ec__(make_error_code(_E))
+    {}
+
+    std::error_code const &code() const noexcept { return m_ec__; }
+    char const            *what() const noexcept override
+    {
+        auto const *p = logic_error::what();
+        if (p && std::strlen(p)) { return p; }
+
+        return mapInterpError(m_ec__.value());
+    }
+
+private:
+    std::error_code m_ec__;
+};
+
+CMD_ARGS_NAMESPACE_END
+
+namespace std {
+template <>
+struct is_error_code_enum<cmd_args::InterpError_E> : true_type
+{};
+}  // namespace std

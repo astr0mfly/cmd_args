@@ -17,21 +17,25 @@
  */
 #pragma once
 
+#include <cstdlib>
+
 #include "cmd_args/base/def.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 /*
-    解释器，解释执行context中的绑定动作
+    解释器，解释执行context中的绑定动作：
+
+    - once() : 常驻一次，命令解析完毕之后以指定退出码退出进程
+    - loop() : 常驻后台，从标准输入逐行读取命令并执行，直到 exit/quit/EOF
 */
 class Interpreter
 {
-
 public:
     Interpreter(/* args */);
     ~Interpreter();
 
     // be used in once mode and return last_val
-    [[noreturn]] void once() const noexcept { exit(0); }
+    [[noreturn]] void once() const noexcept { std::exit(0); }
 
 private:
     /* data */

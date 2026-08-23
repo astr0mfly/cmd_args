@@ -26,9 +26,14 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+/*
+    参数解析器：
+    - 命名参数  : --name=value / --name value
+    - 方位参数  : 剩余的非选项 token，按声明顺序依次赋值
+    - 数量校验  : 方位参数数量不一致抛 UNKNWON_ARGS（携带明细）
+*/
 class argument_parser
 {
-private:
 public:
     argument_parser(ArgumentData *_Data)
         : m_pData__(_Data)
@@ -36,99 +41,128 @@ public:
 
     void parse(Tokens_T &_Tokens)
     {
-        if (_Tokens.size() < m_pData__->mgrName.doSize()) {
-            throw ErrorParse(ParseError_E::NOT_ENOUGH_ARGS);
+        parseNamedOnly(_Tokens);
+
+        // 2. 方位参数：剩余的非选项 token
+        std::vector<std::string> vecPos;
+        for (auto const &t : _Tokens) {
+            if (!util::starts_with(t, "-")) { vecPos.emplace_back(t); }
         }
 
-        for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
-            std::error_code ec;
-            /*           m_pData__->mgrName.parse(ec, *pos);
-                       if (ec) {
-                           pos = _Tokens.erase(pos);
-                           break;
-                       }*/
-            ++pos;
-        }
-
-        // start parse position arguments
-        if (_Tokens.size() != m_pData__->mgrPos.doSize()) {
+        if (vecPos.size() != m_pData__->mgrPos.doSize()) {
             std::ostringstream oss;
-            oss << "give " << _Tokens.size() << ", but need " << m_pData__->mgrPos.doSize() << '\n';
+            oss << "give " << vecPos.size() << ", but need " << m_pData__->mgrPos.doSize() << '\n';
             oss << "uncaptured command line arguments:\n";
             for (auto const &tok : _Tokens) { oss << tok << '\n'; }
-
             throw ErrorParse(ParseError_E::UNKNWON_ARGS, oss.str());
         }
 
-        std::size_t i = 0;
-        for (auto it{ _Tokens.begin() }; it != _Tokens.end(); ++i, ++it) {
-            // m_pData__->mgrPos.parse(i, *it);
+        size_t i = 0;
+        for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
+            if (!util::starts_with(*pos, "-")) {
+                auto *p = m_pData__->mgrPos.mutGetBySeq(i);
+                if (p) { p->set(vecPos[i]); }
+                pos = _Tokens.erase(pos);
+                ++i;
+                continue;
+            }
+            ++pos;
         }
+    }
+
+    /*
+        只消化命名参数（--name=value / --name value），不动方位参数。
+        用于 `--` 结束选项区之前先消费命名参数的场景。
+    */
+    void parseNamedOnly(Tokens_T &_Tokens)
+    {
+        for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
+            std::string const &tok = *pos;
+            if (!util::starts_with(tok, "--")) {
+                ++pos;
+                continue;
+            }
+
+            auto        body = tok.substr(2);
+            auto        eq   = body.find('=');
+            std::string name = (eq == std::string::npos) ? body : body.substr(0, eq);
+            std::string value;
+            if (eq != std::string::npos) { value = body.substr(eq + 1); }
+
+            auto *p = m_pData__->mgrName.mutGet(name);
+            if (!p) {
+                ++pos;  // 未知长选项/命名参数，留给上层报错
+                continue;
+            }
+
+            if (value.empty()) {
+                auto nx = std::next(pos);
+                if (nx == _Tokens.end()) {
+                    throw ErrorParse(
+                        ParseError_E::NEED_VALUE,
+                        "named argument '--" + name + "' need a value");
+                }
+                value = *nx;
+                _Tokens.erase(nx);
+            }
+
+            p->set(std::move(value));
+            pos = _Tokens.erase(pos);
+        }
+    }
+
+    /*
+        `--` 之后进入纯方位模式：剩余的全部 token（含 - 开头）都当方位参数
+    */
+    void parsePositionalOnly(Tokens_T &_Tokens)
+    {
+        std::vector<std::string> vecPos(_Tokens.begin(), _Tokens.end());
+        if (vecPos.size() != m_pData__->mgrPos.doSize()) {
+            std::ostringstream oss;
+            oss << "give " << vecPos.size() << ", but need " << m_pData__->mgrPos.doSize() << '\n';
+            throw ErrorParse(ParseError_E::UNKNWON_ARGS, oss.str());
+        }
+
+        for (size_t i = 0; i < vecPos.size(); ++i) {
+            auto *p = m_pData__->mgrPos.mutGetBySeq(i);
+            if (p) { p->set(vecPos[i]); }
+        }
+        _Tokens.clear();
     }
 
     void parse(std::string const &_Line)
     {
-        // auto &&[k, v] = util::parse_line(_Line);
-        // auto it       = mapArgs.find(k);
-        // if (it == mapArgs.end()) { throw ErrorParse(ParseError_E::UNKNWON_ARGS); }
-
-        // if (v.empty()) { throw ErrorParse(ParseError_E::NEED_VALUE); }
-
-        // it->second->set(std::move(v));
+        auto [k, v] = util::parse_line(_Line);
+        auto *p     = m_pData__->mgrName.mutGet(k);
+        if (!p) { throw ErrorParse(ParseError_E::UNKNWON_ARGS, "unknown named argument: " + k); }
+        p->set(std::move(v));
     }
-
-    // template <typename T>
-    // void check_add_argument_name(std::string const &key) const
-    //{
-    //     using namespace util;
-    //     if (type_string<T>() == "null") {
-    //         std::cerr << "(build error) argument type is not supported: " << typeid(T).name()
-    //                   << std::endl;
-    //         std::exit(-1);
-    //     }
-    //     if (type_string<T>() == "bool") {
-    //         std::cerr << "(build error) argument type cannot be bool" << std::endl;
-    //         std::exit(-1);
-    //     }
-    //     if (key == "") {
-    //         std::cerr << "(build error) argument name cannot be empty" << std::endl;
-    //         std::exit(-1);
-    //     }
-    //     if (pos_args.doFind(key) || named_args.doFind(key)) {
-    //         std::cerr << "(build error) argument name " << key << " already exists" << std::endl;
-    //         std::exit(-1);
-    //     }
-    // }
 
     template <typename T>
     T get_argument(std::string const &name) const
     {
         using namespace util;
-        auto *p = m_pData__->mgrPos.doGet(name);
-        if (p) {
-            if (p->getType() != util::type_string<T>()) {
-                std::cerr << "(get error) argument type mismatch: set '" << p->getType()
-                          << "' but you try get with '" << util::type_string<T>() << "'"
-                          << std::endl;
-                std::exit(-1);
-            }
-
-            return util::parse_value<T>(p->getValue());
-        }
-
-        p = m_pData__->mgrPos.doGet(name);
+        auto const *p = m_pData__->mgrName.doGet(name);
+        if (!p) { p = m_pData__->mgrPos.doGet(name); }
         if (!p) {
-            std::cerr << "(get error) argument not found: " << name << std::endl;
-            std::exit(-1);
+            throw ErrorParse(ParseError_E::UNKNWON_ARGS, "argument not found: " + name);
         }
 
-        if (p->getType() != util::type_string<T>()) {
-            std::cerr << "(get error) argument type mismatch: set '" << p->getType()
-                      << "' but you try get with '" << util::type_string<T>() << "'" << std::endl;
-            std::exit(-1);
+        auto const &type = p->getType();
+        if (!type.empty() && type != util::type_string<T>()) {
+            throw ErrorParse(
+                ParseError_E::UNKNWON_ARGS,
+                "argument type mismatch: set '" + type + "' but try get with '"
+                    + util::type_string<T>() + "'");
         }
 
         return util::parse_value<T>(p->getValue());
+    }
+
+    bool parsed(NameLong_T const &_Name) const noexcept
+    {
+        auto const *p = m_pData__->mgrName.doGet(_Name);
+        return p && p->hasValue();
     }
 
     // some alias for get_argument

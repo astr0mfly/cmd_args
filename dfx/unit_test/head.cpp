@@ -412,12 +412,12 @@ TEST_CASE("context: env_string 头部与标记", "[env]")
     REQUIRE(s.find("1+ : \"B\" = \"2\"") != std::string::npos);
 }
 
-/* ==================== 内置短回路选项（Parser 层 isFired） ==================== */
+/* ==================== 内置短回路选项（Compiler 层 isFired） ==================== */
 
-TEST_CASE("parser: -?/--help、-!/--env 命中即短路", "[parser]")
+TEST_CASE("parser: -?/--help、-!/--env 命中即短路", "[compiler]")
 {
     Model  model;
-    Parser p(&model);
+    Compiler p(&model);
     p.set_program_name("ut_parser");
 
     Tokens_T help{ "--help" };

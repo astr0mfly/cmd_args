@@ -27,7 +27,7 @@ namespace argument_detail {
 
 /*
     参数管理器的统一接口：命名参数管理器与方位参数管理器都实现它，
-    使 Parser / schema 导出等可以多态地统一访问（usage/help/查找/遍历/推送）。
+    使 Compiler / schema 导出等可以多态地统一访问（usage/help/查找/遍历/推送）。
 */
 class ArgumentMgrItf
 {

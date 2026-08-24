@@ -39,10 +39,10 @@ CMD_ARGS_NAMESPACE_BEGIN
     - ensureBuiltins()  内置选项注册（--help/--env/--env-set 等，懒注册一次）
     - finalize()        seed 环境兜底 + ${VAR} 展开 + save-config 写出
 */
-class Parser
+class Compiler
 {
 public:
-    Parser(Model *_Data)
+    Compiler(Model *_Data)
         : m_argParser__(&_Data->m_args__)
         , m_optParser__(&_Data->m_opts__)
         , m_envBuilder__(&_Data->m_envs__)
@@ -50,13 +50,13 @@ public:
         , m_pModel__(_Data)
     {}
 
-    Parser &set_program_name(Name_T name)
+    Compiler &set_program_name(Name_T name)
     {
         program_name = std::move(name);
         return *this;
     }
 
-    Parser &set_description(Desc_T _Desc)
+    Compiler &set_description(Desc_T _Desc)
     {
         description = std::move(_Desc);
         return *this;

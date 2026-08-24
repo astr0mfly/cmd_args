@@ -32,7 +32,7 @@ CMD_ARGS_NAMESPACE_BEGIN
     Executor（执行器）：解析完成后，按解析顺序执行 OptionData 中的
     OptionAction（fnOnSet__ 回调 + action 模板 system_call）。
 
-    使用场景：批量解析模式（Context::parse）下，Parser 纯解析结束后，
+    使用场景：批量解析模式（Context::parse）下，Compiler 纯解析结束后，
     Executor 按 recordParseOrder 记录的顺序统一触发 action。
     （REPL/Interpreter 模式下 action 由 Interpreter 的 virtual hook 内联触发，
      不使用 Executor。）

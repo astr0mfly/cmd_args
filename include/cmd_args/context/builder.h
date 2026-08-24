@@ -32,7 +32,7 @@ CMD_ARGS_NAMESPACE_BEGIN
 /*
     Builder：把 Context::build<>()/addOption()/addFlag() 的调用
     转交给 ArgumentBuilder / OptionBuilder，写入 Model。
-    是管线第一步（Context → Builder → Lexer → Parser → Model）的落点。
+    是管线第一步（Context → Builder → Lexer → Compiler → Model）的落点。
 */
 class Builder : public ArgumentBuilder, private OptionBuilder
 {

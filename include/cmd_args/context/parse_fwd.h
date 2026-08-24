@@ -32,7 +32,7 @@ using Name_T      = std::string;   // 通用名字（参数名 / 环境变量键
 using NameShort_T = char;          // 短名（短选项 -x 的 x；'\0' 表示无短名）
 using NameLong_T  = std::string;   // 长名（--long 的 long，不带前缀）
 using Desc_T      = std::string;   // 描述/帮助文本
-using Tokens_T    = std::list<std::string>;  // token 流（Lexer 输出 / Parser 消费）
+using Tokens_T    = std::list<std::string>;  // token 流（Lexer 输出 / Compiler 消费）
 using Envs_T      = std::vector<std::string>;  // "KEY=VALUE" 环境串列表
 
 CMD_ARGS_NAMESPACE_END

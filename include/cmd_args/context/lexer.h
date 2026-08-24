@@ -509,7 +509,7 @@ public:
     }
 
     /*
-        归一化的命令行 token 列表（供 Parser 消费）：
+        归一化的命令行 token 列表（供 Compiler 消费）：
         - 只有 argv 输入，不包含环境变量
         - `--name=value` 合并为单个 token
         - 跳过空/纯空白 token

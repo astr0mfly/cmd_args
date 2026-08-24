@@ -33,23 +33,23 @@
 #include "cmd_args/error/parser_error.h"
 
 #include "builder.h"
+#include "compiler.h"
 #include "executor.h"
 #include "interpreter.h"
 #include "lexer.h"
 #include "model.h"
-#include "parser.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
     核心服务对象：
     - build<>() 构筑参数/选项
-    - parse()   词法(Lexer) → 纯解析(Parser) → action 执行(Executor) → 写入 Model
+    - parse()   词法(Lexer) → 纯解析(Compiler) → action 执行(Executor) → 写入 Model
     - env 交互  set_env/unset_env/apply_env/env_string
     - once()/loop() 执行模式（委托 Interpreter）
 
     三层架构：
-    - Parser（纯解析层）：继承 ArgumentParser+OptionParser+EnvParser，纯赋值，不触发 OptionAction
+    - Compiler（纯解析层）：继承 ArgumentParser+OptionParser+EnvParser，纯赋值，不触发 OptionAction
     - Executor（执行器）：解析完成后按解析顺序执行 OptionAction
     - Interpreter（实时引擎）：继承三 parser，继承 Parser 的 virtual hook 实现逐 Token 内联执行
 */
@@ -59,7 +59,7 @@ public:
     Context(std::string _Name)
         : m_strPrjName__(_Name)
         , m_instData__()
-        , m_parser__(&m_instData__)
+        , m_compiler__(&m_instData__)
         , m_executor__(&m_instData__.m_opts__)
         , m_interp__(&m_instData__)
     {}
@@ -283,7 +283,7 @@ public:
 
     Context &reset()
     {
-        m_parser__.resetData();
+        m_compiler__.resetData();
         clearLast();
         return *this;
     }
@@ -337,7 +337,7 @@ public:
     /* ---------- 执行模式（委托 Interpreter） ---------- */
 
     [[noreturn]] void once() { m_interp__.once(); }
-    void              loop() { m_parser__.ensureBuiltins(); m_interp__.loop(static_cast<Errors &>(*this)); }
+    void              loop() { m_compiler__.ensureBuiltins(); m_interp__.loop(static_cast<Errors &>(*this)); }
 
     using Errors::dump;
     using Errors::getLast;
@@ -367,41 +367,41 @@ private:
             toks = lex.tokens();
         }
 
-        m_parser__.set_program_name(m_instData__.m_strProgramName__);
-        m_parser__.set_description(m_strPrjName__);
+        m_compiler__.set_program_name(m_instData__.m_strProgramName__);
+        m_compiler__.set_description(m_strPrjName__);
 
         Envs_T envs;
         if (_Envp) { for (int i = 0; _Envp[i]; ++i) { envs.emplace_back(_Envp[i]); } }
 
-        m_parser__.ensureBuiltins();
-        m_parser__.parse(toks, envs);      // 纯解析（含 OptionParser + ArgumentParser + 短回路）
+        m_compiler__.ensureBuiltins();
+        m_compiler__.parse(toks, envs);     // 纯解析（含 OptionParser + ArgumentParser + 短回路）
         m_executor__.execute();             // 按解析顺序执行 OptionAction
-        m_parser__.finalize();              // seed 环境兜底 + 展开 + save-config
+        m_compiler__.finalize();            // seed 环境兜底 + 展开 + save-config
 
         m_interp__.markParsed();
-        m_bFired__ = m_parser__.isFired();
+        m_bFired__ = m_compiler__.isFired();
     }
 
     void __doParse(Tokens_T const &_Tokens, Envs_T const &_Env)
     {
-        m_parser__.set_program_name(m_instData__.m_strProgramName__.empty()
-                                         ? m_strPrjName__
-                                         : m_instData__.m_strProgramName__);
-        m_parser__.set_description(m_strPrjName__);
+        m_compiler__.set_program_name(m_instData__.m_strProgramName__.empty()
+                                          ? m_strPrjName__
+                                          : m_instData__.m_strProgramName__);
+        m_compiler__.set_description(m_strPrjName__);
 
-        m_parser__.ensureBuiltins();
-        m_parser__.parse(_Tokens, _Env);
+        m_compiler__.ensureBuiltins();
+        m_compiler__.parse(_Tokens, _Env);
         m_executor__.execute();
-        m_parser__.finalize();
+        m_compiler__.finalize();
 
         m_interp__.markParsed();
-        m_bFired__ = m_parser__.isFired();
+        m_bFired__ = m_compiler__.isFired();
     }
 
 private:
     std::string  m_strPrjName__;
     Model        m_instData__;
-    Parser       m_parser__;
+    Compiler     m_compiler__;
     Executor     m_executor__;
     Interpreter  m_interp__;
     bool         m_bFired__ = false;

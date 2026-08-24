@@ -40,8 +40,8 @@ CMD_ARGS_NAMESPACE_BEGIN
     在 OptionParser.__assign 的 virtual hook 中内联触发 OptionAction（fnOnSet__ + action 模板），
     实现逐 Token 的"解析即执行"。
 
-    与纯解析 Parser 的区别：
-    - Parser（纯解析层）：OptionParser.__assign 仅赋值+标记，action 由 Executor 后置统一执行。
+    与纯解析 Compiler 的区别：
+    - Compiler（纯解析层）：OptionParser.__assign 仅赋值+标记，action 由 Executor 后置统一执行。
     - Interpreter（实时引擎）：继承 OptionParser 并 override onOptionAssigned，
       在 OptionParser.__assign 内联触发 action，实现逐行/逐 Token 的即时执行。
 

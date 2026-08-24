@@ -18,7 +18,7 @@
 #pragma once
 
 /*
- * 语法期错误域（ParseError_E）：Parser 分配 token 时失败即抛 ErrorParse。
+ * 语法期错误域（ParseError_E）：Compiler 分配 token 时失败即抛 ErrorParse。
  * 典型场景：参数数量不足/不匹配（NOT_ENOUGH_ARGS / UNKNWON_ARGS，后者为历史拼写勿改）、
  * 选项缺值（NEED_VALUE）、聚合短选项含非 bool（MUST_BE_BOOL）、
  * 裸 '-'（UNEXCEPTED_BARE）、非法前缀（WRONG_PREFIX）、未知选项（UNKNOWN_OPTION）。

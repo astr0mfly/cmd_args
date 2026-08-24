@@ -21,6 +21,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "cmd_args/base/def.h"
@@ -37,6 +38,9 @@ CMD_ARGS_NAMESPACE_BEGIN
 number: ([0-9])+
 decimal:  (-?\d+)(\.\d+)?((e|E)(-?\d+))?
 ident: ([a-zA-Z_])+[\w]
+
+Scanner 支持两种分词模式：scan() 批量分词（局部 token 变量），
+step() 增量逐字符喂入（复用同一状态分派表，供流式 Interpreter 使用）。
 
 */
 
@@ -84,11 +88,15 @@ public:
     void          setAttr(Type_E _A) { m_enAttr__ = _A; }
     void          pick(char _C) { m_strName__ += _C; }
     void          resetName() { m_strName__.clear(); }
+    void          setInlineEq(bool _V) { m_bInlineEq__ = _V; }
+    /// @brief 是否由 '=' 内联分隔（--name=value 中 '=' 直接结束长名词）
+    bool hasInlineEq() const noexcept { return m_bInlineEq__; }
     void          clear()
     {
-        m_enAttr__ = Type_E::Unknown;
+        m_enAttr__    = Type_E::Unknown;
         m_strName__.clear();
-        m_locLine__ = 0;
+        m_locLine__   = 0;
+        m_bInlineEq__ = false;  // ← 新增复位
     }
 
     /*
@@ -112,6 +120,7 @@ private:
     Type_E m_enAttr__ = Type_E::Unknown;
     Name_T m_strName__;
     size_t m_locLine__ = 0;
+    bool   m_bInlineEq__ = false;
 };
 
 class Scanner
@@ -137,10 +146,12 @@ public:
         END                   // 解析结束
     };
     using ScanTbl_T = std::map<Phrase_E, ScanProc_T>;
-    Scanner(Source_T const &_Source)
-        : m_refSource__(_Source)
+    // 源按值持有：Scanner({}) 等临时源构造不再悬垂（成员引用绑定临时对象是 UB，
+    // 流式 step() 逐字符触碰 m_source__，必须保证其生命周期覆盖整个 Scanner）
+    Scanner(Source_T _Source)
+        : m_source__(std::move(_Source))
     {
-        if (!_Source.empty()) { m_itPc__ = _Source.front().cbegin(); }
+        if (!m_source__.empty()) { m_itPc__ = m_source__.front().cbegin(); }
         __initScanTable();
     }
 
@@ -159,6 +170,27 @@ public:
         __flush(tDefault);
 
         return std::move(m_tResult__);
+    }
+
+    /// @brief 增量模式：逐字符喂入，token 完成时返回之（Interpreter 流式模式）
+    /// @param _Cur 字符；'\0' 表示流结束（强制终结当前 token）
+    /// @return 有 token 完成则返回之，否则 nullopt
+    std::optional<Token> step(char _Cur)
+    {
+        if (_Cur == '\0') {
+            __flush(m_tCur__);
+            m_enState__ = Phrase_E::BEGIN;
+        }
+        else {
+            m_tblScanInput__[m_enState__](_Cur, m_tCur__);
+            if (m_enState__ == Phrase_E::END) {
+                __processEnd('\0', m_tCur__);
+            }
+        }
+        if (m_tResult__.empty()) return std::nullopt;
+        auto tok = std::move(m_tResult__.front());
+        m_tResult__.erase(m_tResult__.begin());  // 每次 step 至多产出 1 个 token
+        return tok;
     }
 
 private:
@@ -368,6 +400,7 @@ private:
         if (_Cur == '=' || std::isspace(static_cast<unsigned char>(_Cur))) {
             // --aaa= 或 --aaa 后跟空白，结束长名词
             _T.setAttr(Token::Type_E::LongName);
+            if (_Cur == '=') { _T.setInlineEq(true); }  // ← 新增
             __setState(Phrase_E::END);
             return;
         }
@@ -458,28 +491,29 @@ private:
     inline void __setState(Phrase_E _State) noexcept { m_enState__ = _State; }
     inline void __nextChar() noexcept
     {
-        if (m_cntLoc__ >= m_refSource__.size()) return;
-        if (m_itPc__ == m_refSource__[m_cntLoc__].cend()) return;
+        if (m_cntLoc__ >= m_source__.size()) return;
+        if (m_itPc__ == m_source__[m_cntLoc__].cend()) return;
         ++m_itPc__;
     }
     inline void __nextLine() noexcept
     {
         ++m_cntLoc__;
-        if (m_cntLoc__ < m_refSource__.size()) { m_itPc__ = m_refSource__[m_cntLoc__].cbegin(); }
+        if (m_cntLoc__ < m_source__.size()) { m_itPc__ = m_source__[m_cntLoc__].cbegin(); }
     }
 
-    bool __isSourceEnd() const noexcept { return m_cntLoc__ >= m_refSource__.size(); }
+    bool __isSourceEnd() const noexcept { return m_cntLoc__ >= m_source__.size(); }
     bool __isLineEnd() const noexcept
     {
-        if (m_cntLoc__ >= m_refSource__.size()) return true;
-        return m_itPc__ == m_refSource__[m_cntLoc__].cend();
+        if (m_cntLoc__ >= m_source__.size()) return true;
+        return m_itPc__ == m_source__[m_cntLoc__].cend();
     }
 
-    Source_T const &m_refSource__;
+    Source_T        m_source__;  // 输入源（值持有，见构造函数注释）
     Phrase_E        m_enState__ = Phrase_E::BEGIN;  // 解析的状态
     Pc_T            m_itPc__;
     size_t          m_cntLoc__ = 0;
     Tokens_T        m_tResult__;
+    Token           m_tCur__;  ///< 流式模式当前处理中的 token（scan() 使用局部变量，不经此成员）
     ScanTbl_T       m_tblScanInput__;  // 状态分派表（成员，各自绑定本实例 this）
 };
 

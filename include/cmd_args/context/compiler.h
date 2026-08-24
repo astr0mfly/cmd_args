@@ -21,6 +21,7 @@
 #include "cmd_args/option/option_builder.h"
 #include "cmd_args/option/option_parser.h"
 
+#include "builtin_options.h"
 #include "describe.h"
 #include "model.h"
 #include "parse_fwd.h"
@@ -144,64 +145,13 @@ public:
     /// 还原 ArgumentData/OptionData 到内置默认值（Env 会话态保留）
     void resetData()
     {
-        pModel__->args.mgrName.doMutVisit([](Argument &a) { a.reset(); });
-        pModel__->args.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
-        pModel__->opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
+        builtin_detail::resetModelData(pModel__);
     }
 
     /// 内置选项注册（--help/--env/--env-set 等，懒注册一次）
     void ensureBuiltins()
     {
-        if (!pModel__->bBuiltinOptions || pModel__->bBuiltinsRegistered) return;
-        pModel__->bBuiltinsRegistered = true;
-
-        Model *m = pModel__;
-        OptionBuilder ob(&pModel__->opts);
-        ob.addShortCircuit('?', "help", "show this help message", [m] {
-            std::cout << __descHelpOf(*m);
-        });
-        ob.addShortCircuit('!', "env", "show environments of this program", [m] {
-            std::cout << __descEnvOf(*m);
-        });
-        ob.addShortCircuit('\0', "env-apply", "write changed environments back to the OS", [m] {
-            auto applied = EnvParser(&m->envs).apply();
-            for (auto const &a : applied) { std::cout << "applied " << a << "\n"; }
-            std::cout << __descEnvOf(*m);
-        });
-        ob.addOption<std::string>("env-set", "set an environment variable, KEY=VALUE", "")
-            ->bBuiltin__ = true;
-        pModel__->opts.mgrValues.mutFind("env-set")->onSet([m](std::string const &_V) {
-            EnvBuilder b(&m->envs);
-            auto eq = _V.find('=');
-            if (eq == std::string::npos) {
-                b.setEnv(_V, "");
-            }
-            else {
-                b.setEnv(_V.substr(0, eq), _V.substr(eq + 1));
-            }
-        });
-        ob.addOption<std::string>("env-unset", "unset an environment variable, KEY", "")
-            ->bBuiltin__ = true;
-        pModel__->opts.mgrValues.mutFind("env-unset")->onSet(
-            [m](std::string const &_V) { EnvBuilder(&m->envs).unsetEnv(_V); });
-
-        ob.addOption<std::string>(
-              "load-config", "load a yaml config file before later args, PATH", "")
-            ->bBuiltin__ = true;
-        pModel__->opts.mgrValues.mutFind("load-config")->onSet(
-            [m](std::string const &_Path) {
-                auto text = config::read_file(_Path);
-                if (!text) {
-                    std::cerr << "(load-config) cannot read file: " << _Path << "\n";
-                    return;
-                }
-                config::from_yaml(*m, *text);
-            });
-        ob.addOption<std::string>(
-              "save-config", "write the resolved parameter/env state to a yaml file, PATH", "")
-            ->bBuiltin__ = true;
-        pModel__->opts.mgrValues.mutFind("save-config")->onSet(
-            [m](std::string const &_Path) { m->strSaveConfigPath = _Path; });
+        builtin_detail::registerBuiltinOptions(pModel__);
     }
 
     /// 解析后置：seed 环境兜底 + ${VAR} 展开 + save-config 写出

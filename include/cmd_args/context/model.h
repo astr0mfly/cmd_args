@@ -74,8 +74,8 @@ public:
     std::string m_strSaveConfigPath__;
 };
 
-Model::Model(/* args */) {}
+inline Model::Model(/* args */) {}
 
-Model::~Model() {}
+inline Model::~Model() {}
 
 CMD_ARGS_NAMESPACE_END

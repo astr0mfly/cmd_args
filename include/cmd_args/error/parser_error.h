@@ -77,7 +77,7 @@ public:
     }
 };
 
-std::error_code make_error_code(ParseError_E code)
+inline std::error_code make_error_code(ParseError_E code)
 {
     return {
         static_cast<int>(code),
@@ -85,7 +85,7 @@ std::error_code make_error_code(ParseError_E code)
     };
 }
 
-std::error_condition make_error_condition(ParseError_E code)
+inline std::error_condition make_error_condition(ParseError_E code)
 {
     return {
         static_cast<int>(code),

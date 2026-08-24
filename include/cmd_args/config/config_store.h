@@ -53,7 +53,7 @@ namespace config {
 
 /* ---------- 参数格式 / 快照 ---------- */
 
-parameter_schema schema_of(Model const &_M)
+inline parameter_schema schema_of(Model const &_M)
 {
     parameter_schema sch;
     sch.program = _M.m_strProgramName__;
@@ -128,7 +128,7 @@ static std::vector<std::pair<std::string, std::string>> __relevant_envs(Model co
     return out;
 }
 
-parameter_snapshot snapshot_of(Model const &_M)
+inline parameter_snapshot snapshot_of(Model const &_M)
 {
     parameter_snapshot snap;
     auto               sch = schema_of(_M);
@@ -138,7 +138,7 @@ parameter_snapshot snapshot_of(Model const &_M)
 }
 
 /* 快照回填：参数走 setExternal，环境走 set_env（不写回 OS） */
-void apply_snapshot(Model &_M, parameter_snapshot const &_Snap)
+inline void apply_snapshot(Model &_M, parameter_snapshot const &_Snap)
 {
     for (auto const &e : _Snap.values) {
         if (e.kind == "named") {
@@ -168,7 +168,7 @@ static std::string __yamlSection(parameter_entry const &_E)
     return {};  // short_circuit 不入配置
 }
 
-std::string to_yaml(Model const &_M)
+inline std::string to_yaml(Model const &_M)
 {
     yaml_doc doc;
 
@@ -185,7 +185,7 @@ std::string to_yaml(Model const &_M)
     return head + doc.dump();
 }
 
-std::string env_to_yaml(Model const &_M)
+inline std::string env_to_yaml(Model const &_M)
 {
     yaml_doc doc;
     for (auto const &[k, v] : __relevant_envs(_M)) { doc.set("environment." + k, v); }
@@ -224,7 +224,7 @@ static bool __typeOk(std::string const &_Type, std::string const &_Value)
 }
 
 /* YAML 文本 → 会话（environment 分区 → set_env；参数分区 → setExternal） */
-bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
+inline bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
 {
     std::string err;
     auto        doc = yaml_doc::parse(_Text, &err);
@@ -290,7 +290,7 @@ bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
 }
 
 /* 仅 environment 分区 → set_env（其余分区忽略） */
-bool yaml_to_env(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
+inline bool yaml_to_env(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
 {
     std::string err;
     auto        doc = yaml_doc::parse(_Text, &err);
@@ -306,7 +306,7 @@ bool yaml_to_env(Model &_M, std::string const &_Text, Errors *_Warnings = nullpt
 
 /* ---------- 文件读写 ---------- */
 
-std::optional<std::string> read_file(std::string const &_Path)
+inline std::optional<std::string> read_file(std::string const &_Path)
 {
     std::ifstream ifs(_Path, std::ios::binary);
     if (!ifs) return std::nullopt;
@@ -315,7 +315,7 @@ std::optional<std::string> read_file(std::string const &_Path)
     return oss.str();
 }
 
-bool write_file(std::string const &_Path, std::string const &_Text)
+inline bool write_file(std::string const &_Path, std::string const &_Text)
 {
     std::ofstream ofs(_Path, std::ios::binary | std::ios::trunc);
     if (!ofs) return false;

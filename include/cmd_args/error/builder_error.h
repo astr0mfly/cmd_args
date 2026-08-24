@@ -80,7 +80,7 @@ public:
 };
 
 /* 错误码 → std::error_code / std::error_condition（注册进标准错误体系） */
-std::error_code make_error_code(BuildError_E code)
+inline std::error_code make_error_code(BuildError_E code)
 {
     return {
         static_cast<int>(code),
@@ -88,7 +88,7 @@ std::error_code make_error_code(BuildError_E code)
     };
 }
 
-std::error_condition make_error_condition(BuildError_E code)
+inline std::error_condition make_error_condition(BuildError_E code)
 {
     return {
         static_cast<int>(code),

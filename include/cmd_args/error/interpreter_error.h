@@ -70,7 +70,7 @@ public:
     }
 };
 
-std::error_code make_error_code(InterpError_E code)
+inline std::error_code make_error_code(InterpError_E code)
 {
     return {
         static_cast<int>(code),
@@ -78,7 +78,7 @@ std::error_code make_error_code(InterpError_E code)
     };
 }
 
-std::error_condition make_error_condition(InterpError_E code)
+inline std::error_condition make_error_condition(InterpError_E code)
 {
     return {
         static_cast<int>(code),

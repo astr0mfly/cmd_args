@@ -98,6 +98,6 @@ struct BuildHelper
     }
 };
 
-Builder::~Builder() {}
+inline Builder::~Builder() {}
 
 CMD_ARGS_NAMESPACE_END

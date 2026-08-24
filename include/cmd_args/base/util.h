@@ -178,7 +178,7 @@ inline std::string unwrap(std::string const &_Text, char _Left, char _Right)
 }
 
 /* 字符串替换：把 str 中所有 from 替换为 to（action 的 {value} 占位符替换即用它） */
-std::string replace(std::string const &str, std::string const &from, std::string const &to)
+inline std::string replace(std::string const &str, std::string const &from, std::string const &to)
 {
     std::string ret;
     std::size_t pos = 0, pre_pos = 0;
@@ -191,7 +191,7 @@ std::string replace(std::string const &str, std::string const &from, std::string
 }
 
 /* "KEY=VALUE" 行拆分为键值对（环境变量装载/展示用）；无 '=' 返回空对 */
-std::pair<std::string, std::string> parse_line(std::string const &_Line)
+inline std::pair<std::string, std::string> parse_line(std::string const &_Line)
 {
     auto pos = _Line.find('=');
     if (pos == std::string::npos) return {};

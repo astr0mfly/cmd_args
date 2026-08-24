@@ -61,8 +61,8 @@ public:
 
     void onOptionAssigned(OptionValue *_Opt, std::string const &) override
     {
-        // 自定义赋值回调（--env-set 等内置交互选项）
-        if (_Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->strValue); }
+        // 自定义赋值回调：内置选项已在 __assign 解析期内联触发过，此处仅处理用户选项
+        if (!_Opt->bBuiltin__ && _Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->strValue); }
 
         // action 模板 → std::system 子进程命令
         if (!_Opt->strActionTemplate__.empty()) {

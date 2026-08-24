@@ -42,16 +42,18 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
-    核心服务对象：
+    核心容器：
     - build<>() 构筑参数/选项
-    - parse()   词法(Lexer) → 纯解析(Compiler) → action 执行(Executor) → 写入 Model
+    - parse()   编译(Compiler) → hasAction 门控(Executor) → finalize
     - env 交互  set_env/unset_env/apply_env/env_string
-    - once()/loop() 执行模式（委托 Interpreter）
+    - once()/loop() 执行模式（委托 Interpreter 流式引擎）
 
-    三层架构：
-    - Compiler（纯解析层）：继承 ArgumentParser+OptionParser+EnvParser，纯赋值，不触发 OptionAction
-    - Executor（执行器）：解析完成后按解析顺序执行 OptionAction
-    - Interpreter（实时引擎）：继承三 parser，继承 Parser 的 virtual hook 实现逐 Token 内联执行
+    通用容器设计：
+    - Model 是数据仓库（ArgumentData + OptionData + EnvData + Expression 统一视图）
+    - Compiler 是编译引擎（Lexer → Parsers → Expression 分类入库）
+    - Executor 是批量执行器（Model.hasAction() 为真时按 actionOrder 顺序触发 OptionAction）
+    - Interpreter 是流式解释器（逐字符分词 → 即时分类执行）
+    - 执行路径由调用入口（parse vs once/loop）和数据内容（hasAction）共同决定
 */
 class Context : private Errors
 {
@@ -109,6 +111,9 @@ public:
     }
 
     /* ---------- 数据访问 ---------- */
+
+    /// @brief 获取底层 Model 引用（只读，用于 expressions() 等统一视图）
+    auto model() const noexcept -> Model const & { return m_instData__; }
 
     Argument *argument(Name_T const &_Name)
     {
@@ -351,7 +356,7 @@ private:
         return &const_cast<Model &>(m_instData__).m_envs__;
     }
 
-    /* 批量解析路径：纯解析 → action 执行 → finalize */
+    /* 批量解析路径：编译(Compiler) → hasAction 门控(Executor) → finalize */
     void __doParse(int _Argc, char const *_Argv[], char *_Envp[])
     {
         if (_Argc > 0 && _Argv[0]) {
@@ -374,9 +379,14 @@ private:
         if (_Envp) { for (int i = 0; _Envp[i]; ++i) { envs.emplace_back(_Envp[i]); } }
 
         m_compiler__.ensureBuiltins();
-        m_compiler__.parse(toks, envs);     // 纯解析（含 OptionParser + ArgumentParser + 短回路）
-        m_executor__.execute();             // 按解析顺序执行 OptionAction
-        m_compiler__.finalize();            // seed 环境兜底 + 展开 + save-config
+        m_compiler__.parse(toks, envs);      // 编译：Tokens → Expression 分类入库 Model
+
+        if (m_instData__.hasAction())        // Model.hasAction() 门控
+        {
+            m_executor__.execute();          // 按 actionOrder 顺序执行
+        }
+
+        m_compiler__.finalize();             // seed 环境兜底 + 展开 + save-config
 
         m_interp__.markParsed();
         m_bFired__ = m_compiler__.isFired();
@@ -390,9 +400,14 @@ private:
         m_compiler__.set_description(m_strPrjName__);
 
         m_compiler__.ensureBuiltins();
-        m_compiler__.parse(_Tokens, _Env);
-        m_executor__.execute();
-        m_compiler__.finalize();
+        m_compiler__.parse(_Tokens, _Env);   // 编译：Tokens → Expression 分类入库 Model
+
+        if (m_instData__.hasAction())        // Model.hasAction() 门控
+        {
+            m_executor__.execute();          // 按 actionOrder 顺序执行
+        }
+
+        m_compiler__.finalize();             // seed 环境兜底 + 展开 + save-config
 
         m_interp__.markParsed();
         m_bFired__ = m_compiler__.isFired();

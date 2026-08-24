@@ -1048,3 +1048,48 @@ TEST_CASE("executor: Executor(Model*) 构造 + execute 执行 action", "[executo
     exec.execute();
     REQUIRE(model.m_strProgramName__ == "executed:build");
 }
+
+/* ==================== Context 容器化 ==================== */
+
+TEST_CASE("context: model() accessor 返回底层 Model 引用", "[context]")
+{
+    Context app("ut_model_acc");
+
+    // 程序名仅在 parse 时由 argv[0] 写入 Model；解析后经 model() 读回，
+    // 验证访问器返回的确实是底层 Model（与内部数据同源，而非副本）
+    std::error_code ec;
+    char const *argv[] = { "ut_model_acc", nullptr };
+    app.parse(ec, 1, argv, nullptr);
+    REQUIRE(!ec);
+
+    auto const &m = app.model();
+    REQUIRE(m.m_strProgramName__ == "ut_model_acc");
+}
+
+TEST_CASE("context: expressions() 经 Context 统一视图覆盖三类条目", "[context]")
+{
+    Context app("ut_expr_view");
+    app.build<ArgumentNamed>("hello", "greeting");
+    app.addOption<int>("timeout", "sec", 30);
+    app.set_env("MY_K", "MY_V");
+
+    std::error_code ec;
+    char const *argv[] = { "test", "--hello", "hi", "--timeout", "9", nullptr };
+    app.parse(ec, 5, argv, nullptr);  // argc=非空条目数（尾部 nullptr 不计入）
+    REQUIRE(!ec);
+
+    auto exprs = app.model().expressions();
+    REQUIRE(exprs.size() >= 3);
+
+    size_t nArg = 0, nOpt = 0, nEnv = 0;
+    for (auto const *e : exprs) {
+        switch (e->kind()) {
+        case ExpressionKind_E::Argument: ++nArg; break;
+        case ExpressionKind_E::Option:   ++nOpt; break;
+        case ExpressionKind_E::Env:      ++nEnv; break;
+        }
+    }
+    REQUIRE(nArg >= 1);   // 命名参数 hello
+    REQUIRE(nOpt >= 1);   // timeout + 内置选项若干
+    REQUIRE(nEnv >= 1);   // MY_K（会话环境在 parse 后保留）
+}

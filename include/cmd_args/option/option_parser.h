@@ -35,6 +35,7 @@ CMD_ARGS_NAMESPACE_BEGIN
  * 的选项 token。
  *
  * - 短回路选项优先级最高：命中其一立即回调并停止解析
+ * - 内置交互选项（bBuiltin__ 且有 fnOnSet__）在解析期即时生效；用户 action 由 Executor 延迟执行
  * - 未注册的长选项 token 原样保留（可能是命名参数，由上层决定）
  * - 未知的短选项在聚合串里直接报 UNKNOWN_OPTION
  * - `--` 之后的 token 一律不再作为选项处理
@@ -292,8 +293,15 @@ private:
         }
         _Opt->bExplicit__ = true;
 
-        // 记录含 action 的选项的解析顺序（Executor 按此顺序统一执行）
-        if (pData__ && (_Opt->fnOnSet__ || !_Opt->strActionTemplate__.empty())) {
+        if (_Opt->bBuiltin__ && _Opt->fnOnSet__) {
+            // 内置交互选项（--load-config/--env-set/--env-unset/--save-config）
+            // 语义为「解析期立即生效」：内联触发回调，使其影响后续解析
+            // （如 --load-config 需先导入配置值，方位参数数量校验才能通过）。
+            // 不记入 actionOrder——Executor 不会重复触发。
+            _Opt->fnOnSet__(_Opt->strValue);
+        }
+        else if (pData__ && (_Opt->fnOnSet__ || !_Opt->strActionTemplate__.empty())) {
+            // 记录含 action 的用户选项的解析顺序（Executor 按此顺序统一执行）
             pData__->recordParseOrder(_Opt->strLongName);
         }
 

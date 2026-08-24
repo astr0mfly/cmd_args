@@ -25,12 +25,13 @@
 #include <string>
 
 #include "cmd_args/base/util.h"
+#include "cmd_args/context/expression.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
     Argument 基类：一条"参数"的载体（命名参数 / 方位参数共用）。
-    - 名字 + 帮助 —— 构筑期填写，一经确定不再变化
+    - 名字 + 帮助 —— 构筑期填写，一经确定不再变化（存储于 Expression 基类）
     - 类型 + 默认值 —— type<T>() 定类型（空 = 未定型），构造时缓存默认值
     - 值（strValue__）—— 解析期被 CLI 赋值，或经 env() 绑定环境变量兜底，
       或经 setExternal() 被配置文件（YAML）外部赋值
@@ -40,7 +41,7 @@ CMD_ARGS_NAMESPACE_BEGIN
 */
 namespace argument_detail {
 
-class Argument
+class Argument : public Expression
 {
 public:
     // ===== 类型别名 =====
@@ -51,15 +52,16 @@ public:
     using Value_T = std::string;                 ///< 参数值类型
     using Desc_T  = std::string;                 ///< 帮助描述类型
 
-    /// @brief 默认构造函数（参数名和帮助为空）
-    Argument() = default;
+    /// @brief 默认构造函数（参数名和帮助为空，kind=Argument）
+    Argument()
+        : Expression(ExpressionKind_E::Argument, {})
+    {}
 
     /// @brief 基础构造函数
     /// @param _Name 参数名称
     /// @param _Help 帮助文本
     Argument(Name_T _Name, Desc_T _Help)
-        : strName__(std::move(_Name))
-        , strHelp__(std::move(_Help))
+        : Expression(ExpressionKind_E::Argument, std::move(_Name), std::move(_Help))
     {}
 
     /// @brief 完整构造函数
@@ -68,8 +70,7 @@ public:
     /// @param _Type 类型标识符（空字符串表示未定型）
     /// @param _Default 默认值（同时作为初始值）
     Argument(Name_T _Name, Desc_T _Help, Type_T _Type, Value_T _Default = "")
-        : strName__(std::move(_Name))
-        , strHelp__(std::move(_Help))
+        : Expression(ExpressionKind_E::Argument, std::move(_Name), std::move(_Help))
         , strType__(std::move(_Type))
         , strDefault__(_Default)
         , strValue__(std::move(_Default))
@@ -79,8 +80,7 @@ public:
     /// @param _Other 被移动的对象（资源所有权转移）
     explicit
     Argument(Argument &&_Other) noexcept
-        : strName__(std::move(_Other.strName__))
-        , strHelp__(std::move(_Other.strHelp__))
+        : Expression(std::move(_Other))
         , strType__(std::move(_Other.strType__))
         , strDefault__(std::move(_Other.strDefault__))
         , strValue__(std::move(_Other.strValue__))
@@ -91,8 +91,7 @@ public:
     /// @brief 拷贝构造函数
     /// @param _Other 被拷贝的对象（深拷贝）
     Argument(Argument const &_Other) noexcept
-        : strName__(_Other.strName__)
-        , strHelp__(_Other.strHelp__)
+        : Expression(_Other)
         , strType__(_Other.strType__)
         , strDefault__(_Other.strDefault__)
         , strValue__(_Other.strValue__)
@@ -104,8 +103,7 @@ public:
     {
         if (this == &_Rhs) return *this;
 
-        strName__    = std::move(_Rhs.strName__);
-        strHelp__    = std::move(_Rhs.strHelp__);
+        Expression::operator=(std::move(_Rhs));
         strType__    = std::move(_Rhs.strType__);
         strDefault__ = std::move(_Rhs.strDefault__);
         strValue__   = std::move(_Rhs.strValue__);
@@ -119,8 +117,7 @@ public:
     {
         if (this == &_Rhs) return *this;
 
-        strName__    = _Rhs.strName__;
-        strHelp__    = _Rhs.strHelp__;
+        Expression::operator=(_Rhs);
         strType__    = _Rhs.strType__;
         strDefault__ = _Rhs.strDefault__;
         strValue__   = _Rhs.strValue__;
@@ -136,31 +133,31 @@ public:
 
     bool hasValue() const noexcept { return operator bool(); }  ///< 检查是否已持有非空值
     
-    /// @brief 设置参数名称（左值版本）
+    /// @brief 设置参数名称（左值版本，委托基类 _setName）
     auto name(Name_T &&_Name) & -> Self_T &
     {
-        strName__ = _Name;
+        _setName(std::move(_Name));
         return *this;
     }
 
     /// @brief 设置参数名称（右值版本，支持移动语义）
     auto name(Name_T &&_Name) && -> Self_T 
     {
-        strName__ = _Name;
+        _setName(std::move(_Name));
         return std::move(*this);
     }
 
-    /// @brief 设置帮助文本（左值版本）
+    /// @brief 设置帮助文本（左值版本，委托基类 _setHelp）
     auto help(Desc_T &&_V) & noexcept -> Self_T &
     {
-        strHelp__ = std::move(_V);
+        _setHelp(std::move(_V));
         return *this;
     }
 
     /// @brief 设置帮助文本（右值版本，支持移动语义）
     auto help(Desc_T &&_V) && noexcept -> Self_T
     {
-        strHelp__ = std::move(_V);
+        _setHelp(std::move(_V));
         return std::move(*this);
     }
 
@@ -283,12 +280,6 @@ public:
     /// @brief 深拷贝当前参数对象
     auto copy() const -> Self_T { return *this; }
 
-    /// @brief 获取参数名称（只读）
-    auto getName() const noexcept -> Name_T const & { return strName__; }
-    
-    /// @brief 获取帮助文本（只读）
-    auto getHelp() const noexcept -> Desc_T const & { return strHelp__; }
-
     /// @brief 获取参数类型标识（只读）
     auto getType() const noexcept -> Type_T const & { return strType__; }
 
@@ -299,15 +290,11 @@ public:
     auto getValue() const noexcept -> Value_T const & { return strValue__; }
 
 private:
-    // ===== 基础属性（构造期确定，不可变） =====
-    Name_T  strName__;   ///< 参数名（如 "--output", "file"）
-    Desc_T  strHelp__;   ///< 帮助文本
-    Type_T  strType__;   ///< 类型标识（空 = 未定型）
-
-    // ===== 运行时状态 =====
-    Value_T strDefault__;            ///< 构造时的默认值（reset 还原用）
-    mutable Value_T strValue__;      ///< 当前值（mutable：允许 const 方法内部修改）
-    Name_T  strEnvName__;            ///< 绑定的环境变量名
+    // ===== 运行时状态（名称/帮助已移至 Expression 基类） =====
+    Type_T  strType__;            ///< 类型标识（空 = 未定型）
+    Value_T strDefault__;         ///< 构造时的默认值（reset 还原用）
+    mutable Value_T strValue__;   ///< 当前值（mutable：允许 const 方法内部修改）
+    Name_T  strEnvName__;         ///< 绑定的环境变量名
 
     // ===== 标志位 =====
     mutable bool bExternal__ = false; ///< 值来自外部配置（YAML），env 兜底跳过

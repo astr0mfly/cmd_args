@@ -920,3 +920,24 @@ TEST_CASE("expression: 构造 + kind/getName/getHelp 基本访问", "[expression
     REQUIRE(e3.getName() == "MY_VAR");
     REQUIRE(e3.getHelp().empty());  // help 可选
 }
+
+TEST_CASE("expression: Argument kind() 返回 Argument", "[expression]")
+{
+    Context app("ut_expr_arg");
+    app.build<ArgumentNamed>("hello", "say hello");
+
+    auto *pNamed = app.argument("hello");
+    REQUIRE(pNamed != nullptr);
+    REQUIRE(pNamed->kind() == ExpressionKind_E::Argument);
+    REQUIRE(pNamed->getName() == "hello");
+    REQUIRE(pNamed->getHelp() == "say hello");
+
+    // 方位参数：Context::argument() 仅覆盖命名参数，经公开的 Model/ArgumentBuilder 访问
+    Model        model;
+    ArgumentBuilder ab(&model.m_args__);
+    ab.build<ArgumentPosition>("name", "your name");
+
+    auto *pPos = model.m_args__.mgrPos.doGet("name");
+    REQUIRE(pPos != nullptr);
+    REQUIRE(pPos->kind() == ExpressionKind_E::Argument);
+}

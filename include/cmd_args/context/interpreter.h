@@ -70,11 +70,14 @@ public:
 
         try {
             cmd_args::detail::Scanner sc({});
-            std::vector<std::string> vecPos;      ///< 方位参数缓冲（流空后按序提交）
-            std::string strPendingKey;            ///< 等待取值的选项/命名参数名
-            bool bPendingIsArg    = false;        ///< 挂起方是否为命名参数
-            bool bPendingInlineEq = false;        ///< 挂起方是否由 '=' 内联分隔（--opt=value）
-            bool bOptEnd          = false;        ///< '--' 之后
+            std::vector<std::string> vecPos;        ///< 方位参数缓冲（流空后按序提交）
+            std::vector<std::string> vecDashLeft;   ///< 未识别 dash token 缓冲（不参与方位参数校验/赋值）
+            std::string strPendingKey;              ///< 等待取值的选项/命名参数名
+            /// 挂起方类型：决定取值消费规则与 NEED_VALUE 文案（对齐批量语义）
+            enum class PendingKind_E : char { None, LongOpt, ShortOpt, NamedArg };
+            PendingKind_E enPending      = PendingKind_E::None;
+            bool          bPendingInlineEq = false;  ///< 挂起方是否由 '=' 内联分隔（仅 LongOpt 有意义）
+            bool          bOptEnd        = false;    ///< '--' 之后
 
             auto pump = [&](char _C) {
                 auto tokOpt = sc.step(_C);
@@ -84,19 +87,31 @@ public:
 
                 // ── 挂起取值：当前 token 就是值 ──
                 if (!strPendingKey.empty()) {
-                    if (!bPendingIsArg && !bPendingInlineEq && util::starts_with(text, "-")) {
+                    // 消费规则（批量语义）：
+                    // - LongOpt：拒绝 dash 开头值，除非挂起方带内联 '='（--opt=-5）
+                    // - ShortOpt：无条件接受下一个 token（option_parser.h 短路径无 dash 检查）
+                    // - NamedArg：无条件接受下一个 token（ArgumentParser::parseNamedOnly 语义）
+                    if (enPending == PendingKind_E::LongOpt && !bPendingInlineEq
+                        && util::starts_with(text, "-")) {
                         throw ErrorParse(ParseError_E::NEED_VALUE,
-                            "option -" + strPendingKey + " need a value");
+                            "option --" + strPendingKey + " need a value");
                     }
-                    if (bPendingIsArg) {
+                    if (enPending == PendingKind_E::NamedArg) {
                         if (auto *pArg = m_pModel__->m_args__.mgrName.mutGet(strPendingKey)) {
                             pArg->set(text);
+                        }
+                    }
+                    else if (enPending == PendingKind_E::ShortOpt) {
+                        // 短名按 char 查（mutFind(std::string) 只按长名匹配）
+                        if (auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(strPendingKey.front())) {
+                            __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
                         }
                     }
                     else if (auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(strPendingKey)) {
                         __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
                     }
                     strPendingKey.clear();
+                    enPending = PendingKind_E::None;
                     return;
                 }
 
@@ -120,7 +135,8 @@ public:
                         // 无内联值：等待下一 token 取值。bInlineEq 表达「值在下个 token
                         // 且允许 dash 开头」（--opt=value 被 Scanner 在 '=' 处切开）
                         if (value.empty() && (bInlineEq || pOpt->strType != "bool")) {
-                            strPendingKey = name; bPendingIsArg = false; bPendingInlineEq = bInlineEq;
+                            strPendingKey = name; enPending = PendingKind_E::LongOpt;
+                            bPendingInlineEq = bInlineEq;
                             return;
                         }
                         __executeOptionImmediate(pOpt, value, pOpt->strType == "bool");
@@ -128,13 +144,14 @@ public:
                     }
                     if (auto *pArg = m_pModel__->m_args__.mgrName.mutGet(name)) {
                         if (value.empty()) {
-                            strPendingKey = name; bPendingIsArg = true; bPendingInlineEq = false;
+                            strPendingKey = name; enPending = PendingKind_E::NamedArg;
+                            bPendingInlineEq = false;
                             return;
                         }
                         pArg->set(std::move(value));  // 命名参数表达式：立即 set
                         return;
                     }
-                    vecPos.emplace_back(text);        // 未识别：交方位参数路径统一报错
+                    vecDashLeft.emplace_back(text);  // 未识别长选项：独立缓冲，流末统一报 UNKNOWN_OPTION
                     return;
                 }
 
@@ -158,8 +175,10 @@ public:
                         std::string val = text.substr(i + 1);  // 值选项：余下即值（-tvalue / -t=value）
                         if (!val.empty() && val.front() == '=') { val = val.substr(1); }
                         if (val.empty()) {
-                            strPendingKey.assign(1, key); bPendingIsArg = false; bPendingInlineEq = false;
-                            return;                          // 值在下一个 token
+                            // 值在下一个 token（含聚合串末尾，如 -bt）：批量短路径无条件接受
+                            strPendingKey.assign(1, key); enPending = PendingKind_E::ShortOpt;
+                            bPendingInlineEq = false;
+                            return;
                         }
                         __executeOptionImmediate(pOpt, val, false);
                         return;                              // 聚合串中值选项即终结
@@ -176,22 +195,26 @@ public:
 
             // 流空后仍有挂起取值（--opt / --name 后无值）：与批量路径一致报 NEED_VALUE
             if (!strPendingKey.empty()) {
-                if (bPendingIsArg) {
+                if (enPending == PendingKind_E::NamedArg) {
                     throw ErrorParse(ParseError_E::NEED_VALUE,
                         "named argument '--" + strPendingKey + "' need a value");
+                }
+                if (enPending == PendingKind_E::LongOpt) {
+                    throw ErrorParse(ParseError_E::NEED_VALUE,
+                        "option --" + strPendingKey + " need a value");
                 }
                 throw ErrorParse(ParseError_E::NEED_VALUE,
                     "option -" + strPendingKey + " need a value");
             }
 
-            __assignPositional(vecPos);                          // 数量校验 + 按序提交
-
-            for (auto const &t : vecPos) {                       // 未识别 dash token 统一报错
-                if (util::starts_with(t, "-")) {
-                    throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
-                        "unrecognized option or argument: " + t);
-                }
+            // 未识别 dash token：先于方位参数提交报 UNKNOWN_OPTION（UNKNOWN_OPTION 优先，
+            // 且绝不占用方位槽位、不产生赋值副作用——批量语义中 dash token 不进方位缓冲）。
+            if (!vecDashLeft.empty()) {
+                throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                    "unrecognized option or argument: " + vecDashLeft.front());
             }
+
+            __assignPositional(vecPos);                          // 数量校验 + 按序提交
 
             __finalize();
             m_bParsed__ = true;

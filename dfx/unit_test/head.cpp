@@ -1062,6 +1062,65 @@ TEST_CASE("interpreter: 流式逐 Token 立即执行 fnOnSet 且带值/聚合/�
     REQUIRE(ec5 == make_error_code(ParseError_E::NEED_VALUE));
 }
 
+TEST_CASE("interpreter: 未识别选项报 UNKNOWN_OPTION 且不污染方位参数校验", "[interpreter]")
+{
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+    ArgumentBuilder ab(&model.m_args__);
+    ab.build<ArgumentNamed>("hello", "h");
+
+    auto ec1 = interp.interpret("--nope x", errors);
+    REQUIRE(ec1 == make_error_code(ParseError_E::UNKNOWN_OPTION));
+
+    // 方位参数存在时：未知 dash token 不占用方位槽位、也不被赋值
+    Model model2;
+    Errors errors2;
+    Interpreter interp2(&model2);
+    ArgumentBuilder ab2(&model2.m_args__);
+    ab2.build<ArgumentPosition>("p1", "first");
+    auto ec2 = interp2.interpret("--unknown v", errors2);
+    REQUIRE(ec2 == make_error_code(ParseError_E::UNKNOWN_OPTION));
+    auto *p = model2.m_args__.mgrPos.mutGetBySeq(0);
+    REQUIRE(p != nullptr);
+    REQUIRE_FALSE(p->hasValue());   // 未被 "--unknown" 污染
+}
+
+TEST_CASE("interpreter: 短选项带值接受 dash 值（-t=-5 与 -t -5 均与批量一致）", "[interpreter]")
+{
+    // 批量参照：短路径无条件接受下一个 token（option_parser.h 无 dash 检查）
+    Context app1("ut_short_dash_eq");
+    app1.addOption<int>('t', "timeout", "timeout", 30);
+    std::error_code ecB1;
+    char const *argv1[] = { "test", "-t=-5", nullptr };
+    app1.parse(ecB1, 2, argv1, nullptr);
+    REQUIRE(!ecB1);
+    REQUIRE(app1.getOption<int>("timeout") == -5);
+
+    Context app2("ut_short_dash_sp");
+    app2.addOption<int>('t', "timeout", "timeout", 30);
+    std::error_code ecB2;
+    char const *argv2[] = { "test", "-t", "-5", nullptr };
+    app2.parse(ecB2, 3, argv2, nullptr);
+    REQUIRE(!ecB2);
+    REQUIRE(app2.getOption<int>("timeout") == -5);
+
+    // 流式：同一输入与批量结果一致（短名 't' 经 4 参 addOption 注册）
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+    OptionBuilder ob(&model.m_opts__);
+    ob.addOption<int>('t', "timeout", "timeout", 30);
+
+    auto ec1 = interp.interpret("-t=-5", errors);
+    REQUIRE(!ec1);
+    REQUIRE(model.m_opts__.mgrValues.find("timeout")->strValue == "-5");
+
+    auto ec2 = interp.interpret("-t -5", errors);
+    REQUIRE(!ec2);
+    REQUIRE(model.m_opts__.mgrValues.find("timeout")->strValue == "-5");
+}
+
 /* ==================== Expression 类层次 ==================== */
 
 TEST_CASE("expression: 构造 + kind/getName/getHelp 基本访问", "[expression]")

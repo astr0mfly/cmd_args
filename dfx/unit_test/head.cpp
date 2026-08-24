@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "cmd_args/cmd_args.hpp"
+#include "cmd_args/context/expression.h"
 
 using namespace cmd_args;
 
@@ -899,4 +900,23 @@ TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）",
 
     // resetData 有效：下一次 interpret 前选项还原为默认值
     REQUIRE(p->strValue == "30");
+}
+
+/* ==================== Expression 类层次 ==================== */
+
+TEST_CASE("expression: 构造 + kind/getName/getHelp 基本访问", "[expression]")
+{
+    Expression e(ExpressionKind_E::Argument, "hello", "say hello");
+    REQUIRE(e.kind() == ExpressionKind_E::Argument);
+    REQUIRE(e.getName() == "hello");
+    REQUIRE(e.getHelp() == "say hello");
+
+    Expression e2(ExpressionKind_E::Option, "timeout", "seconds");
+    REQUIRE(e2.kind() == ExpressionKind_E::Option);
+    REQUIRE(e2.getName() == "timeout");
+
+    Expression e3(ExpressionKind_E::Env, "MY_VAR");
+    REQUIRE(e3.kind() == ExpressionKind_E::Env);
+    REQUIRE(e3.getName() == "MY_VAR");
+    REQUIRE(e3.getHelp().empty());  // help 可选
 }

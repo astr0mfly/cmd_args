@@ -112,7 +112,9 @@ include/cmd_args/
 
 example/once/main.cpp               # 演示程序：env 一等公民完整故事
 example/config/main.cpp             # config_demo：三类输入源转换（YAML 往返 + 反哺）
-dfx/unit_test/head.cpp              # 单元测试（Catch2，仅公共 API）
+dfx/unit_test/                       # 单元测试（Catch2，仅公共 API）：head.cpp 为 main 入口，
+                                     # 用例按子模块拆分于 test_lexer/builder/context/env/
+                                     # config/option/interpreter/expression/model.cpp
 scripts/build_*.bat                 # 预留构建脚本
 ```
 
@@ -244,7 +246,8 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    形参 `_Xxx`（`_Name`/`_Help`）；方法 camelCase 小写动词开头；命名空间用宏；注释用中文 Doxygen。
 2. **提交信息**：gitmoji `type(scope): emoji message`，scope 取子系统（core/Lexer/Parser/builder/env/example/test/docs）。
 3. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`。
-4. **测试门槛**：`dfx/unit_test/head.cpp` 目前 56 个 TEST_CASE / 324 条断言；
+4. **测试门槛**：`dfx/unit_test/` 目前 58 个 TEST_CASE / 330 条断言（用例按子模块拆分为
+   `test_*.cpp` 多文件，`head.cpp` 仅保留 Catch2 main 入口）；
    任何行为改动应保持或增加覆盖，禁止回退。
 
 ---

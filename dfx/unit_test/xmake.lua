@@ -5,7 +5,7 @@ target("unit_test")
     
     add_includedirs("$(projectdir)/dfx/internal", {public = true})
 
-    -- Catch2 单文件在 debug（不开优化）下节数超限，MSVC 需要 /bigobj
+    -- 多 TU 并行编译时共用同一 PDB，MSVC 需要 /FS 允许并发写入
     if is_plat("windows") then
-        add_cxflags("/bigobj", {force = true})
+        add_cxflags("/FS", {force = true})
     end

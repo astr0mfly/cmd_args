@@ -25,13 +25,14 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
+#include "cmd_args/context/expression.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
 namespace option_detail {
 
 /// @brief 选项基结构体（短名 / 长名 / 帮助文本，构造期确定）
-struct Option
+struct Option : public Expression
 {
     using NameShort_T   = char;
     using NameLong_T    = std::string;
@@ -41,17 +42,24 @@ struct Option
     NameLong_T  strLongName;        ///< 长名（"--test" 的 "test"）
     Desc_T      strHelp;            ///< 帮助文本
 
-    /// @brief 构造选项
+    /// @brief 构造选项（基类以 Option 种类登记名字与帮助）
     /// @param _SName 短名（'\0' 表示无短名）
     /// @param _LName 长名（不含 "--" 前缀）
     /// @param _Help 帮助文本
     Option(NameShort_T _SName, NameLong_T _LName, Desc_T _Help)
-        : cShortName(_SName)
+        : Expression(ExpressionKind_E::Option, _LName, _Help)
+        , cShortName(_SName)
         , strLongName(std::move(_LName))
         , strHelp(std::move(_Help))
     {}
 
     virtual ~Option() = default;
+
+    /// @brief 覆盖基类 getName()：返回自身 strLongName（避免双份存储同步问题）
+    auto getName() const noexcept -> Name_T const & override { return strLongName; }
+
+    /// @brief 覆盖基类 getHelp()：返回自身 strHelp
+    auto getHelp() const noexcept -> Desc_T const & override { return strHelp; }
 };
 
 /**

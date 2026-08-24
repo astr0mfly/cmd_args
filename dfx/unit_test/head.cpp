@@ -941,3 +941,31 @@ TEST_CASE("expression: Argument kind() 返回 Argument", "[expression]")
     REQUIRE(pPos != nullptr);
     REQUIRE(pPos->kind() == ExpressionKind_E::Argument);
 }
+
+TEST_CASE("expression: Option/OptionValue/OptionAction kind() 返回 Option", "[expression]")
+{
+    // Option 基类：构造即携带 kind=Option，getName/getHelp 覆盖为自有存储
+    Option opt('t', "timeout", "seconds");
+    REQUIRE(opt.kind() == ExpressionKind_E::Option);
+    REQUIRE(opt.getName() == "timeout");
+    REQUIRE(opt.getHelp() == "seconds");
+
+    // OptionValue：Context::option() 返回的句柄（OptionValue → Option → Expression）
+    Context app("ut_expr_opt");
+    app.addOption<int>("timeout", "timeout seconds", 30);
+    auto *pVal = app.option("timeout");
+    REQUIRE(pVal != nullptr);
+    REQUIRE(pVal->kind() == ExpressionKind_E::Option);
+    REQUIRE(pVal->getName() == "timeout");
+    REQUIRE(pVal->getHelp() == "timeout seconds");
+
+    // OptionAction：短回路选项（经 Model + OptionBuilder 构筑，mgrActions 只读访问）
+    Model         model;
+    OptionBuilder ob(&model.m_opts__);
+    ob.addShortCircuit('h', "help", "show help", [] {});
+    auto const *pAct = model.m_opts__.mgrActions.doGet("help");
+    REQUIRE(pAct != nullptr);
+    REQUIRE(pAct->kind() == ExpressionKind_E::Option);
+    REQUIRE(pAct->getName() == "help");
+    REQUIRE(pAct->getHelp() == "show help");
+}

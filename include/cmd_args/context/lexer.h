@@ -178,13 +178,21 @@ public:
     std::optional<Token> step(char _Cur)
     {
         if (_Cur == '\0') {
-            __flush(m_tCur__);
-            m_enState__ = Phrase_E::BEGIN;
+            // __flush 内 __processEnd 已把状态复位 BEGIN，无需再手动复位
+            __flush(m_tCur__);   // IN_STRING 态抛 UNTERMINATED_STRING；BEGIN 态早退
         }
         else {
             m_tblScanInput__[m_enState__](_Cur, m_tCur__);
             if (m_enState__ == Phrase_E::END) {
-                __processEnd('\0', m_tCur__);
+                __processEnd('\0', m_tCur__);  // 排水当前 token，状态复位 BEGIN
+                if (_Cur != '\0' && _Cur != '=') {
+                    // 与批量 scan() 一致：终结字符在 BEGIN 态重派，避免丢字符
+                    // （空白是无害 no-op；'=' 已由 hasInlineEq 表达，重派会产生
+                    //   Task 10 误读的赘余 Delimiter "=" token）
+                    m_tblScanInput__[Phrase_E::BEGIN](_Cur, m_tCur__);
+                    // BEGIN 态不会立即完成，此守卫仅作保险
+                    if (m_enState__ == Phrase_E::END) { __processEnd('\0', m_tCur__); }
+                }
             }
         }
         if (m_tResult__.empty()) return std::nullopt;

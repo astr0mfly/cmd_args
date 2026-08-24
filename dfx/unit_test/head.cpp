@@ -117,6 +117,32 @@ TEST_CASE("lexer: Scanner::step --timeout=9 产出 inline eq 标记", "[lexer]")
     REQUIRE_FALSE(tok3->hasInlineEq());
 }
 
+TEST_CASE("lexer: Scanner::step 与批量分词在终结符重派上一致", "[lexer]")
+{
+    using cmd_args::detail::Scanner;
+
+    auto streamTokens = [](std::string const &_Line) {
+        Tokens_T res;
+        Scanner sc({});
+        for (char c : _Line) { if (auto t = sc.step(c)) { res.emplace_back(t->toText()); } }
+        if (auto t = sc.step('\0')) { res.emplace_back(t->toText()); }
+        return res;
+    };
+
+    REQUIRE(streamTokens("-x9") == Tokens_T{ "-x", "9" });
+    REQUIRE(streamTokens("1.5x") == Tokens_T{ "1.5", "x" });
+    REQUIRE(streamTokens(">out") == Tokens_T{ ">", "out" });
+    REQUIRE(streamTokens("env f") == Tokens_T{ "env", "f" });
+    REQUIRE(streamTokens("--timeout 9") == Tokens_T{ "--timeout", "9" });
+    REQUIRE(streamTokens("a=b") == Tokens_T{ "a=b" });   // Variable 吸收 '='，与批量一致
+
+    // 与批量分词逐行对照（本次修复的核心：终结符重派语义一致）
+    for (std::string const &line : std::vector<std::string>{ "-x9", "1.5x", ">out",
+                                                             "env f", "--timeout 9", "a=b" }) {
+        REQUIRE(streamTokens(line) == Lexer::tokensFromLine(line));
+    }
+}
+
 /* ==================== 构筑：重名检查 ==================== */
 
 TEST_CASE("builder: 命名参数重名抛 DUPLICATE_NAME", "[builder]")

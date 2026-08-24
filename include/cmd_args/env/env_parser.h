@@ -1,5 +1,5 @@
 /*
- * Copyright[2023][ValenciaFly]
+ * Copyright[2026][ValenciaFly]
  * Email: pengwanring@live.com
  *
  *     Licensed under the Apache License,
@@ -18,168 +18,139 @@
 #pragma once
 
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
 #include <functional>
-#include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "cmd_args/base/def.h"
 #include "cmd_args/context/parse_fwd.h"
-#include "cmd_args/env/environment.h"
+
+#include "cmd_args/env/env.h"
+#include "cmd_args/env/env_data.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-/*
-    环境变量仓库：解析 envp、展示、交互（设置/删除）、引用与修改追踪、
-    ${VAR}/%VAR%/$VAR 展开、并把会话中的变更回写到操作系统环境。
-
-    这是 cmd_args 的差异化模块：多数命令行解析库只是“读一眼”环境变量，
-    这里环境变量是完整的一等公民——可展示、可交互、可回写。
-*/
-class environment_store
+/**
+ * 环境变量解析/服务：装载进程环境（envp）、读取并标注“被引用”、
+ * ${VAR}/%VAR%/$VAR 展开、环境展示、并把会话变更回写操作系统。
+ */
+class EnvParser
 {
 public:
-    environment_store() = default;
+    /// @brief 构造环境变量解析/服务对象
+    /// @param _Data 底层环境数据仓库（非空）
+    EnvParser(EnvData *_Data) noexcept
+        : pData__(_Data)
+    {}
 
-    /* 装载进程环境（envp） */
+    /// @brief 装载进程环境（envp "KEY=VALUE" 串）
+    /// @param _Envp 环境串列表（无 '=' 的行忽略）
     void parse(Envs_T const &_Envp)
     {
         for (auto const &e : _Envp) {
             auto eq = e.find('=');
             if (eq == std::string::npos) continue;  // 无 '=' 的行不是合法环境项
-            m_setEnvs__.emplace(e.substr(0, eq), e.substr(eq + 1), false);
+            pData__->doPush(e.substr(0, eq), e.substr(eq + 1), false);
         }
     }
 
-    bool has(std::string const &_Key) const noexcept
+    /// @brief 键是否存在
+    bool has(EnvData::Key_T const &_Key) const noexcept { return pData__->doFind(_Key); }
+
+    /// @brief 按键查询条目（只读，未找到返回 nullptr）
+    auto find(EnvData::Key_T const &_Key) const noexcept -> environment const *
     {
-        return m_setEnvs__.find(_Key) != m_setEnvs__.cend();
+        return pData__->doGet(_Key);
     }
 
-    environment const *find(std::string const &_Key) const noexcept
+    /// @brief 读取并标记“被引用”（缺失返回空串）
+    auto get(EnvData::Key_T const &_Key) const -> EnvData::Value_T
     {
-        auto it = m_setEnvs__.find(_Key);
-        if (it == m_setEnvs__.cend()) return nullptr;
-        return std::addressof(*it);
-    }
-
-    /* 读取并标记“被引用” */
-    std::string get(std::string const &_Key) const
-    {
-        auto const *p = find(_Key);
+        environment *p = pData__->doMutGet(_Key);
         if (!p) return {};
         p->bReferenced__ = true;
         return p->strValue;
     }
 
-    /* 读取，缺失时返回兜底值 */
-    std::string get_or(std::string const &_Key, std::string const &_Default = {}) const
+    /// @brief 读取并标记“被引用”，缺失返回兜底值
+    auto getOr(EnvData::Key_T const &_Key,
+               EnvData::Value_T const &_Default = {}) const -> EnvData::Value_T
     {
-        auto const *p = find(_Key);
+        environment *p = pData__->doMutGet(_Key);
         if (!p) return _Default;
         p->bReferenced__ = true;
         return p->strValue;
     }
 
-    /* 标记“被引用”（不取值） */
-    void touch(std::string const &_Key) const noexcept
+    /// @brief 标记“被引用”（不取值）
+    void touch(EnvData::Key_T const &_Key) const noexcept
     {
-        auto const *p = find(_Key);
+        environment *p = pData__->doMutGet(_Key);
         if (p) p->bReferenced__ = true;
     }
 
-    /* 设置：存在则改值，不存在则新建 */
-    void set(std::string _Key, std::string _Value)
-    {
-        auto it = m_setEnvs__.find(_Key);
-        if (it == m_setEnvs__.cend()) {
-            m_setEnvs__.emplace(std::move(_Key), std::move(_Value), true);
-            return;
-        }
-        it->strValue    = std::move(_Value);
-        it->bModified__ = true;
-    }
+    /// @brief 条目个数
+    auto size() const noexcept -> std::size_t { return pData__->doSize(); }
 
-    /* 删除，返回原先是否存在 */
-    bool unset(std::string const &_Key)
-    {
-        auto it = m_setEnvs__.find(_Key);
-        if (it == m_setEnvs__.cend()) return false;
-        m_setEnvs__.erase(it);
-        return true;
-    }
+    /// @brief 是否为空
+    bool empty() const noexcept { return pData__->doEmpty(); }
 
-    size_t size() const noexcept { return m_setEnvs__.size(); }
-    bool   empty() const noexcept { return m_setEnvs__.empty(); }
-
-    size_t referenced_count() const noexcept
+    /// @brief 被引用条目数
+    auto referencedCount() const noexcept -> std::size_t
     {
-        size_t n = 0;
-        for (auto const &e : m_setEnvs__) {
-            if (e.bReferenced__) ++n;
-        }
+        std::size_t n = 0;
+        pData__->doVisit([&](environment const &e) { if (e.bReferenced__) ++n; });
         return n;
     }
 
-    size_t changed_count() const noexcept
+    /// @brief 被修改/新建条目数
+    auto changedCount() const noexcept -> std::size_t
     {
-        size_t n = 0;
-        for (auto const &e : m_setEnvs__) {
-            if (e.bModified__) ++n;
-        }
+        std::size_t n = 0;
+        pData__->doVisit([&](environment const &e) { if (e.bModified__) ++n; });
         return n;
     }
 
-    /* 公开只读遍历（配置导出/快照提取等外部只读消费） */
-    void for_each(std::function<void(environment const &)> const &_Fn) const
+    /// @brief 只读遍历
+    void forEach(std::function<void(environment const &)> const &_Fn) const
     {
-        for (auto const &e : m_setEnvs__) { _Fn(e); }
+        pData__->doVisit(_Fn);
     }
 
-    /*
-        环境展示：
-        ```
-        environments: <program>
-        No. : "key" = "value"
-        0   : "A" = "1"
-        1*  : "B" = "2"     (* 被修改)
-        2>  : "C" = "3"     (> 被引用)
-        3*+ : "D" = "4"     (+ 本次新建)
-        ```
-    */
-    std::string env_string(std::string const &_Program) const
+    /// @brief 环境展示（含 *>+ 标记）
+    /// @param _Program 程序名（展示头部）
+    auto envString(EnvData::Value_T const &_Program) const -> std::string
     {
         std::ostringstream oss;
         oss << "environments: " << _Program << "\n";
         oss << "No. : \"key\" = \"value\"\n";
-        size_t i = 0;
-        for (auto const &e : m_setEnvs__) {
+        std::size_t i = 0;
+        pData__->doVisit([&](environment const &e) {
             oss << i;
             if (e.bModified__) oss << '*';
             if (e.bReferenced__) oss << '>';
             if (e.bNew__) oss << '+';
             oss << " : \"" << e.strKey << "\" = \"" << e.strValue << "\"\n";
             ++i;
-        }
+        });
         return oss.str();
     }
 
-    /*
-        环境变量展开：${NAME} / %NAME% / $NAME
-        命中则标记引用；未命中保持原样（留给后续处理或用户自省）。
-    */
-    std::string expand(std::string const &_Text) const
+    /// @brief 环境变量展开：${NAME} / %NAME% / $NAME（命中标记“被引用”）
+    /// @param _Text 待展开文本（未命中保持原样）
+    auto expand(EnvData::Value_T const &_Text) const -> std::string
     {
         std::string ret;
         ret.reserve(_Text.size());
 
-        for (size_t i = 0; i < _Text.size();) {
+        for (std::size_t i = 0; i < _Text.size();) {
             char ch = _Text[i];
             if (ch == '$') {
                 std::string name;
-                size_t      endPos = std::string::npos;
+                std::size_t endPos = std::string::npos;
                 bool        brace  = false;
                 if (i + 1 < _Text.size() && _Text[i + 1] == '{') {
                     endPos = _Text.find('}', i + 2);
@@ -202,7 +173,7 @@ public:
                 }
 
                 if (!name.empty() && endPos != std::string::npos) {
-                    auto const *p = find(name);
+                    environment *p = pData__->doMutGet(name);
                     if (p) {
                         p->bReferenced__ = true;
                         ret += p->strValue;
@@ -219,7 +190,7 @@ public:
                 if (endPos != std::string::npos) {
                     auto name = _Text.substr(i + 1, endPos - i - 1);
                     if (!name.empty()) {
-                        auto const *p = find(name);
+                        environment *p = pData__->doMutGet(name);
                         if (p) {
                             p->bReferenced__ = true;
                             ret += p->strValue;
@@ -239,16 +210,14 @@ public:
         return ret;
     }
 
-    /*
-        把会话中的修改/新建回写到操作系统环境变量。
-        返回实际写回的 "KEY=VALUE" 列表；写回成功后清除 modified/new 标记。
-    */
-    std::vector<std::string> apply()
+    /// @brief 把会话中的修改/新建回写到操作系统环境变量
+    /// @return 实际写回的 "KEY=VALUE" 列表（写回成功后清除 modified/new 标记）
+    auto apply() -> std::vector<std::string>
     {
         std::vector<std::string> applied;
-        for (auto &e : m_setEnvs__) {
-            // 被修改的（--env-set 改已有值）与本次新建的（--env-set 新建）都回写
-            if (!e.bModified__ && !e.bNew__) continue;
+        pData__->doMutVisit([&](environment &e) {
+            // 被修改的（setEnv 改已有值）与本次新建的（setEnv 新建）都回写
+            if (!e.bModified__ && !e.bNew__) return;
 #ifdef _WIN32
             _putenv_s(e.strKey.c_str(), e.strValue.c_str());
 #else
@@ -257,15 +226,12 @@ public:
             e.bModified__ = false;
             e.bNew__      = false;
             applied.emplace_back(e.strKey + "=" + e.strValue);
-        }
+        });
         return applied;
     }
 
 private:
-    envs_t m_setEnvs__;
+    EnvData *pData__ = nullptr;  ///< 底层环境数据仓库指针
 };
-
-/* 兼容旧拼写：原拼写错误（envirionment_parser）按项目约定保留，不得删除 */
-using envirionment_parser = environment_store;
 
 CMD_ARGS_NAMESPACE_END

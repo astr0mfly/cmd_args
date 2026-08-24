@@ -20,7 +20,7 @@
 #include "cmd_args/base/def.h"
 
 #include "cmd_args/argument/argument_data.h"
-#include "cmd_args/env/environment_parser.h"
+#include "cmd_args/env/env_data.h"
 #include "cmd_args/option/option_data.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -37,7 +37,7 @@ public:
 
     ArgumentData m_args__;
     OptionData   m_opts__;
-    environment_store m_envs__;
+    EnvData      m_envs__;
 
     /* argv[0] 探测出的程序名，供内置帮助/环境展示使用 */
     std::string m_strProgramName__;
@@ -47,6 +47,9 @@ public:
 
     /* 内置选项是否已注册（懒注册，仅一次） */
     bool m_bBuiltinsRegistered__ = false;
+
+    /* --save-config PATH：解析完成后把参数+环境状态写出为 YAML 配置 */
+    std::string m_strSaveConfigPath__;
 };
 
 Model::Model(/* args */) {}

@@ -71,12 +71,12 @@ TEST_CASE("builder: 命名参数重名抛 DUPLICATE_NAME", "[builder]")
 TEST_CASE("builder: 选项重名抛 DUPLICATE_NAME", "[builder]")
 {
     Context app("ut");
-    app.add_option<int>("timeout", "timeout seconds", 1);
-    REQUIRE_THROWS_AS(app.add_option<int>("timeout", "again", 2), ErrorArgument);
+    app.addOption<int>("timeout", "timeout seconds", 1);
+    REQUIRE_THROWS_AS(app.addOption<int>("timeout", "again", 2), ErrorArgument);
 
     Context app2("ut");
-    app2.add_flag('v', "verbose", "verbose");
-    REQUIRE_THROWS_AS(app2.add_option<int>('v', "volume", "conflict", 1), ErrorArgument);
+    app2.addFlag('v', "verbose", "verbose");
+    REQUIRE_THROWS_AS(app2.addOption<int>('v', "volume", "conflict", 1), ErrorArgument);
 }
 
 /* ==================== 解析：argv 形式（含 argv[0] 路径不参与词法） ==================== */
@@ -88,9 +88,9 @@ TEST_CASE("context: argv 形式端到端解析", "[context]")
         .build<ArgumentNamed>("world", "Say world too")
         .build<ArgumentPosition>("name", "your name")
         .build<ArgumentPosition>("count", "count");
-    app.add_option<std::string>('o', "output", "output file", "out.txt");
-    app.add_option<int>("timeout", "timeout seconds", 30);
-    app.add_flag('v', "verbose", "verbose");
+    app.addOption<std::string>('o', "output", "output file", "out.txt");
+    app.addOption<int>("timeout", "timeout seconds", 30);
+    app.addFlag('v', "verbose", "verbose");
 
     app.argument("world")->env("UT_E_WORLD");
 
@@ -102,40 +102,40 @@ TEST_CASE("context: argv 形式端到端解析", "[context]")
     app.parse(ec, 8, argv, envp);
 
     REQUIRE(!ec);
-    REQUIRE(app.get_argument<std::string>("hello") == "hi");
-    REQUIRE(app.get_argument<std::string>("world") == "from-env");  // 环境变量兜底
-    REQUIRE(app.get_argument<std::string>("name") == "peter");
-    REQUIRE(app.get_argument<std::string>("count") == "3");
-    REQUIRE(app.get_option<std::string>("output") == "out.txt");  // 内置默认值
-    REQUIRE(app.get_option<int>("timeout") == 99);                // 命令行显式值
-    REQUIRE(app.get_option<bool>("verbose") == true);
+    REQUIRE(app.getArgument<std::string>("hello") == "hi");
+    REQUIRE(app.getArgument<std::string>("world") == "from-env");  // 环境变量兜底
+    REQUIRE(app.getArgument<std::string>("name") == "peter");
+    REQUIRE(app.getArgument<std::string>("count") == "3");
+    REQUIRE(app.getOption<std::string>("output") == "out.txt");  // 内置默认值
+    REQUIRE(app.getOption<int>("timeout") == 99);                // 命令行显式值
+    REQUIRE(app.getOption<bool>("verbose") == true);
 }
 
-/* ==================== 解析：token 形式 + parsed() ==================== */
+/* ==================== 解析：token 形式 + isParsed() ==================== */
 
-TEST_CASE("context: token 形式 + parsed()/has_option", "[context]")
+TEST_CASE("context: token 形式 + isParsed()/hasOption", "[context]")
 {
     Context app("ut_tok");
     app.build<ArgumentNamed>("u", "named u")
         .build<ArgumentPosition>("pos", "positional");
-    app.add_option<std::string>('o', "output", "output file", "f.txt");
-    app.add_option<int>("timeout", "timeout seconds", 1);
-    app.add_flag('v', "verbose", "verbose");
+    app.addOption<std::string>('o', "output", "output file", "f.txt");
+    app.addOption<int>("timeout", "timeout seconds", 1);
+    app.addFlag('v', "verbose", "verbose");
 
     std::error_code ec;
     app.parse(ec, Tokens_T{ "--u", "cli", "--timeout=88", "posval" }, Envs_T{});
 
     REQUIRE(!ec);
-    REQUIRE(app.parsed("u"));
-    REQUIRE(app.parsed("timeout"));
-    REQUIRE(app.parsed("output") == false);
-    REQUIRE(app.parsed('v') == false);
-    REQUIRE(app.has_option("timeout"));
-    REQUIRE(app.has_option("v"));
-    REQUIRE(app.get_argument<std::string>("u") == "cli");
-    REQUIRE(app.get_argument<std::string>("pos") == "posval");
-    REQUIRE(app.get_option<int>("timeout") == 88);
-    REQUIRE(app.get_option<std::string>("output") == "f.txt");
+    REQUIRE(app.isParsed("u"));
+    REQUIRE(app.isParsed("timeout"));
+    REQUIRE(app.isParsed("output") == false);
+    REQUIRE(app.isParsed('v') == false);
+    REQUIRE(app.hasOption("timeout"));
+    REQUIRE(app.hasOption("v"));
+    REQUIRE(app.getArgument<std::string>("u") == "cli");
+    REQUIRE(app.getArgument<std::string>("pos") == "posval");
+    REQUIRE(app.getOption<int>("timeout") == 88);
+    REQUIRE(app.getOption<std::string>("output") == "f.txt");
 }
 
 TEST_CASE("context: -- 之后全部为方位参数（含 - 开头）", "[context]")
@@ -147,8 +147,8 @@ TEST_CASE("context: -- 之后全部为方位参数（含 - 开头）", "[context
     app.parse(ec, Tokens_T{ "--", "-x", "@" }, Envs_T{});
 
     REQUIRE(!ec);
-    REQUIRE(app.get_argument<std::string>("a") == "-x");
-    REQUIRE(app.get_argument<std::string>("b") == "@");
+    REQUIRE(app.getArgument<std::string>("a") == "-x");
+    REQUIRE(app.getArgument<std::string>("b") == "@");
 }
 
 /* ==================== 解析：错误码 ==================== */
@@ -157,8 +157,8 @@ TEST_CASE("parse: 错误码分类", "[error]")
 {
     Context app("ut_err");
     app.build<ArgumentPosition>("p", "pos");
-    app.add_flag('v', "verbose", "verbose");
-    app.add_option<int>("timeout", "timeout", 1);
+    app.addFlag('v', "verbose", "verbose");
+    app.addOption<int>("timeout", "timeout", 1);
 
     std::error_code ec;
 
@@ -189,96 +189,131 @@ TEST_CASE("parse: 错误码分类", "[error]")
     REQUIRE(ec == make_error_code(ParseError_E::UNKNWON_ARGS));
 
     Context app3("ut_err3");
-    app3.add_option<int>("timeout", "timeout", 1);
+    app3.addOption<int>("timeout", "timeout", 1);
     app3.parse(ec, Tokens_T{ "--timeout" }, Envs_T{});  // 选项缺值
     REQUIRE(ec == make_error_code(ParseError_E::NEED_VALUE));
 
     Context app4("ut_err4");
-    app4.add_flag('v', "verbose", "verbose");
+    app4.addFlag('v', "verbose", "verbose");
     app4.build<ArgumentPosition>("p", "pos");
     app4.parse(ec, Tokens_T{ "-vq", "x" }, Envs_T{});  // 聚合串里未知短选项
     REQUIRE(ec == make_error_code(ParseError_E::UNKNOWN_OPTION));
 }
 
-/* ==================== 环境变量：直接操作 environment_store ==================== */
+/* ==================== 环境变量：EnvData / EnvBuilder / EnvParser 直接操作 ==================== */
 
 TEST_CASE("env: 装载与展示格式（含标记）", "[env]")
 {
-    environment_store store;
+    EnvData   d;
+    EnvBuilder b(&d);
+    EnvParser p(&d);
 
-    store.parse(Envs_T{ "A=1", "B=2" });
-    REQUIRE(store.env_string("p") == "environments: p\nNo. : \"key\" = \"value\"\n"
-                                     "0 : \"A\" = \"1\"\n1 : \"B\" = \"2\"\n");
+    p.parse(Envs_T{ "A=1", "B=2" });
+    REQUIRE(p.envString("p") == "environments: p\nNo. : \"key\" = \"value\"\n"
+                                "0 : \"A\" = \"1\"\n1 : \"B\" = \"2\"\n");
 
     // 修改已有 -> *
-    store.set("A", "9");
-    REQUIRE(store.env_string("p").find("0* : \"A\" = \"9\"") != std::string::npos);
+    b.setEnv("A", "9");
+    REQUIRE(p.envString("p").find("0* : \"A\" = \"9\"") != std::string::npos);
 
     // 新建 -> +
-    store.set("C", "3");
-    REQUIRE(store.env_string("p").find("2+ : \"C\" = \"3\"") != std::string::npos);
+    b.setEnv("C", "3");
+    REQUIRE(p.envString("p").find("2+ : \"C\" = \"3\"") != std::string::npos);
 
     // 读取 -> >
-    REQUIRE(store.get("A") == "9");
-    REQUIRE(store.env_string("p").find("0*> : \"A\" = \"9\"") != std::string::npos);
+    REQUIRE(p.get("A") == "9");
+    REQUIRE(p.envString("p").find("0*> : \"A\" = \"9\"") != std::string::npos);
 
-    REQUIRE(store.has("A"));
-    REQUIRE_FALSE(store.has("NOPE"));
-    REQUIRE(store.get_or("NOPE", "dflt") == "dflt");
-    REQUIRE(store.size() == 3);
+    REQUIRE(p.has("A"));
+    REQUIRE_FALSE(p.has("NOPE"));
+    REQUIRE(p.getOr("NOPE", "dflt") == "dflt");
+    REQUIRE(p.size() == 3);
+}
+
+TEST_CASE("env: EnvData 存储/查询/遍历", "[env]")
+{
+    EnvData d;
+    REQUIRE(d.doEmpty());
+    REQUIRE(d.doSize() == 0);
+
+    d.doPush("A", "1", false);
+    d.doPush("B", "2", false);
+    d.doPush(environment{ "A", "9", true });  // 键已存在：保持原条目
+    REQUIRE_FALSE(d.doEmpty());
+    REQUIRE(d.doSize() == 2);
+    REQUIRE(d.doFind("A"));
+    REQUIRE_FALSE(d.doFind("NOPE"));
+
+    REQUIRE(d.doGet("A")->strValue == "1");   // 重复 push 保持首次生效
+    REQUIRE(d.doErase("B"));
+    REQUIRE_FALSE(d.doErase("B"));
+    REQUIRE(d.doSize() == 1);
+
+    std::size_t n = 0;
+    d.doVisit([&](environment const &e) { ++n; REQUIRE(e.strKey == "A"); });
+    REQUIRE(n == 1);
 }
 
 TEST_CASE("env: set/unset", "[env]")
 {
-    environment_store store;
-    store.parse(Envs_T{ "A=1" });
+    EnvData   d;
+    EnvBuilder b(&d);
+    EnvParser p(&d);
 
-    store.unset("A");
-    REQUIRE_FALSE(store.has("A"));
-    REQUIRE_FALSE(store.unset("A"));  // 已不存在
+    p.parse(Envs_T{ "A=1" });
 
-    store.set("A", "again");
-    REQUIRE(store.has("A"));
-    REQUIRE(store.get("A") == "again");
+    REQUIRE(b.unsetEnv("A"));
+    REQUIRE_FALSE(p.has("A"));
+    REQUIRE_FALSE(b.unsetEnv("A"));  // 已不存在
+
+    b.setEnv("A", "again");
+    REQUIRE(p.has("A"));
+    REQUIRE(p.get("A") == "again");
 }
 
 TEST_CASE("env: ${VAR} / %VAR% / $VAR 三种展开", "[env]")
 {
-    environment_store store;
-    store.parse(Envs_T{ "NAME=world" });
+    EnvData   d;
+    EnvBuilder b(&d);
+    EnvParser p(&d);
 
-    REQUIRE(store.expand("hello ${NAME}!") == "hello world!");
-    REQUIRE(store.expand("%NAME%") == "world");
-    REQUIRE(store.expand("$NAME") == "world");
-    REQUIRE(store.expand("hi ${NAME}") == "hi world");
+    p.parse(Envs_T{ "NAME=world" });
+
+    REQUIRE(p.expand("hello ${NAME}!") == "hello world!");
+    REQUIRE(p.expand("%NAME%") == "world");
+    REQUIRE(p.expand("$NAME") == "world");
+    REQUIRE(p.expand("hi ${NAME}") == "hi world");
 
     // 未命中保持原样
-    REQUIRE(store.expand("${NOPE}") == "${NOPE}");
-    REQUIRE(store.expand("100%") == "100%");
-    REQUIRE(store.expand(" $ ") == " $ ");
+    REQUIRE(p.expand("${NOPE}") == "${NOPE}");
+    REQUIRE(p.expand("100%") == "100%");
+    REQUIRE(p.expand(" $ ") == " $ ");
 
     // 命中后标记被引用
-    store.expand("${NAME}");
-    REQUIRE(store.env_string("p").find("0>") != std::string::npos);
+    p.expand("${NAME}");
+    REQUIRE(p.envString("p").find("0>") != std::string::npos);
 }
 
 TEST_CASE("env: apply() 回写 修改+新建，并清除标记", "[env]")
 {
-    environment_store store;
-    store.parse(Envs_T{ "A=1" });
+    EnvData   d;
+    EnvBuilder b(&d);
+    EnvParser p(&d);
 
-    store.set("A", "9");           // 修改已有
-    store.set("C", "3");           // 新建
-    auto applied = store.apply();
+    p.parse(Envs_T{ "A=1" });
+
+    b.setEnv("A", "9");           // 修改已有
+    b.setEnv("C", "3");           // 新建
+    auto applied = p.apply();
 
     std::vector<std::string> expect{ "A=9", "C=3" };
     REQUIRE(applied == expect);
 
     // 标记已清除，再次 apply 为空
-    REQUIRE(store.apply().empty());
-    REQUIRE(store.env_string("p").find('*') == std::string::npos);
-    REQUIRE(store.env_string("p").find('+') == std::string::npos);
-    REQUIRE(store.has("C"));
+    REQUIRE(p.apply().empty());
+    REQUIRE(p.envString("p").find('*') == std::string::npos);
+    REQUIRE(p.envString("p").find('+') == std::string::npos);
+    REQUIRE(p.has("C"));
 }
 
 /* ==================== 环境变量：Context 层联动 ==================== */
@@ -288,7 +323,7 @@ TEST_CASE("context: 值优先级 命令行 > 环境变量 > 内置默认", "[env
     // 命令行显式值胜出
     Context app("ut_prec1");
     app.build<ArgumentNamed>("u", "u").build<ArgumentPosition>("p", "p");
-    app.add_option<int>("timeout", "timeout", 30);
+    app.addOption<int>("timeout", "timeout", 30);
     app.argument("u")->env("UT_E_U");
     app.option("timeout")->env("UT_E_TIMEOUT");
 
@@ -296,30 +331,30 @@ TEST_CASE("context: 值优先级 命令行 > 环境变量 > 内置默认", "[env
     app.parse(ec, Tokens_T{ "--u", "cli", "--timeout", "77", "pos" },
               Envs_T{ "UT_E_U=env", "UT_E_TIMEOUT=9" });
     REQUIRE(!ec);
-    REQUIRE(app.get_argument<std::string>("u") == "cli");
-    REQUIRE(app.get_option<int>("timeout") == 77);
+    REQUIRE(app.getArgument<std::string>("u") == "cli");
+    REQUIRE(app.getOption<int>("timeout") == 77);
 
     // 环境变量胜初期内置默认
     Context app2("ut_prec2");
     app2.build<ArgumentNamed>("u", "u").build<ArgumentPosition>("p", "p");
-    app2.add_option<int>("timeout", "timeout", 30);
+    app2.addOption<int>("timeout", "timeout", 30);
     app2.argument("u")->env("UT_E_U");
     app2.option("timeout")->env("UT_E_TIMEOUT");
 
     app2.parse(ec, Tokens_T{ "pos" }, Envs_T{ "UT_E_U=env", "UT_E_TIMEOUT=9" });
     REQUIRE(!ec);
-    REQUIRE(app2.get_argument<std::string>("u") == "env");
-    REQUIRE(app2.get_option<int>("timeout") == 9);
+    REQUIRE(app2.getArgument<std::string>("u") == "env");
+    REQUIRE(app2.getOption<int>("timeout") == 9);
 
     // 都没有 -> 内置默认
     Context app3("ut_prec3");
     app3.build<ArgumentPosition>("p", "p");
-    app3.add_option<int>("timeout", "timeout", 30);
+    app3.addOption<int>("timeout", "timeout", 30);
     app3.option("timeout")->env("UT_E_TIMEOUT");
 
     app3.parse(ec, Tokens_T{ "pos" }, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app3.get_option<int>("timeout") == 30);
+    REQUIRE(app3.getOption<int>("timeout") == 30);
 }
 
 TEST_CASE("context: --env-set / --env-apply 内置交互", "[env]")
@@ -376,7 +411,7 @@ TEST_CASE("context: env_string 头部与标记", "[env]")
     REQUIRE(s.find("1+ : \"B\" = \"2\"") != std::string::npos);
 }
 
-/* ==================== 内置短回路选项（Parser 层 fired） ==================== */
+/* ==================== 内置短回路选项（Parser 层 isFired） ==================== */
 
 TEST_CASE("parser: -?/--help、-!/--env 命中即短路", "[parser]")
 {
@@ -387,17 +422,17 @@ TEST_CASE("parser: -?/--help、-!/--env 命中即短路", "[parser]")
     Tokens_T help{ "--help" };
     auto ec = p.tryParse(help, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(p.fired());
+    REQUIRE(p.isFired());
 
     Tokens_T env{ "-!" };
     ec = p.tryParse(env, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(p.fired());
+    REQUIRE(p.isFired());
 
     Tokens_T plain;  // 空 token：无命中、不短路
     ec = p.tryParse(plain, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE_FALSE(p.fired());
+    REQUIRE_FALSE(p.isFired());
 }
 
 /* ==================== 配置脚本（YAML）：三类外界环境统一抽象 ==================== */
@@ -440,9 +475,9 @@ TEST_CASE("schema: 导出完整性（分区顺序 + env 绑定 + 类型）", "[c
     Context app("ut_schema");
     app.build<ArgumentNamed>("hello", "h");
     app.build<ArgumentPosition>("name", "n");
-    app.add_option<std::string>('o', "output", "out", "out.txt");
-    app.add_option<int>("timeout", "t", 30);
-    app.add_flag('v', "verbose", "v");
+    app.addOption<std::string>('o', "output", "out", "out.txt");
+    app.addOption<int>("timeout", "t", 30);
+    app.addFlag('v', "verbose", "v");
     app.option("output")->env("MY_OUTPUT");
 
     auto sch = app.schema();
@@ -469,7 +504,7 @@ TEST_CASE("config: save_config → load_config 往返，值一致", "[config]")
 {
     Context app("ut_round");
     app.build<ArgumentNamed>("hello", "h");
-    app.add_option<int>("timeout", "t", 30);
+    app.addOption<int>("timeout", "t", 30);
 
     std::error_code ec;
     char const     *argv[] = { "ut_round", "--hello", "hi", "--timeout", "99" };
@@ -480,10 +515,10 @@ TEST_CASE("config: save_config → load_config 往返，值一致", "[config]")
 
     Context app2("ut_round");
     app2.build<ArgumentNamed>("hello", "h");
-    app2.add_option<int>("timeout", "t", 30);
+    app2.addOption<int>("timeout", "t", 30);
     REQUIRE(app2.load_config("ut_cfg_round.yaml"));
-    REQUIRE(app2.get_argument<std::string>("hello") == "hi");
-    REQUIRE(app2.get_option<int>("timeout") == 99);
+    REQUIRE(app2.getArgument<std::string>("hello") == "hi");
+    REQUIRE(app2.getOption<int>("timeout") == 99);
 
     std::remove("ut_cfg_round.yaml");
 }
@@ -502,7 +537,7 @@ TEST_CASE("config: 优先级 CLI > YAML > 环境变量 > 内置默认", "[config
 
     // 全部给出：CLI 胜出
     Context app("ut_prio1");
-    app.add_option<int>("timeout", "t", 30);
+    app.addOption<int>("timeout", "t", 30);
     app.option("timeout")->env("CMD_UT_T");
     app.set_env("CMD_UT_T", "50");
     REQUIRE(app.from_yaml("options.timeout: \"70\"\n"));
@@ -510,36 +545,36 @@ TEST_CASE("config: 优先级 CLI > YAML > 环境变量 > 内置默认", "[config
     char const     *argv[] = { "ut_prio1", "--timeout", "90" };
     app.parse(ec, 3, argv, envp);
     REQUIRE(!ec);
-    REQUIRE(app.get_option<int>("timeout") == 90);
+    REQUIRE(app.getOption<int>("timeout") == 90);
 
     // 无 CLI：配置胜出（配置 > 环境变量）
     Context app2("ut_prio2");
-    app2.add_option<int>("timeout", "t", 30);
+    app2.addOption<int>("timeout", "t", 30);
     app2.option("timeout")->env("CMD_UT_T");
     app2.set_env("CMD_UT_T", "50");
     REQUIRE(app2.from_yaml("options.timeout: \"70\"\n"));
     char const *argv2[] = { "ut_prio2" };
     app2.parse(ec, 1, argv2, envp);
     REQUIRE(!ec);
-    REQUIRE(app2.get_option<int>("timeout") == 70);
+    REQUIRE(app2.getOption<int>("timeout") == 70);
 
     // 无配置无 CLI：环境变量胜出（环境变量 > 默认）
     Context app3("ut_prio3");
-    app3.add_option<int>("timeout", "t", 30);
+    app3.addOption<int>("timeout", "t", 30);
     app3.option("timeout")->env("CMD_UT_T");
     app3.set_env("CMD_UT_T", "50");
     char const *argv3[] = { "ut_prio3" };
     app3.parse(ec, 1, argv3, envp);
     REQUIRE(!ec);
-    REQUIRE(app3.get_option<int>("timeout") == 50);
+    REQUIRE(app3.getOption<int>("timeout") == 50);
 
     // 全无：内置默认
     Context app4("ut_prio4");
-    app4.add_option<int>("timeout", "t", 30);
+    app4.addOption<int>("timeout", "t", 30);
     char const *argv4[] = { "ut_prio4" };
     app4.parse(ec, 1, argv4, envp);
     REQUIRE(!ec);
-    REQUIRE(app4.get_option<int>("timeout") == 30);
+    REQUIRE(app4.getOption<int>("timeout") == 30);
 }
 
 TEST_CASE("config: 未知键记 warning 不中断（dump 可查）", "[config]")
@@ -547,7 +582,7 @@ TEST_CASE("config: 未知键记 warning 不中断（dump 可查）", "[config]")
     Context app("ut_warn");
     app.build<ArgumentNamed>("hello", "h");
     REQUIRE(app.from_yaml("arguments.hello: \"hi\"\nunknown.key: \"x\"\n"));
-    REQUIRE(app.get_argument<std::string>("hello") == "hi");
+    REQUIRE(app.getArgument<std::string>("hello") == "hi");
     REQUIRE(app.dump().find("unknown.key") != std::string::npos);
 }
 
@@ -555,22 +590,22 @@ TEST_CASE("loop: 两次独立输入互不合并、值各自生效、未给项回
 {
     Context app("ut_loop");
     app.build<ArgumentNamed>("hello", "h");
-    app.add_option<int>("timeout", "t", 30);
+    app.addOption<int>("timeout", "t", 30);
 
     std::error_code ec;
     // 第一次调用（等价 loop 的一行输入）
     app.parse(ec, Lexer::tokensFromLine("--hello a --timeout 9"), Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app.get_argument<std::string>("hello") == "a");
-    REQUIRE(app.get_option<int>("timeout") == 9);
+    REQUIRE(app.getArgument<std::string>("hello") == "a");
+    REQUIRE(app.getOption<int>("timeout") == 9);
 
     // 第二次调用：reset 后未给项回默认，新输入独立生效（不合并）
     app.reset();
     app.parse(ec, Lexer::tokensFromLine("--hello b"), Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app.get_argument<std::string>("hello") == "b");
-    REQUIRE(app.get_option<int>("timeout") == 30);
-    REQUIRE_FALSE(app.get_option<int>("timeout") == 9);
+    REQUIRE(app.getArgument<std::string>("hello") == "b");
+    REQUIRE(app.getOption<int>("timeout") == 30);
+    REQUIRE_FALSE(app.getOption<int>("timeout") == 9);
 }
 
 TEST_CASE("loop: 行错误不影响下一行（每行独立解析）", "[loop]")
@@ -585,7 +620,7 @@ TEST_CASE("loop: 行错误不影响下一行（每行独立解析）", "[loop]")
     app.reset();
     app.parse(ec, Lexer::tokensFromLine("--hello ok"), Envs_T{});
     REQUIRE(!ec);  // 行2 正常
-    REQUIRE(app.get_argument<std::string>("hello") == "ok");
+    REQUIRE(app.getArgument<std::string>("hello") == "ok");
     REQUIRE(app.isOk());  // reset 已清空错误栈
 }
 
@@ -606,14 +641,14 @@ TEST_CASE("parser: --load-config / --save-config 内置 e2e", "[parser]")
     std::error_code ec;
     app.parse(ec, Tokens_T{ "--load-config", "ut_cfg_e2e.yaml", "--hello", "cli" }, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app.get_argument<std::string>("hello") == "cli");
+    REQUIRE(app.getArgument<std::string>("hello") == "cli");
 
     // 仅 load-config：配置生效
     Context app2("ut_e2e2");
     app2.build<ArgumentNamed>("hello", "h");
     app2.parse(ec, Tokens_T{ "--load-config", "ut_cfg_e2e.yaml" }, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app2.get_argument<std::string>("hello") == "from-config");
+    REQUIRE(app2.getArgument<std::string>("hello") == "from-config");
 
     // 配置提供位置参数后，CLI 无需重复提供
     Context app4("ut_e2e4");
@@ -621,8 +656,8 @@ TEST_CASE("parser: --load-config / --save-config 内置 e2e", "[parser]")
     app4.build<ArgumentPosition>("count", "c");
     app4.parse(ec, Tokens_T{ "--load-config", "ut_cfg_e2e_pos.yaml" }, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app4.get_argument<std::string>("name") == "peter");
-    REQUIRE(app4.get_argument<std::string>("count") == "3");
+    REQUIRE(app4.getArgument<std::string>("name") == "peter");
+    REQUIRE(app4.getArgument<std::string>("count") == "3");
 
     // CLI 仍可覆盖配置提供的位置参数（CLI > 配置）
     Context app5("ut_e2e5");
@@ -630,13 +665,13 @@ TEST_CASE("parser: --load-config / --save-config 内置 e2e", "[parser]")
     app5.build<ArgumentPosition>("count", "c");
     app5.parse(ec, Tokens_T{ "--load-config", "ut_cfg_e2e_pos.yaml", "peter2", "4" }, Envs_T{});
     REQUIRE(!ec);
-    REQUIRE(app5.get_argument<std::string>("name") == "peter2");
-    REQUIRE(app5.get_argument<std::string>("count") == "4");
+    REQUIRE(app5.getArgument<std::string>("name") == "peter2");
+    REQUIRE(app5.getArgument<std::string>("count") == "4");
 
     // save-config：解析完成后写出 YAML，内容含解析结果
     Context app3("ut_e2e3");
     app3.build<ArgumentNamed>("hello", "h");
-    app3.add_option<int>("timeout", "t", 30);
+    app3.addOption<int>("timeout", "t", 30);
     app3.parse(ec,
                Tokens_T{ "--hello", "saved", "--timeout", "77", "--save-config",
                          "ut_cfg_save.yaml" },
@@ -689,7 +724,7 @@ TEST_CASE("context: 选项 action 命中即执行 system_call，{value} 原样�
     std::remove(file.c_str());
 
     Context app("ut_action_echo");
-    app.add_option<std::string>("task", "run a system command", "");
+    app.addOption<std::string>("task", "run a system command", "");
     app.option("task")->action(action_test_cmd(file, false));
 
     std::error_code ec;
@@ -709,31 +744,26 @@ TEST_CASE("context: 选项 action 命中即执行 system_call，{value} 原样�
     REQUIRE(app.to_yaml().find("{value}") == std::string::npos);
 }
 
-TEST_CASE("context: action 按命令行出现顺序多次执行", "[action]")
+TEST_CASE("context: action 三次命中同一选项时由 Executor 按 key 执行一次", "[action]")
 {
     auto file = action_test_file("order");
     std::remove(file.c_str());
 
     Context app("ut_action_order");
-    app.add_option<std::string>("step", "run a step", "");
+    app.addOption<std::string>("step", "run a step", "");
     app.option("step")->action(action_test_cmd(file, true));
 
     std::error_code ec;
     app.parse(ec, Tokens_T{ "--step", "one", "--step", "two", "--step", "three" }, Envs_T{});
     REQUIRE(!ec);
 
+    // Executor 按 key 执行：actionOrder 去重后只有 "step"，用最终值 "three"
     std::ifstream ifs(file);
     REQUIRE(ifs.good());
-    std::string a, b, c;
-    std::getline(ifs, a);
-    std::getline(ifs, b);
-    std::getline(ifs, c);
-    strip_cr(a);
-    strip_cr(b);
-    strip_cr(c);
-    REQUIRE(a == "one");    // 第一次命中的值
-    REQUIRE(b == "two");    // 第二次命中的值
-    REQUIRE(c == "three");  // 第三次命中的值
+    std::string line;
+    std::getline(ifs, line);
+    strip_cr(line);
+    REQUIRE(line == "three");  // 最终值
 }
 
 TEST_CASE("context: 环境变量兜底与 YAML 外部赋值不触发 action", "[action]")
@@ -742,17 +772,17 @@ TEST_CASE("context: 环境变量兜底与 YAML 外部赋值不触发 action", "[
     std::remove(file.c_str());
 
     Context app("ut_action_fb");
-    app.add_option<std::string>("task", "run a command", "default");
+    app.addOption<std::string>("task", "run a command", "default");
     app.option("task")->action(action_test_cmd(file, false));
     app.option("task")->env("UT_ACTION_TASK");
 
     std::error_code ec;
     app.parse(ec, Tokens_T{}, Envs_T{ "UT_ACTION_TASK=from-env" });
     REQUIRE(!ec);
-    REQUIRE(app.get_option<std::string>("task") == "from-env");  // 环境变量兜底值生效
+    REQUIRE(app.getOption<std::string>("task") == "from-env");  // 环境变量兜底值生效
     REQUIRE_FALSE(std::ifstream(file).good());  // 但 action 未被触发（未写文件）
 
-    // YAML 外部赋值（set_external 路径）同样不触发 action
+    // YAML 外部赋值（setExternal 路径）同样不触发 action
     app.from_yaml("options.task: \"from-yaml\"");
     REQUIRE_FALSE(std::ifstream(file).good());
 }
@@ -760,7 +790,7 @@ TEST_CASE("context: 环境变量兜底与 YAML 外部赋值不触发 action", "[
 TEST_CASE("context: action 命令失败向 stderr 告警且不中断解析", "[action]")
 {
     Context app("ut_action_fail");
-    app.add_option<int>("a", "a", 0);
+    app.addOption<int>("a", "a", 0);
     app.option("a")->action(
 #ifdef _WIN32
         "cmd /c exit 1"
@@ -768,7 +798,7 @@ TEST_CASE("context: action 命令失败向 stderr 告警且不中断解析", "[a
         "false"
 #endif
     );
-    app.add_option<int>("b", "b", 0);
+    app.addOption<int>("b", "b", 0);
 
     std::ostringstream oss;
     std::streambuf *old = std::cerr.rdbuf(oss.rdbuf());  // 捕获 stderr
@@ -777,7 +807,7 @@ TEST_CASE("context: action 命令失败向 stderr 告警且不中断解析", "[a
     std::cerr.rdbuf(old);
 
     REQUIRE(!ec);                              // 失败不中断解析
-    REQUIRE(app.get_option<int>("b") == 2);    // 后续选项照常赋值
+    REQUIRE(app.getOption<int>("b") == 2);    // 后续选项照常赋值
     REQUIRE(oss.str().find("(action)") != std::string::npos);  // 有告警输出
 }
 
@@ -786,7 +816,7 @@ TEST_CASE("context: action 命令失败向 stderr 告警且不中断解析", "[a
 TEST_CASE("interpreter: once 未解释时抛 ErrorInterp(STOPPED)", "[interpreter]")
 {
     Context app("ut_once_stopped");
-    app.add_option<int>("timeout", "t", 30);
+    app.addOption<int>("timeout", "t", 30);
 
     // 未 parse 直接 once()：解释器未就绪，抛 STOPPED 而非退出进程
     REQUIRE_THROWS_AS(app.once(), ErrorInterp);
@@ -796,7 +826,7 @@ TEST_CASE("interpreter: loop 逐行解释执行，exit 退出、行间不合并"
 {
     Context app("ut_loop_interp");
     app.build<ArgumentNamed>("hello", "h");
-    app.add_option<int>("timeout", "t", 30);
+    app.addOption<int>("timeout", "t", 30);
 
     // 输入流重定向模拟 REPL：两行解释 + exit 退出
     std::istringstream in("--hello a --timeout 9\n--hello b\nexit\n");
@@ -804,7 +834,7 @@ TEST_CASE("interpreter: loop 逐行解释执行，exit 退出、行间不合并"
     std::streambuf *oldIn  = std::cin.rdbuf(in.rdbuf());
     std::streambuf *oldOut = std::cout.rdbuf(out.rdbuf());
 
-    app.loop();  // Interpreter 基类驱动：逐行解释执行直到 exit
+    app.loop();  // 逐行解释执行直到 exit
 
     std::cin.rdbuf(oldIn);
     std::cout.rdbuf(oldOut);
@@ -812,8 +842,8 @@ TEST_CASE("interpreter: loop 逐行解释执行，exit 退出、行间不合并"
     // 两行都解释成功：无错误输出
     REQUIRE(out.str().find("(parse error)") == std::string::npos);
     // 循环结束状态 = 最后一次输入（行间 reset：hello=b，timeout 回默认）
-    REQUIRE(app.get_argument<std::string>("hello") == "b");
-    REQUIRE(app.get_option<int>("timeout") == 30);
+    REQUIRE(app.getArgument<std::string>("hello") == "b");
+    REQUIRE(app.getOption<int>("timeout") == 30);
 }
 
 TEST_CASE("interpreter: loop 行错误展示后继续下一行", "[interpreter]")
@@ -833,5 +863,40 @@ TEST_CASE("interpreter: loop 行错误展示后继续下一行", "[interpreter]"
 
     // 第一行错误被展示，第二行正常解释；状态为最后一次成功输入
     REQUIRE(out.str().find("(parse error)") != std::string::npos);
-    REQUIRE(app.get_argument<std::string>("hello") == "ok");
+    REQUIRE(app.getArgument<std::string>("hello") == "ok");
+}
+
+/* ==================== Interpreter 注入模式：直接构造 Parser + Errors ==================== */
+
+TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）", "[interpreter]")
+{
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+
+    // 通过 OptionBuilder 注册选项到 Model 的 OptionData
+    OptionBuilder ob(&model.m_opts__);
+    ob.addOption<int>("timeout", "t", 30);
+
+    // 正常行：--timeout 9 → 继承 parse + virtual hook 内联触发 action → 写入 *Data
+    auto ec = interp.interpret("--timeout 9", errors);
+    REQUIRE(!ec);
+    REQUIRE(interp.prepared());
+
+    auto *p = model.m_opts__.mgrValues.find("timeout");
+    REQUIRE(p != nullptr);
+    REQUIRE(p->strValue == "9");
+
+    // setExitCode 生效
+    interp.setExitCode(7);
+    REQUIRE(interp.exitCode() == 7);
+
+    // 错误行：--nope → ec 非零，错误栈有内容
+    ec = interp.interpret("--nope x", errors);
+    REQUIRE(ec);
+    REQUIRE(!errors.isOk());
+    REQUIRE(interp.describeError(ec, errors).find("(parse error)") != std::string::npos);
+
+    // resetData 有效：下一次 interpret 前选项还原为默认值
+    REQUIRE(p->strValue == "30");
 }

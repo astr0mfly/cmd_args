@@ -1,5 +1,6 @@
 /*
- * Copyright [2023] [ValenciaFly] <pengwanring@live.com>
+ * Copyright[2026][ValenciaFly]
+ * Email: pengwanring@live.com
  *
  *     Licensed under the Apache License,
  *     Version 2.0(the "License");
@@ -32,28 +33,35 @@ CMD_ARGS_NAMESPACE_BEGIN
     - 方位参数  : 剩余的非选项 token，按声明顺序依次赋值
     - 数量校验  : 方位参数数量不一致抛 UNKNWON_ARGS（携带明细）
 */
-class argument_parser
+class ArgumentParser
 {
 public:
-    argument_parser(ArgumentData *_Data)
-        : m_pData__(_Data)
+    /// @brief 构造参数解析器
+    /// @param _Data 底层参数数据仓库（非空）
+    ArgumentParser(ArgumentData *_Data)
+        : pData__(_Data)
     {}
 
+    /**
+     * @brief 解析 token 流：先消化命名参数，再分配方位参数并做数量校验
+     * @param _Tokens 待解析 token 流（已消费项会被移除）
+     * @note 数量校验：剩余 token 须落在 [未外部赋值数, 总数] 区间
+     */
     void parse(Tokens_T &_Tokens)
     {
         parseNamedOnly(_Tokens);
 
         // 2. 方位参数：剩余的非选项 token
-        std::vector<std::string> vecPos;
+        std::vector<Tokens_T::value_type> vecPos;
         for (auto const &t : _Tokens) {
             if (!util::starts_with(t, "-")) { vecPos.emplace_back(t); }
         }
 
         // 数量校验：剩余 token 须不少于"未由配置外部赋值"的位置参数数，
         // 且不多于位置参数总数（配置已提供的位，CLI 可省略、也可覆盖）
-        size_t total = m_pData__->mgrPos.doSize();
+        size_t total = pData__->mgrPos.doSize();
         size_t need  = 0;
-        m_pData__->mgrPos.doVisitC([&](Argument const &a) {
+        pData__->mgrPos.doConVisit([&](Argument const &a) {
             if (!a.isExternal()) ++need;
         });
         if (vecPos.size() < need || vecPos.size() > total) {
@@ -68,7 +76,7 @@ public:
         bool exact = (vecPos.size() == need);
         size_t vi  = 0;
         for (size_t seq = 0; seq < total && vi < vecPos.size(); ++seq) {
-            auto *p = m_pData__->mgrPos.mutGetBySeq(seq);
+            auto *p = pData__->mgrPos.mutGetBySeq(seq);
             if (!p) continue;
             if (exact && p->isExternal()) continue;
             p->set(vecPos[vi++]);
@@ -81,14 +89,15 @@ public:
         }
     }
 
-    /*
-        只消化命名参数（--name=value / --name value），不动方位参数。
-        用于 `--` 结束选项区之前先消费命名参数的场景。
-    */
+    /**
+     * @brief 只消化命名参数（--name=value / --name value），不动方位参数
+     * @param _Tokens 待解析 token 流（已消费命名参数项会被移除）
+     * @note 用于 `--` 结束选项区之前先消费命名参数的场景
+     */
     void parseNamedOnly(Tokens_T &_Tokens)
     {
         for (auto pos = _Tokens.begin(); pos != _Tokens.end();) {
-            std::string const &tok = *pos;
+            Tokens_T::value_type const &tok = *pos;
             if (!util::starts_with(tok, "--")) {
                 ++pos;
                 continue;
@@ -100,7 +109,7 @@ public:
             std::string value;
             if (eq != std::string::npos) { value = body.substr(eq + 1); }
 
-            auto *p = m_pData__->mgrName.mutGet(name);
+            auto *p = pData__->mgrName.mutGet(name);
             if (!p) {
                 ++pos;  // 未知长选项/命名参数，留给上层报错
                 continue;
@@ -122,16 +131,17 @@ public:
         }
     }
 
-    /*
-        `--` 之后进入纯方位模式：剩余的全部 token（含 - 开头）都当方位参数
-    */
+    /**
+     * @brief `--` 之后进入纯方位模式：剩余全部 token（含 - 开头）当作方位参数
+     * @param _Tokens 待解析 token 流（全部清空）
+     */
     void parsePositionalOnly(Tokens_T &_Tokens)
     {
-        std::vector<std::string> vecPos(_Tokens.begin(), _Tokens.end());
+        std::vector<Tokens_T::value_type> vecPos(_Tokens.begin(), _Tokens.end());
 
-        size_t total = m_pData__->mgrPos.doSize();
+        size_t total = pData__->mgrPos.doSize();
         size_t need  = 0;
-        m_pData__->mgrPos.doVisitC([&](Argument const &a) {
+        pData__->mgrPos.doConVisit([&](Argument const &a) {
             if (!a.isExternal()) ++need;
         });
         if (vecPos.size() < need || vecPos.size() > total) {
@@ -143,7 +153,7 @@ public:
         bool   exact = (vecPos.size() == need);
         size_t vi    = 0;
         for (size_t seq = 0; seq < total && vi < vecPos.size(); ++seq) {
-            auto *p = m_pData__->mgrPos.mutGetBySeq(seq);
+            auto *p = pData__->mgrPos.mutGetBySeq(seq);
             if (!p) continue;
             if (exact && p->isExternal()) continue;
             p->set(vecPos[vi++]);
@@ -151,26 +161,34 @@ public:
         _Tokens.clear();
     }
 
-    /*
-        "KEY=VALUE" 单行形态：直接给指定命名参数赋值（不经过 token 流）。
-    */
+    /**
+     * @brief "KEY=VALUE" 单行形态：直接给指定命名参数赋值（不经 token 流）
+     * @param _Line 形如 "KEY=VALUE" 的输入行
+     */
     void parse(std::string const &_Line)
     {
         auto [k, v] = util::parse_line(_Line);
-        auto *p     = m_pData__->mgrName.mutGet(k);
+        auto *p     = pData__->mgrName.mutGet(k);
         if (!p) { throw ErrorParse(ParseError_E::UNKNWON_ARGS, "unknown named argument: " + k); }
         p->set(std::move(v));
     }
 
-    // 带类型校验的读取：类型未定型（空）时任何 T 均可；否则必须与 type_string<T> 一致
+    /**
+     * @brief 带类型校验地读取参数值
+     * @tparam T 读取目标类型
+     * @param _Name 参数名
+     * @return 解析后的 T 值
+     * @note 类型未定型（空）时任何 T 均可；否则必须与 type_string<T> 一致
+     */
     template <typename T>
-    T get_argument(std::string const &name) const
+    auto getArgument(Argument::Name_T const &_Name) const -> T
     {
         using namespace util;
-        auto const *p = m_pData__->mgrName.doGet(name);
-        if (!p) { p = m_pData__->mgrPos.doGet(name); }
+
+        auto const *p = pData__->mgrName.doGet(_Name);
+        if (!p) { p = pData__->mgrPos.doGet(_Name); }
         if (!p) {
-            throw ErrorParse(ParseError_E::UNKNWON_ARGS, "argument not found: " + name);
+            throw ErrorParse(ParseError_E::UNKNWON_ARGS, "argument not found: " + _Name);
         }
 
         auto const &type = p->getType();
@@ -184,41 +202,54 @@ public:
         return util::parse_value<T>(p->getValue());
     }
 
-    bool parsed(NameLong_T const &_Name) const noexcept
+    /// @brief 查询指定命名参数是否已被解析出非空值
+    bool isParsed(NameLong_T const &_Name) const noexcept
     {
-        auto const *p = m_pData__->mgrName.doGet(_Name);
+        auto const *p = pData__->mgrName.doGet(_Name);
         return p && p->hasValue();
     }
 
-    // 一些 get_argument 的类型别名便捷入口
-    int     get_argument_int(std::string const &name) const { return get_argument<int>(name); }
-    int64_t get_argument_int64(std::string const &name) const
+    // 一些 getArgument 的类型别名便捷入口
+    /// @brief 便捷读取 int 型参数
+    auto getArgumentInt(Argument::Name_T const &_Name) const -> int { return getArgument<int>(_Name); }
+
+    /// @brief 便捷读取 int64_t 型参数
+    auto getArgumentInt64(Argument::Name_T const &_Name) const -> int64_t
     {
-        return get_argument<int64_t>(name);
-    }
-    double get_argument_double(std::string const &name) const { return get_argument<double>(name); }
-    std::string get_argument_string(std::string const &name) const
-    {
-        return get_argument<std::string>(name);
+        return getArgument<int64_t>(_Name);
     }
 
-    std::string usage_string() const
+    /// @brief 便捷读取 double 型参数
+    auto getArgumentDouble(Argument::Name_T const &_Name) const -> double
     {
-        std::string res;
-        res += m_pData__->mgrName.doGetUsage();
-        res += m_pData__->mgrPos.doGetUsage();
+        return getArgument<double>(_Name);
+    }
+
+    /// @brief 便捷读取 string 型参数
+    auto getArgumentString(Argument::Name_T const &_Name) const -> std::string
+    {
+        return getArgument<std::string>(_Name);
+    }
+
+    /// @brief 生成参数格式摘要（命名 + 方位）
+    auto genUsageString() const -> Argument::Desc_T
+    {
+        Argument::Desc_T res;
+        res += pData__->mgrName.doGetUsage();
+        res += pData__->mgrPos.doGetUsage();
 
         return res;
     }
 
+    /// @brief 追加命名/方位帮助文本到输出流
     void appendHelp(std::ostringstream &_Oss, size_t &_Max) const
     {
-        m_pData__->mgrName.doGetHelp(_Oss, _Max);
-        m_pData__->mgrPos.doGetHelp(_Oss, _Max);
+        pData__->mgrName.doGetHelp(_Oss, _Max);
+        pData__->mgrPos.doGetHelp(_Oss, _Max);
     }
 
 private:
-    ArgumentData *m_pData__ = nullptr;
+    ArgumentData *pData__ = nullptr;  ///< 底层参数数据仓库指针
 };
 
 CMD_ARGS_NAMESPACE_END

@@ -30,7 +30,7 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
-    Builder：把 Context::build<>()/add_option()/add_flag() 的调用
+    Builder：把 Context::build<>()/addOption()/addFlag() 的调用
     转交给 ArgumentBuilder / OptionBuilder，写入 Model。
     是管线第一步（Context → Builder → Lexer → Parser → Model）的落点。
 */
@@ -59,9 +59,9 @@ public:
     }
 
     using ArgumentBuilder::build;
-    using OptionBuilder::add_flag;
-    using OptionBuilder::add_option;
-    using OptionBuilder::add_short_circuit;
+    using OptionBuilder::addFlag;
+    using OptionBuilder::addOption;
+    using OptionBuilder::addShortCircuit;
 };
 
 /*

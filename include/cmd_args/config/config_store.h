@@ -26,6 +26,8 @@
 
 #include "cmd_args/context/model.h"
 
+#include "cmd_args/env/env_builder.h"
+
 #include "cmd_args/error/errors.h"
 
 #include "config/parameter.h"
@@ -43,7 +45,7 @@ CMD_ARGS_NAMESPACE_BEGIN
     arguments.xxx / positionals.xxx / options.xxx / flags.xxx / environment.XXX
 
     优先级链：CLI 显式值 > 配置文件(YAML) > 环境变量 > 内置默认值。
-    配置导入走 set_external（记录 bExternal__），env 兜底跳过此类值；
+    配置导入走 setExternal（记录 bExternal__），env 兜底跳过此类值；
     CLI 后续出现仍可无条件覆盖（CLI 赋值路径直接 set）。
 */
 
@@ -56,7 +58,7 @@ parameter_schema schema_of(Model const &_M)
     parameter_schema sch;
     sch.program = _M.m_strProgramName__;
 
-    _M.m_args__.mgrName.doVisitC([&](Argument const &a) {
+    _M.m_args__.mgrName.doConVisit([&](Argument const &a) {
         parameter_entry e;
         e.name         = a.getName();
         e.kind         = "named";
@@ -67,7 +69,7 @@ parameter_schema schema_of(Model const &_M)
         sch.entries.emplace_back(std::move(e));
     });
 
-    _M.m_args__.mgrPos.doVisitC([&](Argument const &a) {
+    _M.m_args__.mgrPos.doConVisit([&](Argument const &a) {
         parameter_entry e;
         e.name         = a.getName();
         e.kind         = "positional";
@@ -78,22 +80,22 @@ parameter_schema schema_of(Model const &_M)
         sch.entries.emplace_back(std::move(e));
     });
 
-    _M.m_opts__.options.for_each_value([&](option_value const &o) {
+    _M.m_opts__.mgrValues.forEachValue([&](OptionValue const &o) {
         if (o.bBuiltin__) return;  // 内置交互选项不参与参数格式导出
         parameter_entry e;
-        e.name         = o.long_name;
-        e.kind         = (o.type == "bool") ? "flag" : "option";
-        e.type         = o.type;
-        e.value        = o.value;
+        e.name         = o.strLongName;
+        e.kind         = (o.strType == "bool") ? "flag" : "option";
+        e.type         = o.strType;
+        e.value        = o.strValue;
         e.env          = o.strEnvName__;
         e.explicit_set = o.bExplicit__;
         e.external_set = o.bExternal__;
         sch.entries.emplace_back(std::move(e));
     });
 
-    _M.m_opts__.short_circuit_options.for_each_action([&](option_action const &a) {
+    _M.m_opts__.mgrActions.forEachAction([&](OptionAction const &a) {
         parameter_entry e;
-        e.name = a.long_name;
+        e.name = a.strLongName;
         e.kind = "short_circuit";
         e.type = "";
         sch.entries.emplace_back(std::move(e));
@@ -108,7 +110,7 @@ static std::vector<std::pair<std::string, std::string>> __relevant_envs(Model co
     std::vector<std::pair<std::string, std::string>> out;
     std::set<std::string>                            seen;
 
-    _M.m_envs__.for_each([&](environment const &e) {
+    _M.m_envs__.doVisit([&](environment const &e) {
         if (e.bReferenced__ || e.bModified__ || e.bNew__) {
             out.emplace_back(e.strKey, e.strValue);
             seen.insert(e.strKey);
@@ -118,7 +120,7 @@ static std::vector<std::pair<std::string, std::string>> __relevant_envs(Model co
     auto sch = schema_of(_M);
     for (auto const &e : sch.entries) {
         if (e.env.empty() || seen.count(e.env)) continue;
-        auto const *p = _M.m_envs__.find(e.env);
+        auto const *p = _M.m_envs__.doGet(e.env);
         if (!p) continue;  // 绑定键在当前 store 中不存在 → 不导出（避免导入时造出空变量）
         out.emplace_back(e.env, p->strValue);
         seen.insert(e.env);
@@ -135,24 +137,24 @@ parameter_snapshot snapshot_of(Model const &_M)
     return snap;
 }
 
-/* 快照回填：参数走 set_external，环境走 set_env（不写回 OS） */
+/* 快照回填：参数走 setExternal，环境走 set_env（不写回 OS） */
 void apply_snapshot(Model &_M, parameter_snapshot const &_Snap)
 {
     for (auto const &e : _Snap.values) {
         if (e.kind == "named") {
             auto *a = _M.m_args__.mgrName.mutGet(e.name);
-            if (a) a->set_external(e.value);
+            if (a) a->setExternal(e.value);
         }
         else if (e.kind == "positional") {
             auto *a = _M.m_args__.mgrPos.mutGet(e.name);
-            if (a) a->set_external(e.value);
+            if (a) a->setExternal(e.value);
         }
         else if (e.kind == "option" || e.kind == "flag") {
-            auto *o = _M.m_opts__.options.mut_find(e.name);
-            if (o) o->set_external(e.value);
+            auto *o = _M.m_opts__.mgrValues.mutFind(e.name);
+            if (o) o->setExternal(e.value);
         }
     }
-    for (auto const &[k, v] : _Snap.envs) { _M.m_envs__.set(k, v); }
+    for (auto const &[k, v] : _Snap.envs) { EnvBuilder(&_M.m_envs__).setEnv(k, v); }
 }
 
 /* ---------- YAML 互转 ---------- */
@@ -221,7 +223,7 @@ static bool __typeOk(std::string const &_Type, std::string const &_Value)
     return true;  // 未知类型放行
 }
 
-/* YAML 文本 → 会话（environment 分区 → set_env；参数分区 → set_external） */
+/* YAML 文本 → 会话（environment 分区 → set_env；参数分区 → setExternal） */
 bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
 {
     std::string err;
@@ -233,7 +235,7 @@ bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
 
     for (auto const &[k, v] : doc->entries()) {
         if (util::starts_with(k, "environment.")) {
-            _M.m_envs__.set(k.substr(12), v);
+            EnvBuilder(&_M.m_envs__).setEnv(k.substr(12), v);
             continue;
         }
 
@@ -247,7 +249,8 @@ bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
             if (!__typeOk(a->getType(), v)) {
                 __warn(_Warnings, "config: type mismatch for '" + k + "', ignored"); continue;
             }
-            a->set_external(v);
+            if (a->hasValue()) continue;  // CLI 已赋值 → 跳过配置覆盖（CLI > 配置）
+            a->setExternal(v);
             found = true;
         }
         else if (util::starts_with(k, "positionals.")) {
@@ -257,24 +260,27 @@ bool from_yaml(Model &_M, std::string const &_Text, Errors *_Warnings = nullptr)
             if (!__typeOk(a->getType(), v)) {
                 __warn(_Warnings, "config: type mismatch for '" + k + "', ignored"); continue;
             }
-            a->set_external(v);
+            if (a->hasValue()) continue;  // CLI 已赋值 → 跳过配置覆盖
+            a->setExternal(v);
             found = true;
         }
         else if (util::starts_with(k, "options.")) {
             name  = k.substr(8);
-            auto *o = _M.m_opts__.options.mut_find(name);
+            auto *o = _M.m_opts__.mgrValues.mutFind(name);
             if (!o) { __warn(_Warnings, "config: unknown option '" + name + "'"); continue; }
-            if (!__typeOk(o->type, v)) {
+            if (!__typeOk(o->strType, v)) {
                 __warn(_Warnings, "config: type mismatch for '" + k + "', ignored"); continue;
             }
-            o->set_external(v);
+            if (o->bExplicit__) continue;  // CLI 已赋值 → 跳过配置覆盖
+            o->setExternal(v);
             found = true;
         }
         else if (util::starts_with(k, "flags.")) {
             name  = k.substr(6);
-            auto *o = _M.m_opts__.options.mut_find(name);
+            auto *o = _M.m_opts__.mgrValues.mutFind(name);
             if (!o) { __warn(_Warnings, "config: unknown flag '" + name + "'"); continue; }
-            o->set_external(v);
+            if (o->bExplicit__) continue;  // CLI 已赋值 → 跳过配置覆盖
+            o->setExternal(v);
             found = true;
         }
 
@@ -293,7 +299,7 @@ bool yaml_to_env(Model &_M, std::string const &_Text, Errors *_Warnings = nullpt
         return false;
     }
     for (auto const &[k, v] : doc->entries()) {
-        if (util::starts_with(k, "environment.")) { _M.m_envs__.set(k.substr(12), v); }
+        if (util::starts_with(k, "environment.")) { EnvBuilder(&_M.m_envs__).setEnv(k.substr(12), v); }
     }
     return true;
 }

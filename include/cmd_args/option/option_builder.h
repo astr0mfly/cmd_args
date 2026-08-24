@@ -1,5 +1,5 @@
 /*
- * Copyright [2023] [ValenciaFly]
+ * Copyright[2026][ValenciaFly]
  * Email: pengwanring@live.com
  *
  *     Licensed under the Apache License,
@@ -30,90 +30,123 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-/*
-    选项构筑：接受各种类型的选项定义，并做重名/前缀/类型检查。
-    - add_option<T>   值选项（带默认值，命令行 > 环境变量 > 默认值）
-    - add_short_circuit 短回路选项（命中立即执行回调，如 -?/--help）
-*/
+/**
+ * 选项构筑：接受各种类型的选项定义，并做重名/前缀/类型检查。
+ * - addOption<T>   值选项（带默认值，命令行 > 环境变量 > 默认值）
+ * - addShortCircuit 短回路选项（命中立即执行回调，如 -?/--help）
+ */
 class OptionBuilder
 {
 public:
+    /// @brief 构造选项构筑器
+    /// @param _Data 底层选项数据仓库（非空）
     OptionBuilder(OptionData *_Data) noexcept
-        : m_pData__(_Data)
+        : pData__(_Data)
     {}
 
+    /// @brief 构筑值选项（含短名）
+    /// @tparam T 值类型
+    /// @param _Short 短名（'\0' 表示无短名）
+    /// @param _Long 长名（不含 -- 前缀）
+    /// @param _Help 帮助文本
+    /// @param _Default 默认值
+    /// @return 命中句柄（可再链式定制 env / action / onSet）
     template <typename T>
-    option_value *add_option(char _Short, NameLong_T _Long, Desc_T _Help, T const &_Default)
+    auto addOption(char _Short, NameLong_T _Long, Desc_T _Help, T const &_Default) -> OptionValue *
     {
         if (util::type_string<T>() == "null") {
             throw ErrorArgument(BuildError_E::UNSUPPORT_TYPE);
         }
 
-        check_add_option_sname(_Short);
-        check_add_option_lname(_Long);
+        checkAddOptionSname(_Short);
+        checkAddOptionLname(_Long);
 
-        m_pData__->options.push(
+        pData__->mgrValues.push(
             _Short,
             _Long,
             _Help,
             util::type_string<T>(),
             util::to_string(_Default));
 
-        return m_pData__->options.mut_find(_Long);
+        return pData__->mgrValues.mutFind(_Long);
     }
 
+    /// @brief 构筑值选项（仅长名）
+    /// @tparam T 值类型
+    /// @param _Long 长名（不含 -- 前缀）
+    /// @param _Help 帮助文本
+    /// @param _Default 默认值
+    /// @return 命中句柄
     template <typename T>
-    option_value *add_option(NameLong_T _Long, Desc_T _Help, T const &_Default)
+    auto addOption(NameLong_T _Long, Desc_T _Help, T const &_Default) -> OptionValue *
     {
-        return add_option<T>('\0', std::move(_Long), std::move(_Help), _Default);
+        return addOption<T>('\0', std::move(_Long), std::move(_Help), _Default);
     }
 
-    /* bool 选项：出现即 true，不需要默认值 */
-    option_value *add_flag(char _Short, NameLong_T _Long, Desc_T _Help)
+    /// @brief 构筑 bool 标志选项：出现即 true，不需要默认值
+    /// @param _Short 短名（'\0' 表示无短名）
+    /// @param _Long 长名（不含 -- 前缀）
+    /// @param _Help 帮助文本
+    /// @return 命中句柄
+    auto addFlag(char _Short, NameLong_T _Long, Desc_T _Help) -> OptionValue *
     {
-        check_add_option_sname(_Short);
-        check_add_option_lname(_Long);
+        checkAddOptionSname(_Short);
+        checkAddOptionLname(_Long);
 
-        m_pData__->options.push(_Short, _Long, _Help, "bool", "0");
-        return m_pData__->options.mut_find(_Long);
+        pData__->mgrValues.push(_Short, _Long, _Help, "bool", "0");
+        return pData__->mgrValues.mutFind(_Long);
     }
 
-    option_value *add_flag(NameLong_T _Long, Desc_T _Help)
+    /// @brief 构筑 bool 标志选项（仅长名）
+    /// @param _Long 长名（不含 -- 前缀）
+    /// @param _Help 帮助文本
+    /// @return 命中句柄
+    auto addFlag(NameLong_T _Long, Desc_T _Help) -> OptionValue *
     {
-        return add_flag('\0', std::move(_Long), std::move(_Help));
+        return addFlag('\0', std::move(_Long), std::move(_Help));
     }
 
-    /* 短回路选项：短名/长名命中其一即回调并停止解析 */
-    void add_short_circuit(char _Short, NameLong_T _Long, Desc_T _Help, std::function<void(void)> _Cb)
+    /// @brief 构筑短回路选项：短名/长名命中其一即回调并停止解析
+    /// @param _Short 短名（'\0' 表示无短名）
+    /// @param _Long 长名（不含 -- 前缀）
+    /// @param _Help 帮助文本
+    /// @param _Cb 命中回调
+    void addShortCircuit(char _Short, NameLong_T _Long, Desc_T _Help, std::function<void(void)> _Cb)
     {
-        check_add_option_sname(_Short);
-        check_add_option_lname(_Long);
+        checkAddOptionSname(_Short);
+        checkAddOptionLname(_Long);
 
-        m_pData__->short_circuit_options.push(_Short, _Long, _Help, std::move(_Cb));
+        pData__->mgrActions.push(_Short, _Long, _Help, std::move(_Cb));
     }
 
 private:
-    void check_add_option_sname(char _Key) const
+    /// @brief 校验短名未被占用（'\0' 跳过）
+    /// @param _Key 待校验短名
+    /// @note 已存在则抛 DUPLICATE_NAME
+    void checkAddOptionSname(char _Key) const
     {
         if (_Key == '\0') return;
-        if (m_pData__->short_circuit_options.doGet(_Key) || m_pData__->options.doGet(_Key)) {
+        if (pData__->mgrActions.doGet(_Key) || pData__->mgrValues.doGet(_Key)) {
             throw ErrorArgument(BuildError_E::DUPLICATE_NAME);
         }
     }
 
-    void check_add_option_lname(std::string const &_Key) const
+    /// @brief 校验长名非空、无非法前缀且未被占用
+    /// @param _Key 待校验长名
+    /// @note 空名抛 NEED_NAME，带前缀抛 BAD_PREFIX，已存在抛 DUPLICATE_NAME
+    void checkAddOptionLname(std::string const &_Key) const
     {
         if (_Key.empty()) { throw ErrorArgument(BuildError_E::NEED_NAME); }
         if (util::starts_with(_Key, "--") || _Key.front() == '-') {
             throw ErrorArgument(BuildError_E::BAD_PREFIX);
         }
-        if (m_pData__->short_circuit_options.doGet(_Key) || m_pData__->options.doGet(_Key)) {
+        if (pData__->mgrActions.doGet(_Key) || pData__->mgrValues.doGet(_Key)) {
             throw ErrorArgument(BuildError_E::DUPLICATE_NAME);
         }
     }
 
 private:
-    OptionData *m_pData__ = nullptr;
+    OptionData *pData__ = nullptr;  ///< 底层选项数据仓库指针
 };
 
 CMD_ARGS_NAMESPACE_END

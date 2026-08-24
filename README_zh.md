@@ -23,10 +23,10 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
    └──►parse()──►    Parser            （选项 / 命名参数 / 方位参数分配）
                         │
                         ▼
-                      Model            （ArgumentData + OptionData + environment_store）
+                      Model            （ArgumentData + OptionData + EnvData）
                         │
                         ▼
-  读取 get_argument<T> / get_option<T> / parsed() / has_env() / env_string()
+  读取 getArgument<T> / getOption<T> / isParsed() / has_env() / env_string()
   存储/加载 schema() / snapshot() / save_config() / load_config()（YAML 配置）
   执行 once()（单次输入即退） / loop()（REPL 常驻，每行等价一次 once 输入）
 ```
@@ -64,12 +64,12 @@ app.build<ArgumentPosition>("name", "your name")
    .build<ArgumentPosition>("count", "how many times");
 
 // 选项与标志
-app.add_option<std::string>('o', "output", "output file path", "out.txt");
-app.add_option<int>("timeout", "timeout in seconds", 30);
-app.add_flag('v', "verbose", "enable verbose output");
+app.addOption<std::string>('o', "output", "output file path", "out.txt");
+app.addOption<int>("timeout", "timeout in seconds", 30);
+app.addFlag('v', "verbose", "enable verbose output");
 
 // 选项 action：命中即经 std::system 执行子进程命令（{value} 为本次命中的值）
-app.add_option<std::string>("task", "run a system command", "");
+app.addOption<std::string>("task", "run a system command", "");
 app.option("task")->action("echo run: {value}");
 
 // 环境变量联动：命令行显式值 > 环境变量 > 内置默认值
@@ -82,9 +82,9 @@ app.parse(ec, _Argc, _Argv, _Envp);
 if (ec) { /* ec.message() 即错误说明 */ }
 
 // 读取结果
-std::string hello = app.get_argument<std::string>("hello");
-int         tout  = app.get_option<int>("timeout");
-bool        verb  = app.get_option<bool>("verbose");
+std::string hello = app.getArgument<std::string>("hello");
+int         tout  = app.getOption<int>("timeout");
+bool        verb  = app.getOption<bool>("verbose");
 
 // 配置脚本（第三类外界环境）：参数 + 环境 ↔ YAML
 app.schema_string();              // 参数格式清单
@@ -141,7 +141,7 @@ No. : "key" = "value"
 ```
 
 示例：`--timeout 99` 显式给出取 99；未给出但加载的 YAML 配置里有 `timeout` 取配置值；
-都没有但进程有 `MY_TOOL_TIMEOUT` 取环境值；全无则取 `add_option<int>(..., 30)` 的 30。
+都没有但进程有 `MY_TOOL_TIMEOUT` 取环境值；全无则取 `addOption<int>(..., 30)` 的 30。
 
 ### 内置选项
 
@@ -219,9 +219,9 @@ interpreter（`once()`/`loop()` 逐行解释脚本）按 token 出现顺序识�
 ### 绑定
 
 ```cpp
-app.add_option<std::string>("task", "run a system command", "");
+app.addOption<std::string>("task", "run a system command", "");
 app.option("task")->action("echo notify: {value}");   // {value} 替换为本次命中的值
-app.add_flag('r', "repeat", "repeat!");
+app.addFlag('r', "repeat", "repeat!");
 
 // 值含空格 / 路径时请在模板里自带引号（shell 会按空白切分参数）：
 app.option("task")->action("echo \"{value}\"");
@@ -229,9 +229,9 @@ app.option("task")->action("echo \"{value}\"");
 
 ### 语义约定
 
-- `action("...")` 经 `app.option("name")` 句柄绑定（`add_option`/`add_flag` 之后均可）；
+- `action("...")` 经 `app.option("name")` 句柄绑定（`addOption`/`addFlag` 之后均可）；
 - 模板中的 `{value}` **原样**替换为该选项本次命中的值；不含 `{value}` 则是固定命令；
-- 仅 CLI 显式命中触发：环境变量兜底 / YAML 配置赋值（`set_external`）/ 内置默认值**不触发**；
+- 仅 CLI 显式命中触发：环境变量兜底 / YAML 配置赋值（`setExternal`）/ 内置默认值**不触发**；
 - 同一选项多次命中 → 每次执行；执行顺序 = 命令行出现顺序；
 - `std::system` 返回非 0 时向 stderr 打印 `(action) command exit ...` 告警，**不中断**解析；
 - action 属于执行配置，不进入 `schema()` / `to_yaml()` 导出（不影响配置往返）；
@@ -302,8 +302,8 @@ include/cmd_args/          头文件库本体（header-only）
 ├── base/                  def / util（类型字符串、解析、trim/split 等）
 ├── error/                 builder / parser / lexer / interpreter 错误分类
 ├── argument/              Argument / ArgumentNamed / ArgumentPosition + 数据/解析
-├── option/                option_value / option_action + 数据/构筑/解析
-├── env/                   environment / environment_store（一等公民核心）
+├── option/                OptionValue / OptionAction + 数据/构筑/解析
+├── env/                   environment / EnvData / EnvBuilder / EnvParser（一等公民核心）
 ├── config/                yaml（极简 YAML 子集）/ parameter（schema/快照）/
 │                          config_store（三类输入源转换桥接）
 ├── context/               Context / Builder / Lexer / Parser / Model / Interpreter

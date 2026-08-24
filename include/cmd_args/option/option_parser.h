@@ -1,5 +1,5 @@
 /*
- * Copyright[2023][ValenciaFly]
+ * Copyright[2026][ValenciaFly]
  * Email: pengwanring@live.com
  *
  *     Licensed under the Apache License,
@@ -29,27 +29,34 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-/*
-    选项解析器：消费 Tokens 中形如
-        --long=value / --long value / -x value / -xvalue / -abc(聚合 bool)
-    的选项 token。
-
-    - 短回路选项优先级最高：命中其一立即回调并停止解析
-    - 未注册的长选项 token 原样保留（可能是命名参数，由上层决定）
-    - 未知的短选项在聚合串里直接报 UNKNOWN_OPTION
-    - `--` 之后的 token 一律不再作为选项处理
-*/
-class option_parser
+/**
+ * 选项解析器：消费 Tokens 中形如
+ *     --long=value / --long value / -x value / -xvalue / -abc(聚合 bool)
+ * 的选项 token。
+ *
+ * - 短回路选项优先级最高：命中其一立即回调并停止解析
+ * - 未注册的长选项 token 原样保留（可能是命名参数，由上层决定）
+ * - 未知的短选项在聚合串里直接报 UNKNOWN_OPTION
+ * - `--` 之后的 token 一律不再作为选项处理
+ */
+class OptionParser
 {
 public:
-    option_parser(OptionData *_Data)
-        : m_pData__(_Data)
+    /// @brief 构造选项解析器
+    /// @param _Data 底层选项数据仓库（非空）
+    OptionParser(OptionData *_Data)
+        : pData__(_Data)
     {}
 
+    virtual ~OptionParser() = default;
+
+    /// @brief 解析 token 流中的选项 token（纯解析：赋值 + 标记，不触发 action）
+    /// @param _Tokens 待解析 token 流（已消费项会被移除）
+    /// @return 短回路是否已命中（命中即停止本次解析）
     bool parse(Tokens_T &_Tokens)
     {
-        m_bFired__  = false;
-        m_bOptEnd__ = false;
+        bFired__  = false;
+        bOptEnd__ = false;
 
         for (auto it = _Tokens.begin(); it != _Tokens.end();) {
             std::string const &tok = *it;
@@ -57,7 +64,7 @@ public:
             if (tok == "--") {
                 // 结束选项区：其后的 token 全部留给位置参数
                 _Tokens.erase(it);
-                m_bOptEnd__ = true;
+                bOptEnd__ = true;
                 break;
             }
 
@@ -70,11 +77,11 @@ public:
 
                 if (__fireOnLong(name, it, _Tokens)) return true;
 
-                auto *pOpt = m_pData__->options.mut_find(name);
+                auto *pOpt = pData__->mgrValues.mutFind(name);
                 if (pOpt) {
                     // --long=value 与 --long value 两种形式都支持；
                     // 未显式给值且非 bool 选项时，消费下一个 token 作为值
-                    if (value.empty() && pOpt->type != "bool") {
+                    if (value.empty() && pOpt->strType != "bool") {
                         auto nx = std::next(it);
                         if (nx == _Tokens.end() || util::starts_with(*nx, "-")) {
                             throw ErrorParse(
@@ -84,7 +91,7 @@ public:
                         value = *nx;
                         _Tokens.erase(nx);
                     }
-                    __assign(pOpt, value, pOpt->type == "bool");
+                    __assign(pOpt, value, pOpt->strType == "bool");
                     it = _Tokens.erase(it);
                     continue;
                 }
@@ -98,12 +105,12 @@ public:
                 if (__fireOnShort(tok, it, _Tokens)) return true;
 
                 if (tok.size() == 2) {
-                    auto *pOpt = m_pData__->options.mut_find(tok[1]);
+                    auto *pOpt = pData__->mgrValues.mutFind(tok[1]);
                     if (!pOpt) {
                         ++it;  // 可能是未识别短选项，交给上层统一报错
                         continue;
                     }
-                    if (pOpt->type == "bool") {
+                    if (pOpt->strType == "bool") {
                         __assign(pOpt, "", true);
                     }
                     else {
@@ -126,13 +133,13 @@ public:
                     char key = tok[i];
                     if (__fireOnShortChar(key, it, _Tokens)) return true;
 
-                    auto *pOpt = m_pData__->options.mut_find(key);
+                    auto *pOpt = pData__->mgrValues.mutFind(key);
                     if (!pOpt) {
                         throw ErrorParse(
                             ParseError_E::UNKNOWN_OPTION,
                             "unrecognized short option '" + std::string(1, key) + "' in " + tok);
                     }
-                    if (pOpt->type == "bool") {
+                    if (pOpt->strType == "bool") {
                         __assign(pOpt, "", true);
                         continue;
                     }
@@ -163,152 +170,186 @@ public:
             continue;
         }
 
-        return m_bFired__;
+        return bFired__;
     }
 
-    bool fired() const noexcept { return m_bFired__; }
-    bool options_ended() const noexcept { return m_bOptEnd__; }
+    /// @brief 短回路是否已命中（命中即停止本次解析）
+    bool isFired() const noexcept { return bFired__; }
 
-    bool parsed(NameShort_T _Name) const noexcept
+    /// @brief 是否已进入 `--` 之后的纯位置参数模式
+    bool isOptionsEnded() const noexcept { return bOptEnd__; }
+
+    /// @brief 按短名查询是否被显式赋值
+    /// @param _Name 短名（'\0' 必为 false）
+    bool isParsed(NameShort_T _Name) const noexcept
     {
         if (_Name == '\0') return false;
-        auto const *p = m_pData__->options.find(_Name);
-        return p && p->bExplicit__;
-    }
-    bool parsed(NameLong_T const &_Name) const noexcept
-    {
-        auto const *p = m_pData__->options.find(_Name);
+        auto const *p = pData__->mgrValues.find(_Name);
         return p && p->bExplicit__;
     }
 
-    bool has_option(std::string const &_Name) const noexcept
+    /// @brief 按长名查询是否被显式赋值
+    /// @param _Name 长名
+    bool isParsed(NameLong_T const &_Name) const noexcept
+    {
+        auto const *p = pData__->mgrValues.find(_Name);
+        return p && p->bExplicit__;
+    }
+
+    /// @brief 查询选项是否已注册（长名可带 -- 前缀，短名亦可用 char 查询）
+    /// @param _Name 选项名
+    bool hasOption(std::string const &_Name) const noexcept
     {
         auto key = _Name;
         if (util::starts_with(key, "--")) { key = key.substr(2); }
 
-        if (auto const *p = m_pData__->options.find(key)) { (void)p; return true; }
-        if (key.size() == 1 && m_pData__->options.find(key[0])) { return true; }
+        if (auto const *p = pData__->mgrValues.find(key)) { (void)p; return true; }
+        if (key.size() == 1 && pData__->mgrValues.find(key[0])) { return true; }
         return false;
     }
 
+    /// @brief 带类型校验地读取选项值
+    /// @tparam T 读取目标类型
+    /// @param _Name 选项名（可带 -- 前缀）
+    /// @return 解析后的 T 值
+    /// @note 类型必须与注册时一致，否则抛 UNKNOWN_OPTION
     template <typename T>
-    T get_option(std::string const &_Name) const
+    auto getOption(std::string const &_Name) const -> T
     {
         using namespace util;
         auto key = _Name;
         if (util::starts_with(key, "--")) { key = key.substr(2); }
 
-        auto const *p = m_pData__->options.find(key);
-        if (!p && key.size() == 1) { p = m_pData__->options.find(key[0]); }
+        auto const *p = pData__->mgrValues.find(key);
+        if (!p && key.size() == 1) { p = pData__->mgrValues.find(key[0]); }
         if (!p) {
             throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option not found: " + key);
         }
 
-        if (p->type == "bool") {
-            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->value); }
+        if (p->strType == "bool") {
+            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->strValue); }
             throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option type mismatch: " + key);
         }
-        if (p->type != util::type_string<T>()) {
+        if (p->strType != util::type_string<T>()) {
             throw ErrorParse(
                 ParseError_E::UNKNOWN_OPTION,
-                "option type mismatch: set '" + p->type + "' but try get with '"
+                "option type mismatch: set '" + p->strType + "' but try get with '"
                     + util::type_string<T>() + "'");
         }
 
-        return util::parse_value<T>(p->value);
+        return util::parse_value<T>(p->strValue);
     }
 
-    bool    has_option_bool(std::string const &_Name) const { return get_option<bool>(_Name); }
-    bool    get_option_bool(std::string const &_Name) const { return get_option<bool>(_Name); }
-    int     get_option_int(std::string const &_Name) const { return get_option<int>(_Name); }
-    int64_t get_option_int64(std::string const &_Name) const { return get_option<int64_t>(_Name); }
-    double  get_option_double(std::string const &_Name) const { return get_option<double>(_Name); }
-    std::string get_option_string(std::string const &_Name) const
+    // 一些 getOption 的类型便捷入口
+    /// @brief 便捷判断 bool 型选项是否命中
+    bool hasOptionBool(std::string const &_Name) const { return getOption<bool>(_Name); }
+
+    /// @brief 便捷读取 bool 型选项
+    bool getOptionBool(std::string const &_Name) const { return getOption<bool>(_Name); }
+
+    /// @brief 便捷读取 int 型选项
+    auto getOptionInt(std::string const &_Name) const -> int { return getOption<int>(_Name); }
+
+    /// @brief 便捷读取 int64_t 型选项
+    auto getOptionInt64(std::string const &_Name) const -> int64_t
     {
-        return get_option<std::string>(_Name);
+        return getOption<int64_t>(_Name);
     }
 
-    std::string usage_string() const { return m_pData__->usage_string(); }
+    /// @brief 便捷读取 double 型选项
+    auto getOptionDouble(std::string const &_Name) const -> double
+    {
+        return getOption<double>(_Name);
+    }
 
+    /// @brief 便捷读取 string 型选项
+    auto getOptionString(std::string const &_Name) const -> std::string
+    {
+        return getOption<std::string>(_Name);
+    }
+
+    /// @brief 生成选项使用行片段（委托给 OptionData）
+    auto usageString() const -> std::string { return pData__->usageString(); }
+
+    /// @brief 追加帮助文本到输出流
     void appendHelp(std::ostringstream &_Out) const
     {
-        if (m_pData__->short_circuit_options.doEmpty() && m_pData__->options.doEmpty()) return;
+        if (pData__->mgrActions.doEmpty() && pData__->mgrValues.doEmpty()) return;
         _Out << "\nOptions:\n";
-        auto max = m_pData__->calc_desc_max_length();
-        m_pData__->appendHelp(_Out, max);
+        auto max = pData__->calcDescMaxLength();
+        pData__->appendHelp(_Out, max);
     }
 
 private:
-    /* 赋值并联动：bExplicit__ 标记、fnOnSet__ 钩子、action 系统调用 */
-    void __assign(option_value *_Opt, std::string const &_Value, bool _IsBool)
+    /// @brief 纯解析：赋值 + bExplicit__ 标记 + 记录解析顺序；子类可 override onOptionAssigned 实现内联 action
+    void __assign(OptionValue *_Opt, std::string const &_Value, bool _IsBool)
     {
         if (_IsBool) {
-            _Opt->value = _Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0");
+            _Opt->strValue = _Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0");
         }
         else {
-            _Opt->value = _Value;
+            _Opt->strValue = _Value;
         }
         _Opt->bExplicit__ = true;
-        if (_Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->value); }
 
-        // 绑定了 action 的选项：命中即通过 std::system 执行子进程命令。
-        // __assign 仅在暴露词法 token 的显式赋值路径被调用，且按命令行出现顺序
-        // （长/短/聚合短选项逐一命中），因此 action 天然"按先后顺序"执行；
-        // 环境变量兜底 / YAML 外部赋值不会走到这里，不会触发 action。
-        if (!_Opt->strActionTemplate__.empty()) {
-            auto cmd = util::replace(_Opt->strActionTemplate__, "{value}", _Opt->value);
-            if (!cmd.empty()) {
-                int ret = std::system(cmd.c_str());
-                if (ret != 0) {
-                    std::cerr << "(action) command exit " << ret << ": " << cmd << "\n";
-                }
-            }
+        // 记录含 action 的选项的解析顺序（Executor 按此顺序统一执行）
+        if (pData__ && (_Opt->fnOnSet__ || !_Opt->strActionTemplate__.empty())) {
+            pData__->recordParseOrder(_Opt->strLongName);
         }
+
+        // 虚拟钩子：子类（Interpreter）可 override 实现逐 Token 内联 action 执行
+        onOptionAssigned(_Opt, _Opt->strValue);
     }
 
+    /// @brief 选项赋值后的虚拟钩子（纯解析 = 空操作；子类 override 实现 action 执行）
+    virtual void onOptionAssigned(OptionValue *, std::string const &) {}
+
+    /// @brief 长名短回路触发：命中即回调并移除 token
     bool __fireOnLong(
         std::string const &_Name, Tokens_T::iterator &_It, Tokens_T &_Tokens)
     {
-        auto const *pSc = m_pData__->short_circuit_options.doGet(_Name);
+        auto const *pSc = pData__->mgrActions.doGet(_Name);
         if (!pSc) return false;
 
-        auto const *pAct = static_cast<option_action const *>(pSc);
-        m_bFired__ = true;
-        _It        = _Tokens.erase(_It);
-        pAct->callback();
+        auto const *pAct = static_cast<OptionAction const *>(pSc);
+        bFired__ = true;
+        _It      = _Tokens.erase(_It);
+        pAct->fnCallback();
         return true;
     }
 
+    /// @brief 短名短回路触发（-x 形式）
     bool __fireOnShort(std::string const &_Tok, Tokens_T::iterator &_It, Tokens_T &_Tokens)
     {
         if (_Tok.size() != 2) return false;
 
-        auto const *pSc = m_pData__->short_circuit_options.doGet(_Tok[1]);
+        auto const *pSc = pData__->mgrActions.doGet(_Tok[1]);
         if (!pSc) return false;
 
-        auto const *pAct = static_cast<option_action const *>(pSc);
-        m_bFired__ = true;
-        _It        = _Tokens.erase(_It);
-        pAct->callback();
+        auto const *pAct = static_cast<OptionAction const *>(pSc);
+        bFired__ = true;
+        _It      = _Tokens.erase(_It);
+        pAct->fnCallback();
         return true;
     }
 
+    /// @brief 聚合串内短名短回路触发（-abc 中命中 b）
     bool __fireOnShortChar(char _Key, Tokens_T::iterator &_It, Tokens_T &_Tokens)
     {
-        auto const *pSc = m_pData__->short_circuit_options.doGet(_Key);
+        auto const *pSc = pData__->mgrActions.doGet(_Key);
         if (!pSc) return false;
 
-        auto const *pAct = static_cast<option_action const *>(pSc);
-        m_bFired__ = true;
-        _It        = _Tokens.erase(_It);
-        pAct->callback();
+        auto const *pAct = static_cast<OptionAction const *>(pSc);
+        bFired__ = true;
+        _It      = _Tokens.erase(_It);
+        pAct->fnCallback();
         return true;
     }
 
 private:
-    OptionData    *m_pData__ = nullptr;
-    bool           m_bFired__  = false;
-    bool           m_bOptEnd__ = false;
+    OptionData *pData__ = nullptr;  ///< 底层选项数据仓库指针
+    bool        bFired__ = false;   ///< 短回路是否已命中（命中即停止本次解析）
+    bool        bOptEnd__ = false;  ///< 是否已结束选项区（`--` 之后）
 };
 
 CMD_ARGS_NAMESPACE_END

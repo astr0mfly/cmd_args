@@ -37,10 +37,10 @@ CMD_ARGS_NAMESPACE_BEGIN
 struct environment
 {
     std::string         strKey;
-    mutable std::string strValue;
-    mutable bool        bReferenced__ = false;
-    mutable bool        bModified__   = false;
-    mutable bool        bNew__        = false;
+     std::string strValue;
+     bool        bReferenced__ = false;
+     bool        bModified__   = false;
+     bool        bNew__        = false;
 
     /*
         纯键构造：用于 std::set<environment>::find/erase 等按名查找；

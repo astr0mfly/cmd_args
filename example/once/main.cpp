@@ -52,14 +52,14 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
         .build<ArgumentPosition>("count", "how many times");
 
     // 值选项 + 标志选项
-    demo.add_option<std::string>('o', "output", "output file path", "out.txt");
-    demo.add_option<int>("timeout", "timeout in seconds", 30);
-    demo.add_flag('v', "verbose", "enable verbose output");
+    demo.addOption<std::string>('o', "output", "output file path", "out.txt");
+    demo.addOption<int>("timeout", "timeout in seconds", 30);
+    demo.addFlag('v', "verbose", "enable verbose output");
 
     // 选项 action（system_call 子进程命令）：解析时该选项被显式命中后，
     // 立即按命令行出现顺序通过 std::system 执行；{value} 原样替换为本次命中的值
     // （这里演示引用：echo 收到完整字符串；需要转义时不带引号会按 shell 切分）
-    demo.add_option<std::string>("notify", "run echo with the value as a system call", "");
+    demo.addOption<std::string>("notify", "run echo with the value as a system call", "");
     demo.option("notify")->action("echo notify: {value}");
 
     /* ---------- 2. 环境变量联动 ---------- */
@@ -85,16 +85,16 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
     /* ---------- 4. 读取解析结果 ---------- */
 
     std::cout << "--- values ---\n";
-    std::cout << "hello   = " << demo.get_argument<std::string>("hello") << "\n";
-    std::cout << "world   = " << demo.get_argument<std::string>("world") << "\n";
-    std::cout << "name    = " << demo.get_argument<std::string>("name") << "\n";
-    std::cout << "count   = " << demo.get_argument<std::string>("count") << "\n";
-    std::cout << "output  = " << demo.get_option<std::string>("output") << "\n";
-    std::cout << "timeout = " << demo.get_option<int>("timeout") << "\n";
-    std::cout << "verbose = " << (demo.get_option<bool>("verbose") ? "on" : "off") << "\n";
+    std::cout << "hello   = " << demo.getArgument<std::string>("hello") << "\n";
+    std::cout << "world   = " << demo.getArgument<std::string>("world") << "\n";
+    std::cout << "name    = " << demo.getArgument<std::string>("name") << "\n";
+    std::cout << "count   = " << demo.getArgument<std::string>("count") << "\n";
+    std::cout << "output  = " << demo.getOption<std::string>("output") << "\n";
+    std::cout << "timeout = " << demo.getOption<int>("timeout") << "\n";
+    std::cout << "verbose = " << (demo.getOption<bool>("verbose") ? "on" : "off") << "\n";
 
     // 若命令行给了 --notify，其 action 已在解析时执行（看上面的 echo 输出）
-    std::cout << "notify  = " << demo.get_option<std::string>("notify") << "\n";
+    std::cout << "notify  = " << demo.getOption<std::string>("notify") << "\n";
 
     /* ---------- 5. 环境变量交互（差异化能力） ---------- */
 

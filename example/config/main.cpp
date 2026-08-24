@@ -31,9 +31,9 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
         .build<ArgumentNamed>("world", "Say world too");
     app.build<ArgumentPosition>("name", "your name")
         .build<ArgumentPosition>("count", "how many times");
-    app.add_option<std::string>('o', "output", "output file path", "out.txt");
-    app.add_option<int>("timeout", "timeout in seconds", 30);
-    app.add_flag('v', "verbose", "enable verbose output");
+    app.addOption<std::string>('o', "output", "output file path", "out.txt");
+    app.addOption<int>("timeout", "timeout in seconds", 30);
+    app.addFlag('v', "verbose", "enable verbose output");
 
     // 环境变量联动（①）：命令行显式值 > 环境变量 > 内置默认值
     app.option("output")->env("CMD_ARGS_DEMO_OUTPUT");
@@ -54,13 +54,13 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
 
     /* ---------- 4. 读取结果 ---------- */
     std::cout << "===== values =====\n";
-    std::cout << "hello   = " << app.get_argument<std::string>("hello") << "\n";
-    std::cout << "world   = " << app.get_argument<std::string>("world") << "\n";
-    std::cout << "name    = " << app.get_argument<std::string>("name") << "\n";
-    std::cout << "count   = " << app.get_argument<std::string>("count") << "\n";
-    std::cout << "output  = " << app.get_option<std::string>("output") << "\n";
-    std::cout << "timeout = " << app.get_option<int>("timeout") << "\n";
-    std::cout << "verbose = " << (app.get_option<bool>("verbose") ? "on" : "off") << "\n";
+    std::cout << "hello   = " << app.getArgument<std::string>("hello") << "\n";
+    std::cout << "world   = " << app.getArgument<std::string>("world") << "\n";
+    std::cout << "name    = " << app.getArgument<std::string>("name") << "\n";
+    std::cout << "count   = " << app.getArgument<std::string>("count") << "\n";
+    std::cout << "output  = " << app.getOption<std::string>("output") << "\n";
+    std::cout << "timeout = " << app.getOption<int>("timeout") << "\n";
+    std::cout << "verbose = " << (app.getOption<bool>("verbose") ? "on" : "off") << "\n";
 
     /* ---------- 5. 存储为 YAML（③：参数 + 环境 → 配置文件，供下次调用） ---------- */
     std::cout << "===== to_yaml() =====\n" << app.to_yaml();
@@ -81,9 +81,9 @@ int main(int _Argc, char *_Argv[], char *_Envp[])
     }
     std::cout << "--- 反哺后的环境变量（environment 分区已 set_env） ---\n";
     std::cout << app.env_string();
-    std::cout << "timeout = " << app.get_option<int>("timeout")
+    std::cout << "timeout = " << app.getOption<int>("timeout")
               << "  (来自配置 arguments 分区的外部赋值)\n";
-    std::cout << "world   = " << app.get_argument<std::string>("world") << "\n";
+    std::cout << "world   = " << app.getArgument<std::string>("world") << "\n";
 
     /* ---------- 7. 退出 ---------- */
     app.once();

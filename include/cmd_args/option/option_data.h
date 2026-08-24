@@ -1,5 +1,5 @@
 /*
- * Copyright[2023][ValenciaFly]
+ * Copyright[2026][ValenciaFly]
  * Email: pengwanring@live.com
  *
  *     Licensed under the Apache License,
@@ -17,7 +17,13 @@
  */
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <functional>
+#include <map>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
@@ -26,272 +32,316 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-namespace detail {
-/* 选项管理器统一接口（短名/长名查询），供 option_parser 多态使用 */
-struct opt_mgr_itf
+namespace option_detail {
+
+/// @brief 选项管理器统一接口（短名/长名查询），供 OptionParser 多态使用
+struct OptMgrItf
 {
-    virtual option const *doGet(char) const noexcept        = 0;
-    virtual option const *doGet(std::string) const noexcept = 0;
+    virtual Option const *doGet(char _Key) const noexcept        = 0;
+    virtual Option const *doGet(std::string _Key) const noexcept = 0;
 };
 
-/*
-    值选项管理器：持有全部 option_value（含 builtin 交互选项）。
-    提供查询（const / mutable）、遍历（for_each_value）、帮助排版（appendHelp）。
-*/
-class value_opt_mgr : opt_mgr_itf
+/**
+ * @brief 值选项管理器：持有全部 OptionValue（含 builtin 交互选项）。
+ *        提供查询（const / mutable）、遍历（forEachValue）、帮助排版（appendHelp）。
+ */
+class ValueOptMgr : OptMgrItf
 {
 public:
-    option const *doGet(char _Key) const noexcept override
+    /// @brief 按短名查询（只读，未找到返回 nullptr）
+    Option const *doGet(char _Key) const noexcept override
     {
         auto it = std::find_if(
-            m_vecValues.cbegin(),
-            m_vecValues.cend(),
-            [_Key](decltype(m_vecValues)::const_reference _V) { return _V.short_name == _Key; });
-        if (it == m_vecValues.cend()) return nullptr;
+            vecValues__.cbegin(),
+            vecValues__.cend(),
+            [_Key](decltype(vecValues__)::const_reference _V) { return _V.cShortName == _Key; });
+        if (it == vecValues__.cend()) return nullptr;
 
         return std::addressof(*it);
     }
 
-    option const *doGet(std::string _Key) const noexcept override
+    /// @brief 按长名查询（只读，未找到返回 nullptr）
+    Option const *doGet(std::string _Key) const noexcept override
     {
         auto it = std::find_if(
-            m_vecValues.cbegin(),
-            m_vecValues.cend(),
-            [_Key](decltype(m_vecValues)::const_reference _V) { return _V.long_name == _Key; });
-        if (it == m_vecValues.cend()) return nullptr;
+            vecValues__.cbegin(),
+            vecValues__.cend(),
+            [_Key](decltype(vecValues__)::const_reference _V) { return _V.strLongName == _Key; });
+        if (it == vecValues__.cend()) return nullptr;
 
         return std::addressof(*it);
     }
 
-    void push(char sname, std::string lname, std::string help, std::string type, std::string value)
+    /// @brief 追加值选项（含短名）
+    /// @param _SName 短名（'\0' 表示无短名）
+    /// @param _LName 长名
+    /// @param _Help 帮助文本
+    /// @param _Type 类型标识
+    /// @param _Value 默认值
+    void push(char _SName, std::string _LName, std::string _Help, std::string _Type, std::string _Value)
     {
-        m_vecValues.emplace_back(
-            sname,
-            std::move(lname),
-            std::move(help),
-            std::move(type),
-            std::move(value));
+        vecValues__.emplace_back(
+            _SName, std::move(_LName), std::move(_Help), std::move(_Type), std::move(_Value));
     }
 
-    void push(std::string lname, std::string help, std::string type, std::string value)
+    /// @brief 追加值选项（仅长名）
+    /// @param _LName 长名
+    /// @param _Help 帮助文本
+    /// @param _Type 类型标识
+    /// @param _Value 默认值
+    void push(std::string _LName, std::string _Help, std::string _Type, std::string _Value)
     {
-        m_vecValues
-            .emplace_back(std::move(lname), std::move(help), std::move(type), std::move(value));
+        vecValues__.emplace_back(std::move(_LName), std::move(_Help), std::move(_Type), std::move(_Value));
     }
 
-    option_value const *find(char _Key) const
+    /// @brief 按短名查找（只读，未找到返回 nullptr）
+    auto find(char _Key) const -> OptionValue const *
     {
-        for (auto &v : m_vecValues) {
-            if (v.short_name == 0) continue;
-            if (v.short_name == _Key) return std::addressof(v);
+        for (auto const &v : vecValues__) {
+            if (v.cShortName == '\0') continue;
+            if (v.cShortName == _Key) return std::addressof(v);
         }
 
         return nullptr;
     }
 
-    option_value const *find(std::string _Key) const
+    /// @brief 按长名查找（只读，未找到返回 nullptr）
+    auto find(std::string _Key) const -> OptionValue const *
     {
-        for (auto &v : m_vecValues) {
-            if (v.long_name == _Key) return std::addressof(v);
+        for (auto const &v : vecValues__) {
+            if (v.strLongName == _Key) return std::addressof(v);
         }
 
         return nullptr;
     }
 
-    /* 可变访问：解析期需要写入 value / 标记 bExplicit__ / 触发 fnOnSet__ */
-    option_value *mut_find(char _Key)
+    /// @brief 按短名查找（可变：解析期写入 strValue / 标记 bExplicit__ / 触发 fnOnSet__）
+    auto mutFind(char _Key) -> OptionValue *
     {
-        for (auto &v : m_vecValues) {
-            if (v.short_name == 0) continue;
-            if (v.short_name == _Key) return std::addressof(v);
+        for (auto &v : vecValues__) {
+            if (v.cShortName == '\0') continue;
+            if (v.cShortName == _Key) return std::addressof(v);
         }
 
         return nullptr;
     }
 
-    option_value *mut_find(std::string _Key)
+    /// @brief 按长名查找（可变：解析期写入 strValue / 标记 bExplicit__ / 触发 fnOnSet__）
+    auto mutFind(std::string _Key) -> OptionValue *
     {
-        for (auto &v : m_vecValues) {
-            if (v.long_name == _Key) return std::addressof(v);
+        for (auto &v : vecValues__) {
+            if (v.strLongName == _Key) return std::addressof(v);
         }
 
         return nullptr;
     }
 
-    void for_each_value(std::function<void(option_value &)> const &_Fn)
+    /// @brief 遍历值选项（可变）
+    void forEachValue(std::function<void(OptionValue &)> const &_Fn)
     {
-        for (auto &v : m_vecValues) { _Fn(v); }
+        for (auto &v : vecValues__) { _Fn(v); }
     }
 
-    void for_each_value(std::function<void(option_value const &)> const &_Fn) const
+    /// @brief 遍历值选项（只读）
+    void forEachValue(std::function<void(OptionValue const &)> const &_Fn) const
     {
-        for (auto const &v : m_vecValues) { _Fn(v); }
+        for (auto const &v : vecValues__) { _Fn(v); }
     }
 
-    bool doEmpty() const noexcept { return m_vecValues.empty(); }
+    /// @brief 是否为空容器
+    bool doEmpty() const noexcept { return vecValues__.empty(); }
 
-    std::size_t calc_desc_max_length() const noexcept
+    /// @brief 计算帮助排版的最长名称列宽度
+    auto calcDescMaxLength() const noexcept -> std::size_t
     {
         std::size_t max_name_length = 0;
-        for (auto const &opt : m_vecValues) {
-            std::size_t length = opt.long_name.length();
-            if (opt.short_name == 0) { length += 4; }
+        for (auto const &opt : vecValues__) {
+            std::size_t length = opt.strLongName.length();
+            if (opt.cShortName == '\0') { length += 4; }
             max_name_length = std::max(max_name_length, length);
         }
 
         return max_name_length;
     }
 
+    /// @brief 追加帮助文本到输出流
     void appendHelp(std::ostringstream &_Out, std::size_t _Max) const
     {
-        for (auto const &opt : m_vecValues) {
+        for (auto const &opt : vecValues__) {
             _Out << "  ";
             std::size_t printed_length = 0;
-            if (opt.short_name) {
-                _Out << opt.short_name << ", ";
+            if (opt.cShortName) {
+                _Out << opt.cShortName << ", ";
                 printed_length = 4;
             }
-            _Out << opt.long_name;
-            printed_length += opt.long_name.length();
+            _Out << opt.strLongName;
+            printed_length += opt.strLongName.length();
             _Out << std::string(_Max - printed_length, ' ');
-            if (opt.type != "bool") { _Out << "(" << opt.type << ") "; }
-            _Out << util::replace(opt.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
+            if (opt.strType != "bool") { _Out << "(" << opt.strType << ") "; }
+            _Out << util::replace(opt.strHelp, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
         }
     }
 
 private:
-    std::vector<option_value> m_vecValues;
+    using ConValues_T = std::vector<OptionValue>;  ///< 值选项容器类型
+    ConValues_T vecValues__;                       ///< 值选项容器
 };
 
-/*
-    短回路选项管理器：持有全部 option_action（--help / --env 等）。
-    命中其一即回调并停止本次解析（fired）。
-*/
-class action_opt_mgr : opt_mgr_itf
+/**
+ * @brief 短回路选项管理器：持有全部 OptionAction（--help / --env 等）。
+ *        命中其一即回调并停止本次解析（isFired）。
+ */
+class ActionOptMgr : OptMgrItf
 {
 public:
-    option const *doGet(char _Key) const noexcept override
+    /// @brief 按短名查询（只读，未找到返回 nullptr）
+    Option const *doGet(char _Key) const noexcept override
     {
         auto it = std::find_if(
-            m_vecActions.cbegin(),
-            m_vecActions.cend(),
-            [_Key](decltype(m_vecActions)::const_reference _V) { return _V.short_name == _Key; });
-        if (it == m_vecActions.cend()) return nullptr;
+            vecActions__.cbegin(),
+            vecActions__.cend(),
+            [_Key](decltype(vecActions__)::const_reference _V) { return _V.cShortName == _Key; });
+        if (it == vecActions__.cend()) return nullptr;
 
         return std::addressof(*it);
     }
 
-    option const *doGet(std::string _Key) const noexcept override
+    /// @brief 按长名查询（只读，未找到返回 nullptr）
+    Option const *doGet(std::string _Key) const noexcept override
     {
         auto it = std::find_if(
-            m_vecActions.cbegin(),
-            m_vecActions.cend(),
-            [_Key](decltype(m_vecActions)::const_reference _V) { return _V.long_name == _Key; });
-        if (it == m_vecActions.cend()) return nullptr;
+            vecActions__.cbegin(),
+            vecActions__.cend(),
+            [_Key](decltype(vecActions__)::const_reference _V) { return _V.strLongName == _Key; });
+        if (it == vecActions__.cend()) return nullptr;
 
         return std::addressof(*it);
     }
 
-    void push(char sname, std::string lname, std::string help, std::function<void(void)> callback)
+    /// @brief 追加短回路选项（含短名）
+    void push(char _SName, std::string _LName, std::string _Help, std::function<void(void)> _Cb)
     {
-        m_vecActions.emplace_back(sname, std::move(lname), std::move(help), std::move(callback));
+        vecActions__.emplace_back(_SName, std::move(_LName), std::move(_Help), std::move(_Cb));
     }
 
-    void push(std::string lname, std::string help, std::function<void(void)> callback)
+    /// @brief 追加短回路选项（仅长名）
+    void push(std::string _LName, std::string _Help, std::function<void(void)> _Cb)
     {
-        m_vecActions.emplace_back(std::move(lname), std::move(help), std::move(callback));
+        vecActions__.emplace_back(std::move(_LName), std::move(_Help), std::move(_Cb));
     }
 
-    void for_each_action(std::function<void(option_action const &)> const &_Fn) const
+    /// @brief 遍历短回路选项（只读）
+    void forEachAction(std::function<void(OptionAction const &)> const &_Fn) const
     {
-        for (auto const &v : m_vecActions) { _Fn(v); }
+        for (auto const &v : vecActions__) { _Fn(v); }
     }
 
-    bool doEmpty() const noexcept { return m_vecActions.empty(); }
+    /// @brief 是否为空容器
+    bool doEmpty() const noexcept { return vecActions__.empty(); }
 
-    std::size_t calc_desc_max_length() const noexcept
+    /// @brief 计算帮助排版的最长名称列宽度
+    auto calcDescMaxLength() const noexcept -> std::size_t
     {
         std::size_t max_name_length = 0;
-        for (auto const &opt : m_vecActions) {
-            std::size_t length = opt.long_name.length();
-            if (opt.short_name == 0) { length += 4; }
+        for (auto const &opt : vecActions__) {
+            std::size_t length = opt.strLongName.length();
+            if (opt.cShortName == '\0') { length += 4; }
             max_name_length = std::max(max_name_length, length);
         }
 
         return max_name_length;
     }
 
+    /// @brief 追加帮助文本到输出流
     void appendHelp(std::ostringstream &_Out, std::size_t _Max) const
     {
-        for (auto const &opt : m_vecActions) {
+        for (auto const &opt : vecActions__) {
             _Out << "  ";
             std::size_t printed_length = 0;
-            if (opt.short_name) {
-                _Out << opt.short_name << ", ";
+            if (opt.cShortName) {
+                _Out << opt.cShortName << ", ";
                 printed_length = 4;
             }
-            _Out << opt.long_name;
-            printed_length += opt.long_name.length();
+            _Out << opt.strLongName;
+            printed_length += opt.strLongName.length();
             _Out << std::string(_Max - printed_length, ' ');
-            _Out << util::replace(opt.help, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
+            _Out << util::replace(opt.strHelp, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
         }
     }
 
 private:
-    std::vector<option_action> m_vecActions;
+    using ConActions_T = std::vector<OptionAction>;  ///< 短回路选项容器类型
+    ConActions_T vecActions__;                       ///< 短回路选项容器
 };
 
-/* 选项数据仓库：短回路选项 + 值选项 + 短名索引 */
+/// @brief 选项数据仓库：短回路选项 + 值选项 + 短名索引
 struct OptionData
 {
-    action_opt_mgr              short_circuit_options;  // 短回路（命中即停，如 -?/--help）
-    value_opt_mgr               options;                // 值选项/标志（--long value / -x）
-    std::map<char, std::string> short_name_index;       // 短名 → 长名 索引（预留）
+    ActionOptMgr mgrActions;              ///< 短回路选项管理器（命中即停，如 -?/--help）
+    ValueOptMgr  mgrValues;               ///< 值选项/标志管理器（--long value / -x）
+    std::map<char, std::string> mapShortNameIndex;  ///< 短名 → 长名 索引（预留）
 
-    bool empty() const noexcept
+    /// @brief 记录含 action 的选项解析顺序（供 Executor 按序执行）
+    void recordParseOrder(std::string const &_Key)
     {
-        return short_circuit_options.doEmpty() && options.doEmpty();
+        for (auto const &k : m_actionOrder__) { if (k == _Key) return; }
+        m_actionOrder__.push_back(_Key);
     }
 
-    /*
-        选项部分的使用行片段：[-? | --help] [-x | --timeout <int>]
-    */
-    std::string usage_string() const
+    /// @brief 获取解析顺序
+    auto actionOrder() const -> std::vector<std::string> const & { return m_actionOrder__; }
+
+    /// @brief 清空解析顺序（每次解析前调用）
+    void clearParseOrder() { m_actionOrder__.clear(); }
+
+    /// @brief 是否为空（短回路与值选项都为空）
+    bool empty() const noexcept
+    {
+        return mgrActions.doEmpty() && mgrValues.doEmpty();
+    }
+
+    /// @brief 选项部分的使用行片段：[-? | --help] [-x | --timeout <int>]
+    auto usageString() const -> std::string
     {
         std::ostringstream oss;
-        short_circuit_options.for_each_action([&](option_action const &_A) {
+        mgrActions.forEachAction([&](OptionAction const &_A) {
             oss << " [";
-            if (_A.short_name) { oss << "-" << _A.short_name << " | "; }
-            oss << "--" << _A.long_name << "]";
+            if (_A.cShortName) { oss << "-" << _A.cShortName << " | "; }
+            oss << "--" << _A.strLongName << "]";
         });
-        options.for_each_value([&](option_value const &_V) {
+        mgrValues.forEachValue([&](OptionValue const &_V) {
             oss << " [";
-            if (_V.short_name) { oss << "-" << _V.short_name << " | "; }
-            oss << "--" << _V.long_name;
-            if (_V.type != "bool") { oss << " <" << _V.type << ">"; }
+            if (_V.cShortName) { oss << "-" << _V.cShortName << " | "; }
+            oss << "--" << _V.strLongName;
+            if (_V.strType != "bool") { oss << " <" << _V.strType << ">"; }
             oss << "]";
         });
         return oss.str();
     }
 
-    std::size_t calc_desc_max_length() const noexcept
+    /// @brief 计算帮助排版的最长名称列宽度（两类管理器取大，且不小于 25）
+    auto calcDescMaxLength() const noexcept -> std::size_t
     {
-        std::size_t max_name_length = short_circuit_options.calc_desc_max_length();
-        max_name_length = std::max(max_name_length, options.calc_desc_max_length());
+        std::size_t max_name_length = mgrActions.calcDescMaxLength();
+        max_name_length = std::max(max_name_length, mgrValues.calcDescMaxLength());
         max_name_length = std::max(max_name_length, std::size_t(25));
 
         return max_name_length;
     }
+
+    /// @brief 追加选项帮助文本到输出流
     void appendHelp(std::ostringstream &_Oss, size_t &_Max) const
     {
-        short_circuit_options.appendHelp(_Oss, _Max);
-        options.appendHelp(_Oss, _Max);
+        mgrActions.appendHelp(_Oss, _Max);
+        mgrValues.appendHelp(_Oss, _Max);
     }
+
+private:
+    std::vector<std::string> m_actionOrder__;  ///< 含 action 的选项解析顺序（Executor 按序执行）
 };
 
-}  // namespace detail
+}  // namespace option_detail
 
-using detail::OptionData;
-
+using option_detail::OptionData;
 
 CMD_ARGS_NAMESPACE_END

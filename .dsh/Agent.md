@@ -29,14 +29,14 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
    │                 Lexer             （Scanner 状态机：argv → token 流）
    │                    │
    │                    ▼
-   └──►parse()──►    Parser            （纯解析：选项 / 命名参数 / 方位参数分配）
+   └──►parse()──►    Compiler          （编译引擎：Lexer → 三 Parser → Expression 分类入库 Model）
                          │
                          ▼
-                       Model            （ArgumentData + OptionData + EnvData）
+                       Model            （ArgumentData + OptionData + EnvData；hasAction 门控）
                          │
                     ┌────┴────┐
                     ▼         ▼
-              Executor    Interpreter  （批量: 后置 action 执行 / REPL: 逐 Token 解析即执行）
+              Executor    Interpreter  （批量: hasAction 门控后置执行 / 流式: 字符泵逐 Token 解析即执行）
 ```
 
 ---
@@ -70,13 +70,14 @@ include/cmd_args/
 │   ├── util.h                      # parse_value<T> / parse_bool / type_string / starts_with / trim 等
 │   └── defer.hpp                   # RAII defer
 ├── context/                        # 上下文/解析管线（详见 context/AGENT.md）
-│   ├── context.h                   # Context 门面：build/parse/once/loop/env
+│   ├── context.h                   # Context 门面：build/parse/once/loop/env/model
+│   ├── expression.h                # Expression 基类 + ExpressionKind_E（三表达式统一视图）
 │   ├── builder.h                   # Builder 构筑桥接
-│   ├── parser.h                    # Parser 纯解析层
-│   ├── interpreter.h               # Interpreter 实时引擎
-│   ├── executor.h                  # Executor 后置 action 执行
-│   ├── model.h                     # Model 数据仓库
-│   ├── lexer.h                     # Lexer/Scanner 状态机
+│   ├── compiler.h                  # Compiler 编译引擎（原 Parser）：Lexer → 三 Parser → 入库 Model
+│   ├── interpreter.h               # Interpreter 流式引擎（字符泵逐 Token 解析即执行）
+│   ├── executor.h                  # Executor 批量执行（hasAction 门控下按 actionOrder 后置执行）
+│   ├── model.h                     # Model 数据仓库（hasAction() / expressions() 统一视图）
+│   ├── lexer.h                     # Lexer/Scanner 状态机（scan 批量 / step 增量分词）
 │   └── parse_fwd.h                 # 类型前置声明
 ├── argument/                       # 参数子系统（详见 argument/AGENT.md）
 │   ├── argument.h                  # Argument / ArgumentNamed / ArgumentPosition
@@ -87,7 +88,7 @@ include/cmd_args/
 │   ├── option.h                    # Option / OptionValue / OptionAction
 │   ├── option_builder.h            # OptionBuilder 构筑层
 │   ├── option_data.h               # OptionData + ValueOptMgr / ActionOptMgr + actionOrder
-│   └── option_parser.h             # OptionParser 纯解析层（virtual hook 模式）
+│   └── option_parser.h             # OptionParser 纯解析层（内置选项解析期即时触发回调）
 ├── env/                            # 环境变量子系统（详见 env/AGENT.md）
 │   ├── env.h                       # environment 条目结构
 │   ├── env_data.h                  # EnvData 数据仓库（std::map）
@@ -144,6 +145,14 @@ std::string s = app.getArgument<std::string>("hello");
 int t = app.getOption<int>("timeout");
 app.hasOption("--timeout");  app.isParsed("verbose");
 
+// ── Expression 统一视图（expression.h）────────────────
+// ExpressionKind_E::{Argument, Option, Env}：Argument / Option / environment
+// 均继承 Expression 基类；kind() 自动分类，getName()/getHelp() 虚函数可返回自有存储
+app.model();                                // 只读 Model 引用（Context::model()）
+auto const &m = app.model();
+bool hasAct = m.hasAction();                // 是否存在待执行用户 action（Executor 门控）
+auto exprs  = m.expressions();              // 全部 Expression 派生对象指针的统一视图
+
 // ── 环境变量交互 ─────────────────────────────────────
 app.has_env("KEY"); app.get_env("KEY"); app.get_env_or("KEY", "<missing>");
 app.set_env("KEY", "VALUE"); app.unset_env("KEY");
@@ -176,15 +185,18 @@ app.loop();   // REPL：exit/quit/EOF 退出；每行独立解析
 
 ---
 
-## 6. Lexer / Parser 行为约定
+## 6. Lexer / Compiler 行为约定
 
 > 详细说明见 `include/cmd_args/context/AGENT.md`。以下为关键规则摘要。
 
 - token 归一化：`--foo=bar`（长+值）、`-x=value`（短+值）、`-abc`（聚合短标志）、
   `KEY=VALUE`（Continual+`=`）、`x.y`（piece）、`-5`（数字短名）均被 Scanner 正确切分。
 - 变量值吸收**全部非空白字符**（值内可含 `. - = \ / : @`）。
-- `--` 之后全部方位参数；此前命名参数先经 `parseNamedOnly` 消化。
-- 选项 action（system_call）：Parser 纯解析不触发 action；批量模式由 Executor 后置按 actionOrder 统一执行；REPL 由 Interpreter 的 virtual hook 逐 Token 内联执行。
+- `--` 之后所有 token 一律作为方位参数（流式路径严格遵循；批量路径历史行为含
+  「选项结束后 parseNamedOnly 先行消化命名参数」，以流式为准绳的统一留待后续）。
+- 选项 action（system_call）：内置交互选项（--env-set/--load-config 等）**解析期即时生效**；
+  用户 action 由 Executor 在 `Model.hasAction()` 门控下按 actionOrder **后置统一执行**；
+  流式路径（REPL）逐 Token **即时执行**（不经 Executor / actionOrder）。
 - 方位参数数量：剩余 token 数须落在 `[未外部赋值数, 总数]` 区间。
 
 ---
@@ -231,7 +243,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    形参 `_Xxx`（`_Name`/`_Help`）；方法 camelCase 小写动词开头；命名空间用宏；注释用中文 Doxygen。
 2. **提交信息**：gitmoji `type(scope): emoji message`，scope 取子系统（core/Lexer/Parser/builder/env/example/test/docs）。
 3. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`。
-4. **测试门槛**：`dfx/unit_test/head.cpp` 目前 39 个 TEST_CASE / 215 条断言；
+4. **测试门槛**：`dfx/unit_test/head.cpp` 目前 56 个 TEST_CASE / 324 条断言；
    任何行为改动应保持或增加覆盖，禁止回退。
 
 ---

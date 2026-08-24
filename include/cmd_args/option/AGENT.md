@@ -1,7 +1,7 @@
 # option — 选项子系统
 
 ## 模块概述
-命令行选项（值选项 / 标志 / 短回路选项）的数据层、构筑层、解析层与执行层。支持选项 action（system_call 子进程），采用**三层架构**：纯解析 → 执行 → 实时引擎。
+命令行选项（值选项 / 标志 / 短回路选项）的数据层、构筑层、解析层与执行层。支持选项 action（system_call 子进程），执行时序分三路：内置选项解析期即时、用户 action 批量 Executor 后置（hasAction 门控）、流式 Interpreter 即时。
 
 ## 文件职责
 
@@ -10,27 +10,28 @@
 | `option.h` | `Option` / `OptionValue` / `OptionAction` | 选项基础数据结构：短名/长名/帮助、值/类型/标记、action 模板、环境变量绑定 |
 | `option_data.h` | `OptMgrItf` / `ValueOptMgr` / `ActionOptMgr` / `OptionData` | 管理器接口与实现 + 仓库（含 actionOrder 解析顺序） |
 | `option_builder.h` | `OptionBuilder` | 构筑层：`addOption<T>` / `addFlag` / `addShortCircuit`，含重名/前缀/类型校验 |
-| `option_parser.h` | `OptionParser` | **纯解析层**：赋值 + 标记 + 记录解析顺序（`onOptionAssigned` virtual hook = no-op） |
-| `context/executor.h` | `Executor` | **执行层**：按 actionOrder 顺序统一触发 fnOnSet__ + action template |
-| `context/interpreter.h` | `Interpreter` | **实时引擎**：继承三解析器，override `onOptionAssigned` 实现逐 Token 内联执行 |
+| `option_parser.h` | `OptionParser` | **纯解析层**：赋值 + 标记 + 记录解析顺序；内置交互选项（--env-set 等）解析期即时触发回调 |
+| `context/executor.h` | `Executor` | **批量执行层**：hasAction 门控下按 actionOrder 顺序统一触发 fnOnSet__ + action template |
+| `context/interpreter.h` | `Interpreter` | **流式引擎**：字符泵逐 Token 分类，`__executeOptionImmediate` 即时执行 |
 
-## 三层架构（选项 action 执行）
+## 选项 action 时序
 
 ```
-Parser（纯解析）           Executor（后置执行）        Interpreter（实时执行）
-┌────────────────┐        ┌────────────────┐         ┌──────────────────┐
-│ OptionParser    │        │ 读 actionOrder │         │ 继承三解析器      │
-│ (onOptionAssigned│  ──►  │ fnOnSet__ 触发 │  REPL   │ override 钩子     │
-│  = no-op)      │ 批量   │ system_call 触发│ ◄────  │ 逐 Token 内联触发 │
-└────────────────┘        └────────────────┘         └──────────────────┘
+OptionParser（解析期）        Executor（批量后置）        Interpreter（流式即时）
+┌──────────────────┐        ┌──────────────────┐        ┌──────────────────┐
+│ 内置选项（--env-set│        │ hasAction() 门控  │        │ 字符泵逐 Token 分类 │
+│ 等）赋值即回调     │        │ actionOrder 顺序  │        │ __executeOption  │
+│ 用户选项记 actionOrder│ 批量  │ fnOnSet__/模板触发 │  流式   │ Immediate 即时执行 │
+└──────────────────┘        └──────────────────┘        └──────────────────┘
 ```
 
-- **批量解析**（`Context::parse`）：Parser 纯解析 → Executor 按 actionOrder 执行 → finalize。
-- **REPL/loop**（`Interpreter::loop`）：逐行 tokenize → 继承 OptionParser::parse（hook 触发 action）→ finalize。
+- **批量解析**（`Context::parse`）：Compiler 编译入库 → `Model.hasAction()` 门控 → Executor 按 actionOrder 后置执行 → finalize。
+- **REPL/loop**（`Interpreter::interpret`）：字符泵逐 Token 分类，选项命中即 `__executeOptionImmediate` 即时执行 → finalize。
+- **内置交互选项**两条路径均在解析期即时生效（不记 actionOrder，Executor 不重复触发）。
 
 ## OptionParser 纯解析设计
-- `__assign` 仅赋值 + `bExplicit__` 标记 + 记录解析顺序，**不触发 action**。
-- `virtual onOptionAssigned(...)` 默认空操作；子类 override 实现内联 action。
+- `__assign` 仅赋值 + `bExplicit__` 标记 + 记录解析顺序；**内置选项**（`bBuiltin__ && fnOnSet__`）
+  内联触发回调使其影响后续解析；**用户选项**只记入 actionOrder，由 Executor 延迟执行。
 - Action 记录：`OptionData::recordParseOrder`（去重，仅含 fnOnSet__ 或 strActionTemplate__ 的选项）。
 
 ## OptionData 扩展
@@ -50,5 +51,5 @@ Parser（纯解析）           Executor（后置执行）        Interpreter（
 ## 方法命名约定
 - 构筑：`addOption` / `addFlag` / `addShortCircuit`。
 - 校验：`checkAddOptionSname` / `checkAddOptionLname`。
-- 解析：`parse`（OptionParser，pure virtual hook 模式）。
+- 解析：`parse`（OptionParser 纯解析层）。
 - 执行：`Executor::execute`（post-parse），`Interpreter::interpret`（per-token）。

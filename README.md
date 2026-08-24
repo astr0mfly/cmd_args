@@ -20,16 +20,28 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
    │                 Lexer             （Scanner 状态机：argv → token 流）
    │                    │
    │                    ▼
-   └──►parse()──►    Parser            （选项 / 命名参数 / 方位参数分配）
+   └──►parse()──►    Compiler          （编译引擎：Lexer → 三 Parser → Expression 分类入库 Model）
                         │
                         ▼
-                      Model            （ArgumentData + OptionData + EnvData）
+                      Model            （ArgumentData + OptionData + EnvData；hasAction 门控）
                         │
-                        ▼
+                        ├──► Executor      （批量: hasAction 门控后置执行）
+                        └──► Interpreter   （流式: 逐 Token 解析即执行）
+
   读取 getArgument<T> / getOption<T> / isParsed() / has_env() / env_string()
   存储/加载 schema() / snapshot() / save_config() / load_config()（YAML 配置）
   执行 once()（单次输入即退） / loop()（REPL 常驻，每行等价一次 once 输入）
 ```
+
+## Expression 表达式类层次
+
+`context/expression.h` 定义表达式基类 `Expression` 与分类枚举 `ExpressionKind_E`：
+
+- `ExpressionKind_E::{Argument, Option, Env}` —— 分别对应参数 / 选项 / 环境变量条目三类表达式；
+- `Argument`、`Option`（`OptionValue` / `OptionAction`）与 `environment` 均继承 `Expression`，
+  `kind()` 自动完成分类；`getName()` / `getHelp()` 为虚函数，可返回各自自有存储；
+- `Model::expressions()` 返回全部 Expression 派生对象的**统一视图**（参数 + 选项 + 环境条目）；
+- `app.model()` 返回只读 `Model const &`，配合 `Model::hasAction()` 可检查是否需执行用户 action。
 
 ## 快速开始
 
@@ -145,7 +157,8 @@ No. : "key" = "value"
 
 ### 内置选项
 
-首次 `parse()` 时懒注册，命中即短路（打印后停止本次解析）：
+首次 `parse()` 时懒注册：短回路选项（`-?`/`--help`、`-!`/`--env`、`--env-apply`）命中即短路
+（打印后停止本次解析）；交互选项（`--env-set` 等）解析期即时生效、不短路：
 
 - `-?` / `--help`     帮助
 - `-!` / `--env`      环境变量快照
@@ -212,9 +225,10 @@ CLI 提供的 token 按序覆盖配置值（`CLI > 配置`）。
 ## 选项 action（system_call 子进程执行）
 
 部分选项可以绑定一个 **action**——它本质上就是一次 `system_call`
-（`std::system` 的子进程命令）。解析时该选项被**显式命中**后立即执行；
-interpreter（`once()`/`loop()` 逐行解释脚本）按 token 出现顺序识别并执行，
-天然满足"按先后顺序执行对应命令"。
+（`std::system` 的子进程命令）。执行时序分两路：**批量**（`parse()`）下用户 action 由
+Executor 在 `Model.hasAction()` 门控下按 `actionOrder` **后置统一执行**；**流式**
+（`once()`/`loop()` 逐行解释）逐 Token **即时执行**，天然满足"按先后顺序执行对应命令"。
+内置交互选项（--env-set/--load-config 等）两条路径均在**解析期即时生效**。
 
 ### 绑定
 
@@ -267,6 +281,7 @@ app.option("task")->action("echo \"{value}\"");
 当前已实现：命名/方位参数、值选项/标志/聚合短选项、`--` 分隔、短回路选项、
 环境变量展示/交互/展开/回写、**YAML 配置存储与反哺（save/load-config）**、
 **选项 action（system_call 子进程按顺序执行）**、
+**Expression 表达式类层次（kind() 自动分类 / Model::expressions() 统一视图 / app.model()）**、
 参数格式 schema / 快照 snapshot、once/loop 模式、错误分类、异常捕获（airbag）。
 
 仍在展望（本期未做，见计划约束）：
@@ -290,7 +305,7 @@ xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
 （展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
 CLI>配置>环境>默认优先级链 / loop 独立调用语义 / 选项 action 执行语义**等，
-debug/release 均通过（37 个测试用例 / 193 条断言）。
+debug/release 均通过（56 个测试用例 / 324 条断言）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。
@@ -306,7 +321,7 @@ include/cmd_args/          头文件库本体（header-only）
 ├── env/                   environment / EnvData / EnvBuilder / EnvParser（一等公民核心）
 ├── config/                yaml（极简 YAML 子集）/ parameter（schema/快照）/
 │                          config_store（三类输入源转换桥接）
-├── context/               Context / Builder / Lexer / Parser / Model / Interpreter
+├── context/               Context / Builder / Compiler / Executor / Interpreter / Model / Expression
 └── extern/                vendored：airbag（崩溃兜底）、magic_enum
 example/once/              once 模式示例
 example/config/            YAML 配置往返示例（config_demo）

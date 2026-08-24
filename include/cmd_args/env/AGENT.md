@@ -2,6 +2,8 @@
 
 ## 模块概述
 环境变量的**一等公民**实现：存储、展示、交互（设置/删除）、引用与修改追踪、`${VAR}/%VAR%/$VAR` 展开、回写操作系统。这是 `cmd_args` 区别于其他命令行解析库的核心差异化功能。
+`environment` 自 2026-08 起继承 `context/expression.h` 的 `Expression` 基类（`kind()` 自动分类，
+`ExpressionKind_E::Env`），`getName()` 返回自有 `strKey`（避免双份存储）。
 
 ## 文件职责
 

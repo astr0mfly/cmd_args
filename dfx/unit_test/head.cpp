@@ -951,7 +951,7 @@ TEST_CASE("interpreter: loop 行错误展示后继续下一行", "[interpreter]"
     REQUIRE(app.getArgument<std::string>("hello") == "ok");
 }
 
-/* ==================== Interpreter 注入模式：直接构造 Parser + Errors ==================== */
+/* ==================== Interpreter 注入模式：直接构造 Compiler 场景外的 Interpreter + Errors ==================== */
 
 TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）", "[interpreter]")
 {

@@ -17,9 +17,12 @@
  */
 #pragma once
 
+#include <vector>
+
 #include "cmd_args/base/def.h"
 
 #include "cmd_args/argument/argument_data.h"
+#include "cmd_args/context/expression.h"
 #include "cmd_args/env/env_data.h"
 #include "cmd_args/option/option_data.h"
 
@@ -34,6 +37,25 @@ class Model
 public:
     Model(/* args */);
     ~Model();
+
+    // ===== 查询方法 =====
+
+    /// @brief 是否存在待执行的 OptionAction（fnOnSet__ 或 action template）
+    /// @note Executor 按 actionOrder 顺序执行；hasAction 为 false 时无需调用 Executor
+    bool hasAction() const noexcept { return !m_opts__.actionOrder().empty(); }
+
+    /// @brief 统一 Expression 视图：遍历三类 Data，返回全部 Expression 派生对象指针
+    auto expressions() const -> std::vector<Expression const *>
+    {
+        std::vector<Expression const *> vec;
+        vec.reserve(16);
+        m_args__.mgrName.doConVisit([&](Argument const &_A) { vec.push_back(&_A); });
+        m_args__.mgrPos.doConVisit([&](Argument const &_A) { vec.push_back(&_A); });
+        m_opts__.mgrValues.forEachValue([&](OptionValue const &_O) { vec.push_back(&_O); });
+        m_opts__.mgrActions.forEachAction([&](OptionAction const &_A) { vec.push_back(&_A); });
+        m_envs__.doVisit([&](environment const &_E) { vec.push_back(&_E); });
+        return vec;
+    }
 
     ArgumentData m_args__;
     OptionData   m_opts__;

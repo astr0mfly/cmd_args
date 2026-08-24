@@ -37,10 +37,10 @@ TEST_CASE("expression: Argument kind() 返回 Argument", "[expression]")
 
     // 方位参数：Context::argument() 仅覆盖命名参数，经公开的 Model/ArgumentBuilder 访问
     Model        model;
-    ArgumentBuilder ab(&model.m_args__);
+    ArgumentBuilder ab(&model.args);
     ab.build<ArgumentPosition>("name", "your name");
 
-    auto *pPos = model.m_args__.mgrPos.doGet("name");
+    auto *pPos = model.args.mgrPos.doGet("name");
     REQUIRE(pPos != nullptr);
     REQUIRE(pPos->kind() == ExpressionKind_E::Argument);
 }
@@ -64,9 +64,9 @@ TEST_CASE("expression: Option/OptionValue/OptionAction kind() 返回 Option", "[
 
     // OptionAction：短回路选项（经 Model + OptionBuilder 构筑，mgrActions 只读访问）
     Model         model;
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addShortCircuit('h', "help", "show help", [] {});
-    auto const *pAct = model.m_opts__.mgrActions.doGet("help");
+    auto const *pAct = model.opts.mgrActions.doGet("help");
     REQUIRE(pAct != nullptr);
     REQUIRE(pAct->kind() == ExpressionKind_E::Option);
     REQUIRE(pAct->getName() == "help");
@@ -76,10 +76,10 @@ TEST_CASE("expression: Option/OptionValue/OptionAction kind() 返回 Option", "[
 TEST_CASE("expression: environment kind() 返回 Env", "[expression]")
 {
     Model model;
-    EnvBuilder eb(&model.m_envs__);
+    EnvBuilder eb(&model.envs);
     eb.setEnv("MY_KEY", "my_value");
 
-    auto const *p = model.m_envs__.doGet("MY_KEY");
+    auto const *p = model.envs.doGet("MY_KEY");
     REQUIRE(p != nullptr);
     REQUIRE(p->kind() == ExpressionKind_E::Env);
     REQUIRE(p->getName() == "MY_KEY");

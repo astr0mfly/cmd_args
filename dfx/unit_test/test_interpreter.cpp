@@ -73,7 +73,7 @@ TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）",
     Interpreter interp(&model);
 
     // 通过 OptionBuilder 注册选项到 Model 的 OptionData
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addOption<int>("timeout", "t", 30);
 
     // 正常行：--timeout 9 → 继承 parse + virtual hook 内联触发 action → 写入 *Data
@@ -81,7 +81,7 @@ TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）",
     REQUIRE(!ec);
     REQUIRE(interp.prepared());
 
-    auto *p = model.m_opts__.mgrValues.find("timeout");
+    auto *p = model.opts.mgrValues.find("timeout");
     REQUIRE(p != nullptr);
     REQUIRE(p->strValue == "9");
 
@@ -118,18 +118,18 @@ TEST_CASE("interpreter: 流式 interpret 与批量 parse 结果一致", "[interp
     Model model;
     Errors errors;
     Interpreter interp(&model);
-    ArgumentBuilder ab(&model.m_args__);
+    ArgumentBuilder ab(&model.args);
     ab.build<ArgumentNamed>("hello", "h");
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addOption<int>("timeout", "t", 30);
 
     auto ec2 = interp.interpret("--hello a --timeout 9", errors);
     REQUIRE(!ec2);
     REQUIRE(interp.prepared());
-    auto *pH = model.m_args__.mgrName.doGet("hello");
+    auto *pH = model.args.mgrName.doGet("hello");
     REQUIRE(pH != nullptr);
     REQUIRE(pH->getValue() == "a");
-    auto *pT = model.m_opts__.mgrValues.find("timeout");
+    auto *pT = model.opts.mgrValues.find("timeout");
     REQUIRE(pT != nullptr);
     REQUIRE(pT->strValue == "9");
 }
@@ -140,7 +140,7 @@ TEST_CASE("interpreter: 流式逐 Token 立即执行 fnOnSet 且带值/聚合/�
     Errors errors;
     Interpreter interp(&model);
 
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     std::vector<std::string> fired;
     ob.addFlag('a', "ena", "flag a");
     ob.addFlag('b', "enb", "flag b");
@@ -151,14 +151,14 @@ TEST_CASE("interpreter: 流式逐 Token 立即执行 fnOnSet 且带值/聚合/�
     auto ec1 = interp.interpret("-ab --step one", errors);
     REQUIRE(!ec1);
     REQUIRE(fired == std::vector<std::string>{ "one" });
-    REQUIRE(model.m_opts__.mgrValues.find("ena")->strValue == "1");
-    REQUIRE(model.m_opts__.mgrValues.find("enb")->strValue == "1");
+    REQUIRE(model.opts.mgrValues.find("ena")->strValue == "1");
+    REQUIRE(model.opts.mgrValues.find("enb")->strValue == "1");
 
     // 行间 reset：第二次 interpret 前选项还原
     auto ec2 = interp.interpret("--step two", errors);
     REQUIRE(!ec2);
     REQUIRE(fired == std::vector<std::string>{ "one", "two" });
-    REQUIRE(model.m_opts__.mgrValues.find("ena")->strValue == "0");  // reset 后回默认
+    REQUIRE(model.opts.mgrValues.find("ena")->strValue == "0");  // reset 后回默认
 
     // 内联 '=' 带值：--step=x 形态
     auto ec3 = interp.interpret("--step=x", errors);
@@ -180,7 +180,7 @@ TEST_CASE("interpreter: 未识别选项报 UNKNOWN_OPTION 且不污染方位参�
     Model model;
     Errors errors;
     Interpreter interp(&model);
-    ArgumentBuilder ab(&model.m_args__);
+    ArgumentBuilder ab(&model.args);
     ab.build<ArgumentNamed>("hello", "h");
 
     auto ec1 = interp.interpret("--nope x", errors);
@@ -190,11 +190,11 @@ TEST_CASE("interpreter: 未识别选项报 UNKNOWN_OPTION 且不污染方位参�
     Model model2;
     Errors errors2;
     Interpreter interp2(&model2);
-    ArgumentBuilder ab2(&model2.m_args__);
+    ArgumentBuilder ab2(&model2.args);
     ab2.build<ArgumentPosition>("p1", "first");
     auto ec2 = interp2.interpret("--unknown v", errors2);
     REQUIRE(ec2 == make_error_code(ParseError_E::UNKNOWN_OPTION));
-    auto *p = model2.m_args__.mgrPos.mutGetBySeq(0);
+    auto *p = model2.args.mgrPos.mutGetBySeq(0);
     REQUIRE(p != nullptr);
     REQUIRE_FALSE(p->hasValue());   // 未被 "--unknown" 污染
 }
@@ -222,14 +222,14 @@ TEST_CASE("interpreter: 短选项带值接受 dash 值（-t=-5 与 -t -5 均与�
     Model model;
     Errors errors;
     Interpreter interp(&model);
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addOption<int>('t', "timeout", "timeout", 30);
 
     auto ec1 = interp.interpret("-t=-5", errors);
     REQUIRE(!ec1);
-    REQUIRE(model.m_opts__.mgrValues.find("timeout")->strValue == "-5");
+    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "-5");
 
     auto ec2 = interp.interpret("-t -5", errors);
     REQUIRE(!ec2);
-    REQUIRE(model.m_opts__.mgrValues.find("timeout")->strValue == "-5");
+    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "-5");
 }

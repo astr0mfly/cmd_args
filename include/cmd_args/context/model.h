@@ -42,36 +42,36 @@ public:
 
     /// @brief 是否存在待执行的 OptionAction（fnOnSet__ 或 action template）
     /// @note Executor 按 actionOrder 顺序执行；hasAction 为 false 时无需调用 Executor
-    bool hasAction() const noexcept { return !m_opts__.actionOrder().empty(); }
+    bool hasAction() const noexcept { return !opts.actionOrder().empty(); }
 
     /// @brief 统一 Expression 视图：遍历三类 Data，返回全部 Expression 派生对象指针
     auto expressions() const -> std::vector<Expression const *>
     {
         std::vector<Expression const *> vec;
         vec.reserve(16);
-        m_args__.mgrName.doConVisit([&](Argument const &_A) { vec.push_back(&_A); });
-        m_args__.mgrPos.doConVisit([&](Argument const &_A) { vec.push_back(&_A); });
-        m_opts__.mgrValues.forEachValue([&](OptionValue const &_O) { vec.push_back(&_O); });
-        m_opts__.mgrActions.forEachAction([&](OptionAction const &_A) { vec.push_back(&_A); });
-        m_envs__.doVisit([&](environment const &_E) { vec.push_back(&_E); });
+        args.mgrName.doConVisit([&](Argument const &_A) { vec.push_back(&_A); });
+        args.mgrPos.doConVisit([&](Argument const &_A) { vec.push_back(&_A); });
+        opts.mgrValues.forEachValue([&](OptionValue const &_O) { vec.push_back(&_O); });
+        opts.mgrActions.forEachAction([&](OptionAction const &_A) { vec.push_back(&_A); });
+        envs.doVisit([&](environment const &_E) { vec.push_back(&_E); });
         return vec;
     }
 
-    ArgumentData m_args__;
-    OptionData   m_opts__;
-    EnvData      m_envs__;
+    ArgumentData args;
+    OptionData   opts;
+    EnvData      envs;
 
     /* argv[0] 探测出的程序名，供内置帮助/环境展示使用 */
-    std::string m_strProgramName__;
+    std::string strProgramName;
 
     /* 是否注册内置的 -?/--help、-!/--env 等选项 */
-    bool m_bBuiltinOptions__ = true;
+    bool bBuiltinOptions = true;
 
     /* 内置选项是否已注册（懒注册，仅一次） */
-    bool m_bBuiltinsRegistered__ = false;
+    bool bBuiltinsRegistered = false;
 
     /* --save-config PATH：解析完成后把参数+环境状态写出为 YAML 配置 */
-    std::string m_strSaveConfigPath__;
+    std::string strSaveConfigPath;
 };
 
 inline Model::Model(/* args */) {}

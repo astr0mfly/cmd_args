@@ -59,11 +59,11 @@ class Context : private Errors
 {
 public:
     Context(std::string _Name)
-        : m_strPrjName__(_Name)
-        , m_instData__()
-        , m_compiler__(&m_instData__)
-        , m_executor__(&m_instData__)
-        , m_interp__(&m_instData__)
+        : strPrjName__(_Name)
+        , instData__()
+        , compiler__(&instData__)
+        , executor__(&instData__)
+        , interp__(&instData__)
     {}
 
     /* ---------- 构筑 ---------- */
@@ -71,73 +71,73 @@ public:
     template <class Select_T, typename... Args_T>
     Context &build(Args_T &&..._Args)
     {
-        Builder(&m_instData__).build<Select_T>(std::forward<Args_T>(_Args)...);
+        Builder(&instData__).build<Select_T>(std::forward<Args_T>(_Args)...);
         return *this;
     }
 
     template <class G, typename T = typename G::Element_T>
     Context &build(std::initializer_list<T> _Args)
     {
-        Builder(&m_instData__).build(std::move(_Args));
+        Builder(&instData__).build(std::move(_Args));
         return *this;
     }
 
-    BuildHelper build() { return { &m_instData__ }; }
+    BuildHelper build() { return { &instData__ }; }
 
     template <typename T>
     Context &addOption(char _Short, NameLong_T _Long, Desc_T _Help, T const &_Default = T{})
     {
-        Builder(&m_instData__).addOption<T>(_Short, _Long, _Help, _Default);
+        Builder(&instData__).addOption<T>(_Short, _Long, _Help, _Default);
         return *this;
     }
 
     template <typename T>
     Context &addOption(NameLong_T _Long, Desc_T _Help, T const &_Default = T{})
     {
-        Builder(&m_instData__).addOption<T>(_Long, _Help, _Default);
+        Builder(&instData__).addOption<T>(_Long, _Help, _Default);
         return *this;
     }
 
     Context &addFlag(char _Short, NameLong_T _Long, Desc_T _Help)
     {
-        Builder(&m_instData__).addFlag(_Short, _Long, _Help);
+        Builder(&instData__).addFlag(_Short, _Long, _Help);
         return *this;
     }
 
     Context &addFlag(NameLong_T _Long, Desc_T _Help)
     {
-        Builder(&m_instData__).addFlag(_Long, _Help);
+        Builder(&instData__).addFlag(_Long, _Help);
         return *this;
     }
 
     /* ---------- 数据访问 ---------- */
 
     /// @brief 获取底层 Model 引用（只读，用于 expressions() 等统一视图）
-    auto model() const noexcept -> Model const & { return m_instData__; }
+    auto model() const noexcept -> Model const & { return instData__; }
 
     Argument *argument(Name_T const &_Name)
     {
-        return m_instData__.m_args__.mgrName.mutGet(_Name);
+        return instData__.args.mgrName.mutGet(_Name);
     }
     Argument const *argument(Name_T const &_Name) const
     {
-        return m_instData__.m_args__.mgrName.doGet(_Name);
+        return instData__.args.mgrName.doGet(_Name);
     }
 
     OptionValue *option(NameLong_T const &_Name)
     {
-        return m_instData__.m_opts__.mgrValues.mutFind(_Name);
+        return instData__.opts.mgrValues.mutFind(_Name);
     }
     OptionValue const *option(NameLong_T const &_Name) const
     {
-        return m_instData__.m_opts__.mgrValues.find(_Name);
+        return instData__.opts.mgrValues.find(_Name);
     }
 
     template <typename T>
     T getArgument(Name_T const &_Name) const
     {
-        auto const *p = m_instData__.m_args__.mgrName.doGet(_Name);
-        if (!p) { p = m_instData__.m_args__.mgrPos.doGet(_Name); }
+        auto const *p = instData__.args.mgrName.doGet(_Name);
+        if (!p) { p = instData__.args.mgrPos.doGet(_Name); }
         if (!p) {
             throw ErrorParse(ParseError_E::UNKNWON_ARGS, "argument not found: " + _Name);
         }
@@ -153,8 +153,8 @@ public:
     {
         auto key = _Name;
         if (util::starts_with(key, "--")) { key = key.substr(2); }
-        auto const *p = m_instData__.m_opts__.mgrValues.find(key);
-        if (!p && key.size() == 1) { p = m_instData__.m_opts__.mgrValues.find(key[0]); }
+        auto const *p = instData__.opts.mgrValues.find(key);
+        if (!p && key.size() == 1) { p = instData__.opts.mgrValues.find(key[0]); }
         if (!p) { throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option not found: " + key); }
         if (p->strType == "bool") {
             if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->strValue); }
@@ -170,26 +170,26 @@ public:
     {
         auto key = _Name;
         if (util::starts_with(key, "--")) { key = key.substr(2); }
-        if (m_instData__.m_opts__.mgrValues.find(key)) { return true; }
-        if (key.size() == 1 && m_instData__.m_opts__.mgrValues.find(key[0])) { return true; }
+        if (instData__.opts.mgrValues.find(key)) { return true; }
+        if (key.size() == 1 && instData__.opts.mgrValues.find(key[0])) { return true; }
         return false;
     }
 
     bool isParsed(NameShort_T _Name) const
     {
-        return m_instData__.m_opts__.mgrValues.find(_Name)
-               && m_instData__.m_opts__.mgrValues.find(_Name)->bExplicit__;
+        return instData__.opts.mgrValues.find(_Name)
+               && instData__.opts.mgrValues.find(_Name)->bExplicit__;
     }
     bool isParsed(NameLong_T const &_Name) const
     {
-        if (auto const *p = m_instData__.m_opts__.mgrValues.find(_Name)) { return p->bExplicit__; }
-        if (auto const *p = m_instData__.m_args__.mgrName.doGet(_Name)) { return p->hasValue(); }
+        if (auto const *p = instData__.opts.mgrValues.find(_Name)) { return p->bExplicit__; }
+        if (auto const *p = instData__.args.mgrName.doGet(_Name)) { return p->hasValue(); }
         return false;
     }
 
     /* ---------- 环境变量交互 ---------- */
 
-    bool has_env(Name_T const &_Key) const noexcept { return m_instData__.m_envs__.doFind(_Key); }
+    bool has_env(Name_T const &_Key) const noexcept { return instData__.envs.doFind(_Key); }
     std::string get_env(Name_T const &_Key) const { return EnvParser(__envsMut()).get(_Key); }
     std::string get_env_or(Name_T const &_Key, std::string const &_Default = {}) const
     {
@@ -198,19 +198,19 @@ public:
 
     Context &set_env(Name_T _Key, std::string _Value)
     {
-        EnvBuilder(&m_instData__.m_envs__).setEnv(std::move(_Key), std::move(_Value));
+        EnvBuilder(&instData__.envs).setEnv(std::move(_Key), std::move(_Value));
         return *this;
     }
 
     Context &unset_env(Name_T const &_Key)
     {
-        EnvBuilder(&m_instData__.m_envs__).unsetEnv(_Key);
+        EnvBuilder(&instData__.envs).unsetEnv(_Key);
         return *this;
     }
 
     size_t apply_env()
     {
-        return EnvParser(&m_instData__.m_envs__).apply().size();
+        return EnvParser(&instData__.envs).apply().size();
     }
 
     std::string expand_env(std::string const &_Text) const
@@ -218,31 +218,31 @@ public:
         return EnvParser(__envsMut()).expand(_Text);
     }
 
-    std::string env_string() const { return EnvParser(__envsMut()).envString(m_strPrjName__); }
+    std::string env_string() const { return EnvParser(__envsMut()).envString(strPrjName__); }
     void print_env() const { std::cout << env_string(); }
 
     Context &set_builtin_options(bool _On)
     {
-        m_instData__.m_bBuiltinOptions__ = _On;
+        instData__.bBuiltinOptions = _On;
         return *this;
     }
 
     Context &set_exit_code(int _Code) noexcept
     {
-        m_interp__.setExitCode(_Code);
+        interp__.setExitCode(_Code);
         return *this;
     }
-    int exit_code() const noexcept { return m_interp__.exitCode(); }
+    int exit_code() const noexcept { return interp__.exitCode(); }
 
     /* ---------- 参数格式 / 快照 ---------- */
 
-    parameter_schema schema() const { return config::schema_of(m_instData__); }
+    parameter_schema schema() const { return config::schema_of(instData__); }
 
     std::string schema_string() const
     {
         std::ostringstream oss;
         auto               sch = schema();
-        oss << "schema: " << (sch.program.empty() ? m_strPrjName__ : sch.program) << "\n";
+        oss << "schema: " << (sch.program.empty() ? strPrjName__ : sch.program) << "\n";
         for (auto const &e : sch.entries) {
             oss << "  [" << e.kind << "] " << e.name;
             if (!e.type.empty()) { oss << " <" << e.type << ">"; }
@@ -253,21 +253,21 @@ public:
         return oss.str();
     }
 
-    parameter_snapshot snapshot() const { return config::snapshot_of(m_instData__); }
-    void apply_snapshot(parameter_snapshot const &_Snap) { config::apply_snapshot(m_instData__, _Snap); }
+    parameter_snapshot snapshot() const { return config::snapshot_of(instData__); }
+    void apply_snapshot(parameter_snapshot const &_Snap) { config::apply_snapshot(instData__, _Snap); }
 
     /* ---------- 配置脚本 ---------- */
 
-    std::string to_yaml() const { return config::to_yaml(m_instData__); }
+    std::string to_yaml() const { return config::to_yaml(instData__); }
 
     bool save_config(std::string const &_Path) const
     {
-        return config::write_file(_Path, config::to_yaml(m_instData__));
+        return config::write_file(_Path, config::to_yaml(instData__));
     }
 
     bool from_yaml(std::string const &_Text)
     {
-        return config::from_yaml(m_instData__, _Text, static_cast<Errors *>(this));
+        return config::from_yaml(instData__, _Text, static_cast<Errors *>(this));
     }
 
     bool load_config(std::string const &_Path)
@@ -277,18 +277,18 @@ public:
         return from_yaml(*text);
     }
 
-    std::string env_to_yaml() const { return config::env_to_yaml(m_instData__); }
+    std::string env_to_yaml() const { return config::env_to_yaml(instData__); }
 
     bool yaml_to_env(std::string const &_Text)
     {
-        return config::yaml_to_env(m_instData__, _Text, static_cast<Errors *>(this));
+        return config::yaml_to_env(instData__, _Text, static_cast<Errors *>(this));
     }
 
     /* ---------- 执行状态 ---------- */
 
     Context &reset()
     {
-        m_compiler__.resetData();
+        compiler__.resetData();
         clearLast();
         return *this;
     }
@@ -341,8 +341,8 @@ public:
 
     /* ---------- 执行模式（委托 Interpreter） ---------- */
 
-    [[noreturn]] void once() { m_interp__.once(); }
-    void              loop() { m_compiler__.ensureBuiltins(); m_interp__.loop(static_cast<Errors &>(*this)); }
+    [[noreturn]] void once() { interp__.once(); }
+    void              loop() { compiler__.ensureBuiltins(); interp__.loop(static_cast<Errors &>(*this)); }
 
     using Errors::dump;
     using Errors::getLast;
@@ -353,17 +353,17 @@ public:
 private:
     EnvData *__envsMut() const
     {
-        return &const_cast<Model &>(m_instData__).m_envs__;
+        return &const_cast<Model &>(instData__).envs;
     }
 
     /* 批量解析路径：编译(Compiler) → hasAction 门控(Executor) → finalize */
     void __doParse(int _Argc, char const *_Argv[], char *_Envp[])
     {
         if (_Argc > 0 && _Argv[0]) {
-            m_instData__.m_strProgramName__ = _Argv[0];
+            instData__.strProgramName = _Argv[0];
         }
         else {
-            m_instData__.m_strProgramName__ = m_strPrjName__;
+            instData__.strProgramName = strPrjName__;
         }
 
         Tokens_T toks;
@@ -372,54 +372,54 @@ private:
             toks = lex.tokens();
         }
 
-        m_compiler__.set_program_name(m_instData__.m_strProgramName__);
-        m_compiler__.set_description(m_strPrjName__);
+        compiler__.set_program_name(instData__.strProgramName);
+        compiler__.set_description(strPrjName__);
 
         Envs_T envs;
         if (_Envp) { for (int i = 0; _Envp[i]; ++i) { envs.emplace_back(_Envp[i]); } }
 
-        m_compiler__.ensureBuiltins();
-        m_compiler__.parse(toks, envs);      // 编译：Tokens → Expression 分类入库 Model
+        compiler__.ensureBuiltins();
+        compiler__.parse(toks, envs);      // 编译：Tokens → Expression 分类入库 Model
 
-        if (m_instData__.hasAction())        // Model.hasAction() 门控
+        if (instData__.hasAction())        // Model.hasAction() 门控
         {
-            m_executor__.execute();          // 按 actionOrder 顺序执行
+            executor__.execute();          // 按 actionOrder 顺序执行
         }
 
-        m_compiler__.finalize();             // seed 环境兜底 + 展开 + save-config
+        compiler__.finalize();             // seed 环境兜底 + 展开 + save-config
 
-        m_interp__.markParsed();
-        m_bFired__ = m_compiler__.isFired();
+        interp__.markParsed();
+        bFired__ = compiler__.isFired();
     }
 
     void __doParse(Tokens_T const &_Tokens, Envs_T const &_Env)
     {
-        m_compiler__.set_program_name(m_instData__.m_strProgramName__.empty()
-                                          ? m_strPrjName__
-                                          : m_instData__.m_strProgramName__);
-        m_compiler__.set_description(m_strPrjName__);
+        compiler__.set_program_name(instData__.strProgramName.empty()
+                                          ? strPrjName__
+                                          : instData__.strProgramName);
+        compiler__.set_description(strPrjName__);
 
-        m_compiler__.ensureBuiltins();
-        m_compiler__.parse(_Tokens, _Env);   // 编译：Tokens → Expression 分类入库 Model
+        compiler__.ensureBuiltins();
+        compiler__.parse(_Tokens, _Env);   // 编译：Tokens → Expression 分类入库 Model
 
-        if (m_instData__.hasAction())        // Model.hasAction() 门控
+        if (instData__.hasAction())        // Model.hasAction() 门控
         {
-            m_executor__.execute();          // 按 actionOrder 顺序执行
+            executor__.execute();          // 按 actionOrder 顺序执行
         }
 
-        m_compiler__.finalize();             // seed 环境兜底 + 展开 + save-config
+        compiler__.finalize();             // seed 环境兜底 + 展开 + save-config
 
-        m_interp__.markParsed();
-        m_bFired__ = m_compiler__.isFired();
+        interp__.markParsed();
+        bFired__ = compiler__.isFired();
     }
 
 private:
-    std::string  m_strPrjName__;
-    Model        m_instData__;
-    Compiler     m_compiler__;
-    Executor     m_executor__;
-    Interpreter  m_interp__;
-    bool         m_bFired__ = false;
+    std::string  strPrjName__;
+    Model        instData__;
+    Compiler     compiler__;
+    Executor     executor__;
+    Interpreter  interp__;
+    bool         bFired__ = false;
 };
 
 CMD_ARGS_NAMESPACE_END

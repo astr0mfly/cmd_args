@@ -30,11 +30,11 @@ class Defer
 {
 public:
     Defer(F &&_Func)
-        : m_fnRun__(std::forward<F>(_Func))
+        : fnRun__(std::forward<F>(_Func))
     {}
     ~Defer()
     {
-        if (m_fnRun__) m_fnRun__();
+        if (fnRun__) fnRun__();
     }
 
 private:
@@ -42,7 +42,7 @@ private:
     Defer(Defer const &)            = delete;
     Defer &operator=(Defer const &) = delete;
 
-    Func_T m_fnRun__;
+    Func_T fnRun__;
 };
 
 template <typename F>
@@ -50,14 +50,14 @@ class UniqueDefer
 {
 public:
     UniqueDefer(F &&_Func)
-        : m_fnRun__(std::forward<F>(_Func))
+        : fnRun__(std::forward<F>(_Func))
     {}
     ~UniqueDefer()
     {
-        if (!m_bCancel__ && m_fnRun__) m_fnRun__();
+        if (!bCancel__ && fnRun__) fnRun__();
     }
     /* 取消执行（之前设置的 lambda 将不再运行） */
-    void dismiss() { m_bCancel__ = true; }
+    void dismiss() { bCancel__ = true; }
 
 private:
     using Func_T = typename std::remove_reference<F>::type;
@@ -65,8 +65,8 @@ private:
     UniqueDefer(UniqueDefer const &)            = delete;
     UniqueDefer &operator=(UniqueDefer const &) = delete;
 
-    bool   m_bCancel__ = false;
-    Func_T m_fnRun__;
+    bool   bCancel__ = false;
+    Func_T fnRun__;
 };
 
 /* 供 DEFER_ 宏把 lambda 与 Defer 组合起来的空标记类型 */

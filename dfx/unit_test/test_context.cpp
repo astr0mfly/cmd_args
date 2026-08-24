@@ -203,7 +203,7 @@ TEST_CASE("context: model() accessor 返回底层 Model 引用", "[context]")
     REQUIRE(!ec);
 
     auto const &m = app.model();
-    REQUIRE(m.m_strProgramName__ == "ut_model_acc");
+    REQUIRE(m.strProgramName == "ut_model_acc");
 }
 
 TEST_CASE("context: expressions() 经 Context 统一视图覆盖三类条目", "[context]")

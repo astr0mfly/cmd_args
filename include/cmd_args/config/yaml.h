@@ -73,7 +73,7 @@ public:
                 if (_Error) *_Error = err;
                 return std::nullopt;
             }
-            doc.m_entries__.emplace_back(std::move(kv->first), std::move(kv->second));
+            doc.entries__.emplace_back(std::move(kv->first), std::move(kv->second));
         }
         return doc;
     }
@@ -82,7 +82,7 @@ public:
     std::string dump() const
     {
         std::string ret;
-        for (auto const &[k, v] : m_entries__) {
+        for (auto const &[k, v] : entries__) {
             ret += k;
             ret += ": \"";
             ret += __escape(v);
@@ -93,37 +93,37 @@ public:
 
     bool has(std::string const &_Key) const noexcept
     {
-        return __find(_Key) != m_entries__.cend();
+        return __find(_Key) != entries__.cend();
     }
 
     /* 读取语义值（已去引号/反转义）；缺失返回 _Fallback */
     std::string get(std::string const &_Key, std::string const &_Fallback = {}) const
     {
         auto it = __find(_Key);
-        return it == m_entries__.cend() ? _Fallback : it->second;
+        return it == entries__.cend() ? _Fallback : it->second;
     }
 
     void set(std::string _Key, std::string _Value)
     {
         auto it = __find(_Key);
-        if (it != m_entries__.end()) {
+        if (it != entries__.end()) {
             it->second = std::move(_Value);
             return;
         }
-        m_entries__.emplace_back(std::move(_Key), std::move(_Value));
+        entries__.emplace_back(std::move(_Key), std::move(_Value));
     }
 
     bool erase(std::string const &_Key) noexcept
     {
         auto it = __find(_Key);
-        if (it == m_entries__.end()) return false;
-        m_entries__.erase(it);
+        if (it == entries__.end()) return false;
+        entries__.erase(it);
         return true;
     }
 
-    size_t                    size() const noexcept { return m_entries__.size(); }
-    bool                      empty() const noexcept { return m_entries__.empty(); }
-    Entries const            &entries() const noexcept { return m_entries__; }
+    size_t                    size() const noexcept { return entries__.size(); }
+    bool                      empty() const noexcept { return entries__.empty(); }
+    Entries const            &entries() const noexcept { return entries__; }
 
 private:
     using KV    = std::pair<std::string, std::string>;
@@ -132,17 +132,17 @@ private:
 
     const_it __find(std::string const &_Key) const noexcept
     {
-        for (auto it = m_entries__.cbegin(); it != m_entries__.cend(); ++it) {
+        for (auto it = entries__.cbegin(); it != entries__.cend(); ++it) {
             if (it->first == _Key) return it;
         }
-        return m_entries__.cend();
+        return entries__.cend();
     }
     it __find(std::string const &_Key) noexcept
     {
-        for (auto it = m_entries__.begin(); it != m_entries__.end(); ++it) {
+        for (auto it = entries__.begin(); it != entries__.end(); ++it) {
             if (it->first == _Key) return it;
         }
-        return m_entries__.end();
+        return entries__.end();
     }
 
     /* 行内 '#' 注释：注释符前必须是空白才生效 */
@@ -268,7 +268,7 @@ private:
     }
 
 private:
-    Entries m_entries__;
+    Entries entries__;
 };
 
 CMD_ARGS_NAMESPACE_END

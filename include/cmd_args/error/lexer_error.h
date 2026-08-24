@@ -91,28 +91,28 @@ class ErrorLexer : public std::logic_error
 public:
     explicit ErrorLexer(std::error_code _Ec)
         : logic_error("")
-        , m_ec__(_Ec)
+        , ec__(_Ec)
     {}
     explicit ErrorLexer(LexError_E _E)
         : logic_error("")
-        , m_ec__(make_error_code(_E))
+        , ec__(make_error_code(_E))
     {}
     explicit ErrorLexer(LexError_E _E, std::string &&_Desc)
         : logic_error(_Desc.data())
-        , m_ec__(make_error_code(_E))
+        , ec__(make_error_code(_E))
     {}
 
-    std::error_code const &code() const noexcept { return m_ec__; }
+    std::error_code const &code() const noexcept { return ec__; }
     char const            *what() const noexcept override
     {
         auto const *p = logic_error::what();
         if (p && std::strlen(p)) { return p; }
 
-        return mapLexError(m_ec__.value());
+        return mapLexError(ec__.value());
     }
 
 private:
-    std::error_code m_ec__;
+    std::error_code ec__;
 };
 
 CMD_ARGS_NAMESPACE_END

@@ -284,15 +284,15 @@ struct OptionData
     /// @brief 记录含 action 的选项解析顺序（供 Executor 按序执行）
     void recordParseOrder(std::string const &_Key)
     {
-        for (auto const &k : m_actionOrder__) { if (k == _Key) return; }
-        m_actionOrder__.push_back(_Key);
+        for (auto const &k : actionOrder__) { if (k == _Key) return; }
+        actionOrder__.push_back(_Key);
     }
 
     /// @brief 获取解析顺序
-    auto actionOrder() const -> std::vector<std::string> const & { return m_actionOrder__; }
+    auto actionOrder() const -> std::vector<std::string> const & { return actionOrder__; }
 
     /// @brief 清空解析顺序（每次解析前调用）
-    void clearParseOrder() { m_actionOrder__.clear(); }
+    void clearParseOrder() { actionOrder__.clear(); }
 
     /// @brief 是否为空（短回路与值选项都为空）
     bool empty() const noexcept
@@ -337,7 +337,7 @@ struct OptionData
     }
 
 private:
-    std::vector<std::string> m_actionOrder__;  ///< 含 action 的选项解析顺序（Executor 按序执行）
+    std::vector<std::string> actionOrder__;  ///< 含 action 的选项解析顺序（Executor 按序执行）
 };
 
 }  // namespace option_detail

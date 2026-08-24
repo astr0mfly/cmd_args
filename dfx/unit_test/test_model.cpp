@@ -13,17 +13,17 @@ using namespace cmd_args;
 TEST_CASE("model: hasAction 随 actionOrder 翻转", "[model]")
 {
     Model model;
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addOption<std::string>("task", "t", "")->action("echo {value}");
 
     // 构筑后未解析：actionOrder 为空 → 无待执行 action
     REQUIRE_FALSE(model.hasAction());
 
     // 模拟解析期记录（Executor 顺序执行的数据来源）
-    model.m_opts__.recordParseOrder("task");
+    model.opts.recordParseOrder("task");
     REQUIRE(model.hasAction());
 
-    model.m_opts__.clearParseOrder();
+    model.opts.clearParseOrder();
     REQUIRE_FALSE(model.hasAction());
 }
 
@@ -51,11 +51,11 @@ TEST_CASE("model: 失败解析后 actionOrder 清空，下次解析不触发陈�
 TEST_CASE("model: expressions() 返回统一 Expression 视图", "[model]")
 {
     Model model;
-    ArgumentBuilder ab(&model.m_args__);
+    ArgumentBuilder ab(&model.args);
     ab.build<ArgumentNamed>("hello", "greeting");
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addOption<int>("timeout", "sec", 30);
-    EnvBuilder eb(&model.m_envs__);
+    EnvBuilder eb(&model.envs);
     eb.setEnv("MY_K", "MY_V");
 
     auto exprs = model.expressions();
@@ -79,19 +79,19 @@ TEST_CASE("model: expressions() 返回统一 Expression 视图", "[model]")
 TEST_CASE("executor: Executor(Model*) 构造 + execute 执行 action", "[executor]")
 {
     Model model;
-    OptionBuilder ob(&model.m_opts__);
+    OptionBuilder ob(&model.opts);
     ob.addOption<std::string>("task", "t", "")
         ->onSet([&](std::string const &_V) {
-            model.m_strProgramName__ = "executed:" + _V;
+            model.strProgramName = "executed:" + _V;
         });
 
     Executor exec(&model);  // 新构造签名
 
     // 模拟解析后状态：手动记录 actionOrder + 赋值
-    model.m_opts__.recordParseOrder("task");
-    model.m_opts__.mgrValues.mutFind("task")->strValue = "build";
-    model.m_opts__.mgrValues.mutFind("task")->bExplicit__ = true;
+    model.opts.recordParseOrder("task");
+    model.opts.mgrValues.mutFind("task")->strValue = "build";
+    model.opts.mgrValues.mutFind("task")->bExplicit__ = true;
 
     exec.execute();
-    REQUIRE(model.m_strProgramName__ == "executed:build");
+    REQUIRE(model.strProgramName == "executed:build");
 }

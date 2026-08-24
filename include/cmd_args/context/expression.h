@@ -48,41 +48,41 @@ public:
     /// @param _Name 名字（参数名 / 选项长名 / 环境变量键）
     /// @param _Help 帮助文本（可选，默认空）
     Expression(ExpressionKind_E _Kind, Name_T _Name, Desc_T _Help = {})
-        : m_enKind__(_Kind)
-        , m_strName__(std::move(_Name))
-        , m_strHelp__(std::move(_Help))
+        : enKind__(_Kind)
+        , strName__(std::move(_Name))
+        , strHelp__(std::move(_Help))
     {}
 
     virtual ~Expression() = default;
 
     /// @brief 获取表达式种类（分类依据，非虚）
-    auto kind() const noexcept -> ExpressionKind_E { return m_enKind__; }
+    auto kind() const noexcept -> ExpressionKind_E { return enKind__; }
 
     /// @brief 获取表达式名字（虚函数，派生类可覆盖使用自有存储）
-    virtual auto getName() const noexcept -> Name_T const & { return m_strName__; }
+    virtual auto getName() const noexcept -> Name_T const & { return strName__; }
 
     /// @brief 获取帮助文本（虚函数，派生类可覆盖）
-    virtual auto getHelp() const noexcept -> Desc_T const & { return m_strHelp__; }
+    virtual auto getHelp() const noexcept -> Desc_T const & { return strHelp__; }
 
 protected:
     /// @brief 设置名字（保护：派生类 setter 使用）
     auto _setName(Name_T &&_Name) noexcept -> Expression &
     {
-        m_strName__ = std::move(_Name);
+        strName__ = std::move(_Name);
         return *this;
     }
 
     /// @brief 设置帮助文本（保护：派生类 setter 使用）
     auto _setHelp(Desc_T &&_Help) noexcept -> Expression &
     {
-        m_strHelp__ = std::move(_Help);
+        strHelp__ = std::move(_Help);
         return *this;
     }
 
 private:
-    ExpressionKind_E m_enKind__;  ///< 种类
-    Name_T           m_strName__; ///< 名字
-    Desc_T           m_strHelp__; ///< 帮助文本
+    ExpressionKind_E enKind__;  ///< 种类
+    Name_T           strName__; ///< 名字
+    Desc_T           strHelp__; ///< 帮助文本
 };
 
 CMD_ARGS_NAMESPACE_END

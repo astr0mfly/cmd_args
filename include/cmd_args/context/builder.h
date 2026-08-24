@@ -38,8 +38,8 @@ class Builder : public ArgumentBuilder, private OptionBuilder
 {
 public:
     Builder(Model *_Data)
-        : ArgumentBuilder(&_Data->m_args__)
-        , OptionBuilder(&_Data->m_opts__)
+        : ArgumentBuilder(&_Data->args)
+        , OptionBuilder(&_Data->opts)
     {}
     ~Builder();
 

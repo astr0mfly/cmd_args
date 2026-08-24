@@ -48,15 +48,15 @@ namespace detail {
     public:
         Exception(std::string const &_Message, char const *_File, size_t _Line)
             : std::runtime_error(_Message)
-            , m_strMessage__(std::string(_File) + ":" + std::to_string(_Line) + " : " + _Message)
+            , strMessage__(std::string(_File) + ":" + std::to_string(_Line) + " : " + _Message)
         {}
 
         ~Exception() = default;
 
-        char const *what() const noexcept override { return m_strMessage__.c_str(); }
+        char const *what() const noexcept override { return strMessage__.c_str(); }
 
     private:
-        std::string m_strMessage__;
+        std::string strMessage__;
     };
 
     class EnsureException : public std::exception

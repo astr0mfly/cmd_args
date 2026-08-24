@@ -25,7 +25,7 @@ class Optional
 	using data_t = typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type;
 public:
 	Optional()
-		: m_bHasInit__(false)
+		: bHasInit__(false)
 	{ }
 
 	Optional(T const &_V)
@@ -76,20 +76,20 @@ public:
 		Create(std::forward<Args>(args)...);
 	}
  
-	bool IsInit() const { return m_bHasInit__; }
+	bool IsInit() const { return bHasInit__; }
  
 	operator bool() const { return IsInit(); }
  
 	T &operator*()
 	{
-		if (IsInit()) return *((T*)(&m_Data__));
+		if (IsInit()) return *((T*)(&data__));
  
 		throw std::logic_error("is not init");
 	}
  
 	T const &operator *() const
 	{
-		if (IsInit()) return *((T*)(&m_Data__));
+		if (IsInit()) return *((T*)(&data__));
  
 		throw std::logic_error("is not init");
 	}
@@ -113,23 +113,23 @@ private:
 	template<class... Args>
 	void Create(Args&&... args)
 	{
-		new (&m_Data__) T(std::forward<Args>(args)...);
-		m_bHasInit__ = true;
+		new (&data__) T(std::forward<Args>(args)...);
+		bHasInit__ = true;
 	}
  
 	void Destroy()
 	{
-		if (m_bHasInit__) {
-			m_bHasInit__ = false;
-			((T*)(&m_Data__))->~T();
+		if (bHasInit__) {
+			bHasInit__ = false;
+			((T*)(&data__))->~T();
 		}
 	}
  
 	void Assign(const Optional& other)
 	{
 		if (other.IsInit()) {
-			Copy(other.m_Data__);
-			m_bHasInit__ = true;
+			Copy(other.data__);
+			bHasInit__ = true;
 		}
 		else {
 			Destroy();
@@ -139,8 +139,8 @@ private:
 	void Assign(Optional&& other)
 	{
 		if (other.IsInit()) {
-			Move(std::move(other.m_Data__));
-			m_bHasInit__ = true;
+			Move(std::move(other.data__));
+			bHasInit__ = true;
 			other.Destroy();
 		}
 		else {
@@ -151,18 +151,18 @@ private:
 	void Move(data_t&& val)
 	{
 		Destroy();
-		new (&m_Data__) T(std::move(*((T*)(&val))));
+		new (&data__) T(std::move(*((T*)(&val))));
 	}
  
 	void Copy(const data_t& val)
 	{
 		Destroy();
-		new (&m_Data__) T(*((T*)(&val)));
+		new (&data__) T(*((T*)(&val)));
 	}
  
 private:
-	bool m_bHasInit__;
-	data_t m_Data____;
+	bool bHasInit__;
+	data_t data__;
 };
 
 
@@ -176,22 +176,22 @@ struct Lazy
 	template<typename Func, typename ...Args>
 	Lazy(Func& f, Args&&... args)
 	{ //给出需要调用的函数和参数，封装起来。等待之后被调用
-		m_func = [&f, &args...]{ return f(args...); };
+		func__ = [&f, &args...]{ return f(args...); };
 	}
 	//延迟执行，将结果放到optional中缓存起来，下次不用重新计算可以直接得到结果
 	T& Value()
 	{
-		if (!m_value.IsInit()) {
-			m_value = m_func();
+		if (!value__.IsInit()) {
+			value__ = func__();
 		}
 
-		return *m_value;
+		return *value__;
 	}
  
-	bool IsValueCreated() const { return m_value.IsInit(); }
+	bool IsValueCreated() const { return value__.IsInit(); }
 private:
-	std::function<T()> m_func;		//返回值类型为T的无参可调用对象 m_func
-	Optional<T> m_value;	
+	std::function<T()> func__;		//返回值类型为T的无参可调用对象 func__
+	Optional<T> value__;	
 };
  
 //定义一个模板函数，返回值类型为 Lazy

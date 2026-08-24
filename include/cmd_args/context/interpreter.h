@@ -52,10 +52,10 @@ class Interpreter : private ArgumentParser, private OptionParser, private EnvPar
 {
 public:
     Interpreter(Model *_Model)
-        : ArgumentParser(&_Model->m_args__)
-        , OptionParser(&_Model->m_opts__)
-        , EnvParser(&_Model->m_envs__)
-        , m_pModel__(_Model)
+        : ArgumentParser(&_Model->args)
+        , OptionParser(&_Model->opts)
+        , EnvParser(&_Model->envs)
+        , pModel__(_Model)
     {}
 
     /* ===== 逐行解释 ===== */
@@ -63,9 +63,9 @@ public:
     /// @brief 解释执行一行：reset → 字符泵逐 Token 分类 → 立即执行 → 方位参数提交 → finalize
     std::error_code interpret(std::string const &_Line, Errors &_Errors)
     {
-        m_pModel__->m_args__.mgrName.doMutVisit([](Argument &a) { a.reset(); });
-        m_pModel__->m_args__.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
-        m_pModel__->m_opts__.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
+        pModel__->args.mgrName.doMutVisit([](Argument &a) { a.reset(); });
+        pModel__->args.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
+        pModel__->opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
         _Errors.clearLast();
 
         try {
@@ -97,17 +97,17 @@ public:
                             "option --" + strPendingKey + " need a value");
                     }
                     if (enPending == PendingKind_E::NamedArg) {
-                        if (auto *pArg = m_pModel__->m_args__.mgrName.mutGet(strPendingKey)) {
+                        if (auto *pArg = pModel__->args.mgrName.mutGet(strPendingKey)) {
                             pArg->set(text);
                         }
                     }
                     else if (enPending == PendingKind_E::ShortOpt) {
                         // 短名按 char 查（mutFind(std::string) 只按长名匹配）
-                        if (auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(strPendingKey.front())) {
+                        if (auto *pOpt = pModel__->opts.mgrValues.mutFind(strPendingKey.front())) {
                             __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
                         }
                     }
-                    else if (auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(strPendingKey)) {
+                    else if (auto *pOpt = pModel__->opts.mgrValues.mutFind(strPendingKey)) {
                         __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
                     }
                     strPendingKey.clear();
@@ -127,11 +127,11 @@ public:
                     std::string name  = body.substr(0, eq == std::string::npos ? body.size() : eq);
                     std::string value = eq == std::string::npos ? "" : body.substr(eq + 1);
 
-                    if (auto const *pSc = m_pModel__->m_opts__.mgrActions.doGet(name)) {
+                    if (auto const *pSc = pModel__->opts.mgrActions.doGet(name)) {
                         static_cast<OptionAction const *>(pSc)->fnCallback();  // 短回路：立即回调
                         return;
                     }
-                    if (auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(name)) {
+                    if (auto *pOpt = pModel__->opts.mgrValues.mutFind(name)) {
                         // 无内联值：等待下一 token 取值。bInlineEq 表达「值在下个 token
                         // 且允许 dash 开头」（--opt=value 被 Scanner 在 '=' 处切开）
                         if (value.empty() && (bInlineEq || pOpt->strType != "bool")) {
@@ -142,7 +142,7 @@ public:
                         __executeOptionImmediate(pOpt, value, pOpt->strType == "bool");
                         return;
                     }
-                    if (auto *pArg = m_pModel__->m_args__.mgrName.mutGet(name)) {
+                    if (auto *pArg = pModel__->args.mgrName.mutGet(name)) {
                         if (value.empty()) {
                             strPendingKey = name; enPending = PendingKind_E::NamedArg;
                             bPendingInlineEq = false;
@@ -159,11 +159,11 @@ public:
                 if (util::starts_with(text, "-") && text.size() >= 2) {
                     for (size_t i = 1; i < text.size(); ++i) {
                         char key = text[i];
-                        if (auto const *pSc = m_pModel__->m_opts__.mgrActions.doGet(key)) {
+                        if (auto const *pSc = pModel__->opts.mgrActions.doGet(key)) {
                             static_cast<OptionAction const *>(pSc)->fnCallback();
                             continue;
                         }
-                        auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(key);
+                        auto *pOpt = pModel__->opts.mgrValues.mutFind(key);
                         if (!pOpt) {
                             throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
                                 "unrecognized short option '" + std::string(1, key) + "' in " + text);
@@ -217,7 +217,7 @@ public:
             __assignPositional(vecPos);                          // 数量校验 + 按序提交
 
             __finalize();
-            m_bParsed__ = true;
+            bParsed__ = true;
             return make_error_code(ParseError_E::OK);
         }
         catch (ErrorParse const &e) { _Errors.setLast(e.code()); return e.code(); }
@@ -235,20 +235,20 @@ public:
         __seedEnvDefaults();
         __expandEnvValues();
 
-        if (!m_pModel__->m_strSaveConfigPath__.empty()) {
-            auto text = config::to_yaml(*m_pModel__);
-            if (!config::write_file(m_pModel__->m_strSaveConfigPath__, text)) {
-                std::cerr << "(save-config) cannot write file: " << m_pModel__->m_strSaveConfigPath__ << "\n";
+        if (!pModel__->strSaveConfigPath.empty()) {
+            auto text = config::to_yaml(*pModel__);
+            if (!config::write_file(pModel__->strSaveConfigPath, text)) {
+                std::cerr << "(save-config) cannot write file: " << pModel__->strSaveConfigPath << "\n";
             }
         }
     }
 
     /* ===== once / loop ===== */
 
-    void setExitCode(int _Code) noexcept { m_nExitCode__ = _Code; }
-    int  exitCode() const noexcept { return m_nExitCode__; }
-    void markParsed() noexcept { m_bParsed__ = true; }
-    bool prepared() const noexcept { return m_bParsed__; }
+    void setExitCode(int _Code) noexcept { nExitCode__ = _Code; }
+    int  exitCode() const noexcept { return nExitCode__; }
+    void markParsed() noexcept { bParsed__ = true; }
+    bool prepared() const noexcept { return bParsed__; }
 
     std::string describeError(std::error_code const &_Ec, Errors &_Errors) const
     {
@@ -257,8 +257,8 @@ public:
 
     [[noreturn]] void once()
     {
-        if (!m_bParsed__) { throw ErrorInterp(InterpError_E::STOPPED); }
-        std::exit(m_nExitCode__);
+        if (!bParsed__) { throw ErrorInterp(InterpError_E::STOPPED); }
+        std::exit(nExitCode__);
     }
 
     void loop(Errors &_Errors)
@@ -312,9 +312,9 @@ private:
     /// @brief 按声明顺序提交方位参数（数量校验与批量 ArgumentParser 一致）
     void __assignPositional(std::vector<std::string> const &_VecPos)
     {
-        size_t total = m_pModel__->m_args__.mgrPos.doSize();
+        size_t total = pModel__->args.mgrPos.doSize();
         size_t need  = 0;
-        m_pModel__->m_args__.mgrPos.doConVisit([&](Argument const &a) {
+        pModel__->args.mgrPos.doConVisit([&](Argument const &a) {
             if (!a.isExternal()) ++need;
         });
         if (_VecPos.size() < need || _VecPos.size() > total) {
@@ -328,7 +328,7 @@ private:
         bool   exact = (_VecPos.size() == need);
         size_t vi    = 0;
         for (size_t seq = 0; seq < total && vi < _VecPos.size(); ++seq) {
-            auto *p = m_pModel__->m_args__.mgrPos.mutGetBySeq(seq);
+            auto *p = pModel__->args.mgrPos.mutGetBySeq(seq);
             if (!p) continue;
             if (exact && p->isExternal()) continue;
             p->set(_VecPos[vi++]);
@@ -337,15 +337,15 @@ private:
 
     void __seedEnvDefaults()
     {
-        m_pModel__->m_args__.mgrName.doMutVisit([&](Argument &a) {
+        pModel__->args.mgrName.doMutVisit([&](Argument &a) {
             if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
             if (this->EnvParser::has(a.getEnvName())) { a.set(this->EnvParser::get(a.getEnvName())); }
         });
-        m_pModel__->m_args__.mgrPos.doMutVisit([&](Argument &a) {
+        pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
             if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
             if (this->EnvParser::has(a.getEnvName())) { a.set(this->EnvParser::get(a.getEnvName())); }
         });
-        m_pModel__->m_opts__.mgrValues.forEachValue([&](OptionValue &o) {
+        pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;
             if (this->EnvParser::has(o.strEnvName__)) {
                 o.strValue = this->EnvParser::get(o.strEnvName__);
@@ -355,13 +355,13 @@ private:
 
     void __expandEnvValues()
     {
-        m_pModel__->m_args__.mgrName.doMutVisit([&](Argument &a) {
+        pModel__->args.mgrName.doMutVisit([&](Argument &a) {
             if (a.hasValue()) { a.set(this->EnvParser::expand(a.getValue())); }
         });
-        m_pModel__->m_args__.mgrPos.doMutVisit([&](Argument &a) {
+        pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
             if (a.hasValue()) { a.set(this->EnvParser::expand(a.getValue())); }
         });
-        m_pModel__->m_opts__.mgrValues.forEachValue([&](OptionValue &o) {
+        pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (!o.strValue.empty()) { o.strValue = this->EnvParser::expand(o.strValue); }
         });
     }
@@ -371,18 +371,18 @@ private:
         __seedEnvDefaults();
         __expandEnvValues();
 
-        if (!m_pModel__->m_strSaveConfigPath__.empty()) {
-            auto text = config::to_yaml(*m_pModel__);
-            if (!config::write_file(m_pModel__->m_strSaveConfigPath__, text)) {
-                std::cerr << "(save-config) cannot write file: " << m_pModel__->m_strSaveConfigPath__ << "\n";
+        if (!pModel__->strSaveConfigPath.empty()) {
+            auto text = config::to_yaml(*pModel__);
+            if (!config::write_file(pModel__->strSaveConfigPath, text)) {
+                std::cerr << "(save-config) cannot write file: " << pModel__->strSaveConfigPath << "\n";
             }
         }
     }
 
 private:
-    Model *m_pModel__ = nullptr;
-    bool   m_bParsed__   = false;
-    int    m_nExitCode__ = 0;
+    Model *pModel__ = nullptr;
+    bool   bParsed__   = false;
+    int    nExitCode__ = 0;
 };
 
 CMD_ARGS_NAMESPACE_END

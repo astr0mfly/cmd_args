@@ -102,18 +102,18 @@ class ErrorArgument : public std::logic_error
 public:
     explicit ErrorArgument(std::error_code _Ec)
         : logic_error("")
-        , m_ec__(_Ec)
+        , ec__(_Ec)
     {}
     explicit ErrorArgument(BuildError_E _E)
         : logic_error("")
-        , m_ec__(make_error_code(_E))
+        , ec__(make_error_code(_E))
     {}
 
-    std::error_code const &code() const noexcept { return m_ec__; }
-    char const *what() const noexcept override { return mapArgumentError(m_ec__.value()); }
+    std::error_code const &code() const noexcept { return ec__; }
+    char const *what() const noexcept override { return mapArgumentError(ec__.value()); }
 
 private:
-    std::error_code m_ec__;
+    std::error_code ec__;
 };
 }  // namespace detail
 

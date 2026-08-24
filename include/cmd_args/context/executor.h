@@ -45,14 +45,14 @@ public:
     /// @brief 构造执行器
     /// @param _Model 底层模型（含 OptionData）
     explicit Executor(Model *_Model) noexcept
-        : m_pModel__(_Model)
+        : pModel__(_Model)
     {}
 
     /// @brief 按解析顺序执行含 action 的选项：fnOnSet__ 回调 + action 模板 system_call
     void execute()
     {
-        for (auto const &key : m_pModel__->m_opts__.actionOrder()) {
-            auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(key);
+        for (auto const &key : pModel__->opts.actionOrder()) {
+            auto *pOpt = pModel__->opts.mgrValues.mutFind(key);
             if (!pOpt) continue;
 
             // 自定义赋值回调（--env-set 等内置交互选项）
@@ -69,11 +69,11 @@ public:
                 }
             }
         }
-        m_pModel__->m_opts__.clearParseOrder();
+        pModel__->opts.clearParseOrder();
     }
 
 private:
-    Model *m_pModel__ = nullptr;  ///< 底层模型指针（含 OptionData）
+    Model *pModel__ = nullptr;  ///< 底层模型指针（含 OptionData）
 };
 
 CMD_ARGS_NAMESPACE_END

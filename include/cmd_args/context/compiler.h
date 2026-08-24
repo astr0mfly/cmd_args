@@ -43,11 +43,11 @@ class Compiler
 {
 public:
     Compiler(Model *_Data)
-        : m_argParser__(&_Data->m_args__)
-        , m_optParser__(&_Data->m_opts__)
-        , m_envBuilder__(&_Data->m_envs__)
-        , m_envParser__(&_Data->m_envs__)
-        , m_pModel__(_Data)
+        : argParser__(&_Data->args)
+        , optParser__(&_Data->opts)
+        , envBuilder__(&_Data->envs)
+        , envParser__(&_Data->envs)
+        , pModel__(_Data)
     {}
 
     Compiler &set_program_name(Name_T name)
@@ -116,24 +116,24 @@ public:
         return __tryParse([&] { parse(_Tokens, _Env); });
     }
 
-    bool isParsed(NameShort_T _Name) const { return m_optParser__.isParsed(_Name); }
+    bool isParsed(NameShort_T _Name) const { return optParser__.isParsed(_Name); }
     bool isParsed(NameLong_T const &_Name) const
     {
-        return m_optParser__.isParsed(_Name) || m_argParser__.isParsed(_Name);
+        return optParser__.isParsed(_Name) || argParser__.isParsed(_Name);
     }
 
-    bool isFired() const noexcept { return m_bFired__; }
+    bool isFired() const noexcept { return bFired__; }
     Name_T const &get_program_name() const noexcept { return program_name; }
 
     template <typename T>
     T getOption(std::string const &_Name) const
     {
-        return m_optParser__.getOption<T>(_Name);
+        return optParser__.getOption<T>(_Name);
     }
     template <typename T>
     T getArgument(std::string const &_Name) const
     {
-        return m_argParser__.getArgument<T>(_Name);
+        return argParser__.getArgument<T>(_Name);
     }
 
     void print_usage() const { std::cout << __descUsage(); }
@@ -143,19 +143,19 @@ public:
     /// 还原 ArgumentData/OptionData 到内置默认值（Env 会话态保留）
     void resetData()
     {
-        m_pModel__->m_args__.mgrName.doMutVisit([](Argument &a) { a.reset(); });
-        m_pModel__->m_args__.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
-        m_pModel__->m_opts__.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
+        pModel__->args.mgrName.doMutVisit([](Argument &a) { a.reset(); });
+        pModel__->args.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
+        pModel__->opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
     }
 
     /// 内置选项注册（--help/--env/--env-set 等，懒注册一次）
     void ensureBuiltins()
     {
-        if (!m_pModel__->m_bBuiltinOptions__ || m_pModel__->m_bBuiltinsRegistered__) return;
-        m_pModel__->m_bBuiltinsRegistered__ = true;
+        if (!pModel__->bBuiltinOptions || pModel__->bBuiltinsRegistered) return;
+        pModel__->bBuiltinsRegistered = true;
 
-        Model *m = m_pModel__;
-        OptionBuilder ob(&m_pModel__->m_opts__);
+        Model *m = pModel__;
+        OptionBuilder ob(&pModel__->opts);
         ob.addShortCircuit('?', "help", "show this help message", [m] {
             std::cout << __descHelpOf(*m);
         });
@@ -163,14 +163,14 @@ public:
             std::cout << __descEnvOf(*m);
         });
         ob.addShortCircuit('\0', "env-apply", "write changed environments back to the OS", [m] {
-            auto applied = EnvParser(&m->m_envs__).apply();
+            auto applied = EnvParser(&m->envs).apply();
             for (auto const &a : applied) { std::cout << "applied " << a << "\n"; }
             std::cout << __descEnvOf(*m);
         });
         ob.addOption<std::string>("env-set", "set an environment variable, KEY=VALUE", "")
             ->bBuiltin__ = true;
-        m_pModel__->m_opts__.mgrValues.mutFind("env-set")->onSet([m](std::string const &_V) {
-            EnvBuilder b(&m->m_envs__);
+        pModel__->opts.mgrValues.mutFind("env-set")->onSet([m](std::string const &_V) {
+            EnvBuilder b(&m->envs);
             auto eq = _V.find('=');
             if (eq == std::string::npos) {
                 b.setEnv(_V, "");
@@ -181,13 +181,13 @@ public:
         });
         ob.addOption<std::string>("env-unset", "unset an environment variable, KEY", "")
             ->bBuiltin__ = true;
-        m_pModel__->m_opts__.mgrValues.mutFind("env-unset")->onSet(
-            [m](std::string const &_V) { EnvBuilder(&m->m_envs__).unsetEnv(_V); });
+        pModel__->opts.mgrValues.mutFind("env-unset")->onSet(
+            [m](std::string const &_V) { EnvBuilder(&m->envs).unsetEnv(_V); });
 
         ob.addOption<std::string>(
               "load-config", "load a yaml config file before later args, PATH", "")
             ->bBuiltin__ = true;
-        m_pModel__->m_opts__.mgrValues.mutFind("load-config")->onSet(
+        pModel__->opts.mgrValues.mutFind("load-config")->onSet(
             [m](std::string const &_Path) {
                 auto text = config::read_file(_Path);
                 if (!text) {
@@ -199,8 +199,8 @@ public:
         ob.addOption<std::string>(
               "save-config", "write the resolved parameter/env state to a yaml file, PATH", "")
             ->bBuiltin__ = true;
-        m_pModel__->m_opts__.mgrValues.mutFind("save-config")->onSet(
-            [m](std::string const &_Path) { m->m_strSaveConfigPath__ = _Path; });
+        pModel__->opts.mgrValues.mutFind("save-config")->onSet(
+            [m](std::string const &_Path) { m->strSaveConfigPath = _Path; });
     }
 
     /// 解析后置：seed 环境兜底 + ${VAR} 展开 + save-config 写出
@@ -209,10 +209,10 @@ public:
         __seedEnvDefaults();
         __expandEnvValues();
 
-        if (!m_pModel__->m_strSaveConfigPath__.empty()) {
-            auto text = config::to_yaml(*m_pModel__);
-            if (!config::write_file(m_pModel__->m_strSaveConfigPath__, text)) {
-                std::cerr << "(save-config) cannot write file: " << m_pModel__->m_strSaveConfigPath__ << "\n";
+        if (!pModel__->strSaveConfigPath.empty()) {
+            auto text = config::to_yaml(*pModel__);
+            if (!config::write_file(pModel__->strSaveConfigPath, text)) {
+                std::cerr << "(save-config) cannot write file: " << pModel__->strSaveConfigPath << "\n";
             }
         }
     }
@@ -239,21 +239,21 @@ private:
     void __parseTokens(Tokens_T &_Tokens, std::vector<std::string> const &_Env)
     {
         try {
-            m_pModel__->m_strProgramName__ = program_name;
-            m_envParser__.parse(_Env);
+            pModel__->strProgramName = program_name;
+            envParser__.parse(_Env);
             ensureBuiltins();
 
-            m_bFired__ = m_optParser__.parse(_Tokens);
-            if (m_bFired__) return;
+            bFired__ = optParser__.parse(_Tokens);
+            if (bFired__) return;
 
-            if (m_optParser__.isOptionsEnded()) {
-                m_argParser__.parseNamedOnly(_Tokens);
-                m_argParser__.parsePositionalOnly(_Tokens);
-                m_bFired__ = false;
+            if (optParser__.isOptionsEnded()) {
+                argParser__.parseNamedOnly(_Tokens);
+                argParser__.parsePositionalOnly(_Tokens);
+                bFired__ = false;
                 return;
             }
 
-            m_argParser__.parse(_Tokens);
+            argParser__.parse(_Tokens);
 
             for (auto const &t : _Tokens) {
                 if (!util::starts_with(t, "-")) continue;
@@ -263,48 +263,48 @@ private:
         catch (...) {
             // 解析失败：本次已记录的顺序一并作废——失败解析不残留待执行 action，
             // Model.hasAction() 为 false，后续解析不会触发陈旧 action
-            m_pModel__->m_opts__.clearParseOrder();
+            pModel__->opts.clearParseOrder();
             throw;
         }
     }
 
     void __seedEnvDefaults()
     {
-        m_pModel__->m_args__.mgrName.doMutVisit([&](Argument &a) {
+        pModel__->args.mgrName.doMutVisit([&](Argument &a) {
             if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
-            if (m_envParser__.has(a.getEnvName())) { a.set(m_envParser__.get(a.getEnvName())); }
+            if (envParser__.has(a.getEnvName())) { a.set(envParser__.get(a.getEnvName())); }
         });
-        m_pModel__->m_args__.mgrPos.doMutVisit([&](Argument &a) {
+        pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
             if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
-            if (m_envParser__.has(a.getEnvName())) { a.set(m_envParser__.get(a.getEnvName())); }
+            if (envParser__.has(a.getEnvName())) { a.set(envParser__.get(a.getEnvName())); }
         });
-        m_pModel__->m_opts__.mgrValues.forEachValue([&](OptionValue &o) {
+        pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;
-            if (m_envParser__.has(o.strEnvName__)) { o.strValue = m_envParser__.get(o.strEnvName__); }
+            if (envParser__.has(o.strEnvName__)) { o.strValue = envParser__.get(o.strEnvName__); }
         });
     }
 
     void __expandEnvValues()
     {
-        m_pModel__->m_args__.mgrName.doMutVisit([&](Argument &a) {
-            if (a.hasValue()) { a.set(m_envParser__.expand(a.getValue())); }
+        pModel__->args.mgrName.doMutVisit([&](Argument &a) {
+            if (a.hasValue()) { a.set(envParser__.expand(a.getValue())); }
         });
-        m_pModel__->m_args__.mgrPos.doMutVisit([&](Argument &a) {
-            if (a.hasValue()) { a.set(m_envParser__.expand(a.getValue())); }
+        pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
+            if (a.hasValue()) { a.set(envParser__.expand(a.getValue())); }
         });
-        m_pModel__->m_opts__.mgrValues.forEachValue([&](OptionValue &o) {
-            if (!o.strValue.empty()) { o.strValue = m_envParser__.expand(o.strValue); }
+        pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
+            if (!o.strValue.empty()) { o.strValue = envParser__.expand(o.strValue); }
         });
     }
 
     static std::string __descUsageOf(Model const &_M, Name_T const &_Program)
     {
         std::ostringstream oss;
-        oss << "usage: " << (_Program.empty() ? _M.m_strProgramName__ : _Program)
+        oss << "usage: " << (_Program.empty() ? _M.strProgramName : _Program)
             << " [arguments]";
-        oss << _M.m_args__.mgrName.doGetUsage();
-        oss << _M.m_args__.mgrPos.doGetUsage();
-        oss << _M.m_opts__.usageString();
+        oss << _M.args.mgrName.doGetUsage();
+        oss << _M.args.mgrPos.doGetUsage();
+        oss << _M.opts.usageString();
         oss << "\n";
         return oss.str();
     }
@@ -312,13 +312,13 @@ private:
     static std::string __descHelpOf(Model const &_M)
     {
         std::ostringstream oss;
-        oss << __descUsageOf(_M, _M.m_strProgramName__);
-        _M.m_args__.mgrName.doGetHelp(oss, 0);
-        _M.m_args__.mgrPos.doGetHelp(oss, 0);
-        if (!_M.m_opts__.empty()) {
+        oss << __descUsageOf(_M, _M.strProgramName);
+        _M.args.mgrName.doGetHelp(oss, 0);
+        _M.args.mgrPos.doGetHelp(oss, 0);
+        if (!_M.opts.empty()) {
             oss << "\nOptions:\n";
-            size_t maxLen = _M.m_opts__.calcDescMaxLength();
-            _M.m_opts__.appendHelp(oss, maxLen);
+            size_t maxLen = _M.opts.calcDescMaxLength();
+            _M.opts.appendHelp(oss, maxLen);
         }
         oss << "\n";
         return oss.str();
@@ -326,25 +326,25 @@ private:
 
     static std::string __descEnvOf(Model &_M)
     {
-        return EnvParser(&_M.m_envs__).envString(_M.m_strProgramName__);
+        return EnvParser(&_M.envs).envString(_M.strProgramName);
     }
 
     std::string __descUsage() const
     {
-        return __descUsageOf(*m_pModel__, program_name);
+        return __descUsageOf(*pModel__, program_name);
     }
 
     std::string __descHelp() const
     {
         std::ostringstream oss;
-        oss << __descUsageOf(*m_pModel__, program_name);
+        oss << __descUsageOf(*pModel__, program_name);
         if (!description.empty()) { oss << "\n" << description << "\n"; }
-        m_pModel__->m_args__.mgrName.doGetHelp(oss, 0);
-        m_pModel__->m_args__.mgrPos.doGetHelp(oss, 0);
-        if (!m_pModel__->m_opts__.empty()) {
+        pModel__->args.mgrName.doGetHelp(oss, 0);
+        pModel__->args.mgrPos.doGetHelp(oss, 0);
+        if (!pModel__->opts.empty()) {
             oss << "\nOptions:\n";
-            size_t maxLen = m_pModel__->m_opts__.calcDescMaxLength();
-            m_pModel__->m_opts__.appendHelp(oss, maxLen);
+            size_t maxLen = pModel__->opts.calcDescMaxLength();
+            pModel__->opts.appendHelp(oss, maxLen);
         }
         oss << "\n";
         oss << "environments: use -! / --env to list, --env-set KEY=VALUE to set, "
@@ -352,18 +352,18 @@ private:
         return oss.str();
     }
 
-    std::string __descEnv() const { return __descEnvOf(*m_pModel__); }
+    std::string __descEnv() const { return __descEnvOf(*pModel__); }
 
 private:
-    ArgumentParser m_argParser__;
-    OptionParser   m_optParser__;
-    EnvBuilder     m_envBuilder__;
-    EnvParser      m_envParser__;
+    ArgumentParser argParser__;
+    OptionParser   optParser__;
+    EnvBuilder     envBuilder__;
+    EnvParser      envParser__;
 
-    Model        *m_pModel__ = nullptr;
+    Model        *pModel__ = nullptr;
     Name_T        program_name;
     Desc_T        description;
-    bool          m_bFired__ = false;
+    bool          bFired__ = false;
 };
 
 CMD_ARGS_NAMESPACE_END

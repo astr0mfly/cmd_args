@@ -76,27 +76,27 @@ public:
     };
     Token() = default;
     Token(Type_E _T, Name_T _Content, size_t _Line)
-        : m_enAttr__(_T)
-        , m_strName__(_Content)
-        , m_locLine__(_Line)
+        : enAttr__(_T)
+        , strName__(_Content)
+        , locLine__(_Line)
     {}
-    operator bool() const noexcept { return m_enAttr__ != Type_E::Unknown; }
-    Type_E        getAttr() const noexcept { return m_enAttr__; }
-    Name_T const &getName() const noexcept { return m_strName__; }
-    char          back() const noexcept { return m_strName__.empty() ? '\0' : m_strName__.back(); }
-    void          setLoc(size_t _Line) { m_locLine__ = _Line; }
-    void          setAttr(Type_E _A) { m_enAttr__ = _A; }
-    void          pick(char _C) { m_strName__ += _C; }
-    void          resetName() { m_strName__.clear(); }
-    void          setInlineEq(bool _V) { m_bInlineEq__ = _V; }
+    operator bool() const noexcept { return enAttr__ != Type_E::Unknown; }
+    Type_E        getAttr() const noexcept { return enAttr__; }
+    Name_T const &getName() const noexcept { return strName__; }
+    char          back() const noexcept { return strName__.empty() ? '\0' : strName__.back(); }
+    void          setLoc(size_t _Line) { locLine__ = _Line; }
+    void          setAttr(Type_E _A) { enAttr__ = _A; }
+    void          pick(char _C) { strName__ += _C; }
+    void          resetName() { strName__.clear(); }
+    void          setInlineEq(bool _V) { bInlineEq__ = _V; }
     /// @brief 是否由 '=' 内联分隔（--name=value 中 '=' 直接结束长名词）
-    bool hasInlineEq() const noexcept { return m_bInlineEq__; }
+    bool hasInlineEq() const noexcept { return bInlineEq__; }
     void          clear()
     {
-        m_enAttr__    = Type_E::Unknown;
-        m_strName__.clear();
-        m_locLine__   = 0;
-        m_bInlineEq__ = false;  // ← 新增复位
+        enAttr__    = Type_E::Unknown;
+        strName__.clear();
+        locLine__   = 0;
+        bInlineEq__ = false;  // ← 新增复位
     }
 
     /*
@@ -108,19 +108,19 @@ public:
     */
     std::string toText() const
     {
-        switch (m_enAttr__) {
-        case Type_E::LongName: return "--" + m_strName__;
+        switch (enAttr__) {
+        case Type_E::LongName: return "--" + strName__;
         case Type_E::ShortName:
-        case Type_E::ContinualName: return "-" + m_strName__;
-        default: return m_strName__;
+        case Type_E::ContinualName: return "-" + strName__;
+        default: return strName__;
         }
     }
 
 private:
-    Type_E m_enAttr__ = Type_E::Unknown;
-    Name_T m_strName__;
-    size_t m_locLine__ = 0;
-    bool   m_bInlineEq__ = false;
+    Type_E enAttr__ = Type_E::Unknown;
+    Name_T strName__;
+    size_t locLine__ = 0;
+    bool   bInlineEq__ = false;
 };
 
 class Scanner
@@ -147,11 +147,11 @@ public:
     };
     using ScanTbl_T = std::map<Phrase_E, ScanProc_T>;
     // 源按值持有：Scanner({}) 等临时源构造不再悬垂（成员引用绑定临时对象是 UB，
-    // 流式 step() 逐字符触碰 m_source__，必须保证其生命周期覆盖整个 Scanner）
+    // 流式 step() 逐字符触碰 source__，必须保证其生命周期覆盖整个 Scanner）
     Scanner(Source_T _Source)
-        : m_source__(std::move(_Source))
+        : source__(std::move(_Source))
     {
-        if (!m_source__.empty()) { m_itPc__ = m_source__.front().cbegin(); }
+        if (!source__.empty()) { itPc__ = source__.front().cbegin(); }
         __initScanTable();
     }
 
@@ -165,11 +165,11 @@ public:
                 __nextLine();
                 continue;
             }
-            m_tblScanInput__[m_enState__](*m_itPc__, tDefault);
+            tblScanInput__[enState__](*itPc__, tDefault);
         }
         __flush(tDefault);
 
-        return std::move(m_tResult__);
+        return std::move(tResult__);
     }
 
     /// @brief 增量模式：逐字符喂入，token 完成时返回之（Interpreter 流式模式）
@@ -179,25 +179,25 @@ public:
     {
         if (_Cur == '\0') {
             // __flush 内 __processEnd 已把状态复位 BEGIN，无需再手动复位
-            __flush(m_tCur__);   // IN_STRING 态抛 UNTERMINATED_STRING；BEGIN 态早退
+            __flush(tCur__);   // IN_STRING 态抛 UNTERMINATED_STRING；BEGIN 态早退
         }
         else {
-            m_tblScanInput__[m_enState__](_Cur, m_tCur__);
-            if (m_enState__ == Phrase_E::END) {
-                __processEnd('\0', m_tCur__);  // 排水当前 token，状态复位 BEGIN
+            tblScanInput__[enState__](_Cur, tCur__);
+            if (enState__ == Phrase_E::END) {
+                __processEnd('\0', tCur__);  // 排水当前 token，状态复位 BEGIN
                 if (_Cur != '\0' && _Cur != '=') {
                     // 与批量 scan() 一致：终结字符在 BEGIN 态重派，避免丢字符
                     // （空白是无害 no-op；'=' 已由 hasInlineEq 表达，重派会产生
                     //   Task 10 误读的赘余 Delimiter "=" token）
-                    m_tblScanInput__[Phrase_E::BEGIN](_Cur, m_tCur__);
+                    tblScanInput__[Phrase_E::BEGIN](_Cur, tCur__);
                     // BEGIN 态不会立即完成，此守卫仅作保险
-                    if (m_enState__ == Phrase_E::END) { __processEnd('\0', m_tCur__); }
+                    if (enState__ == Phrase_E::END) { __processEnd('\0', tCur__); }
                 }
             }
         }
-        if (m_tResult__.empty()) return std::nullopt;
-        auto tok = std::move(m_tResult__.front());
-        m_tResult__.erase(m_tResult__.begin());  // 每次 step 至多产出 1 个 token
+        if (tResult__.empty()) return std::nullopt;
+        auto tok = std::move(tResult__.front());
+        tResult__.erase(tResult__.begin());  // 每次 step 至多产出 1 个 token
         return tok;
     }
 
@@ -210,7 +210,7 @@ private:
     void __initScanTable()
     {
         namespace sp = std::placeholders;
-        m_tblScanInput__ = {
+        tblScanInput__ = {
             { Phrase_E::BEGIN, std::bind(&Scanner::__processBegin, this, sp::_1, sp::_2) },
             { Phrase_E::IN_KEYWORD, std::bind(&Scanner::__processKeyWord, this, sp::_1, sp::_2) },
             { Phrase_E::IN_STRING, std::bind(&Scanner::__processString, this, sp::_1, sp::_2) },
@@ -237,12 +237,12 @@ private:
     */
     void __flush(Token &_T)
     {
-        if (m_enState__ == Phrase_E::BEGIN || m_enState__ == Phrase_E::END) return;
-        if (m_enState__ == Phrase_E::IN_STRING) {
+        if (enState__ == Phrase_E::BEGIN || enState__ == Phrase_E::END) return;
+        if (enState__ == Phrase_E::IN_STRING) {
             throw ErrorLexer(LexError_E::UNTERMINATED_STRING);
         }
 
-        switch (m_enState__) {
+        switch (enState__) {
         case Phrase_E::IN_KEYWORD: _T.setAttr(Token::Type_E::Keyword); break;
         case Phrase_E::IN_SINGLE_DELIMITER:
         case Phrase_E::IN_DOUBLE_DELIMITER: _T.setAttr(Token::Type_E::Delimiter); break;
@@ -369,7 +369,7 @@ private:
         }
         else {
             _T.setAttr(Token::Type_E::Real);
-            m_enState__ = Phrase_E::END;
+            enState__ = Phrase_E::END;
         }
     }
     void __processShortName(char const _Cur, Token &_T)
@@ -445,7 +445,7 @@ private:
 
         auto k = magic_enum::enum_cast<Token::KeyWord_E>(_T.getName());
         if (k.has_value()) {
-            m_enState__ = Phrase_E::IN_KEYWORD;
+            enState__ = Phrase_E::IN_KEYWORD;
         }
         else {
             _T.setAttr(Token::Type_E::Variable);
@@ -489,40 +489,40 @@ private:
     void __processEnd(char const _Cur, Token &_T)
     {
         (void)_Cur;
-        _T.setLoc(m_cntLoc__);
-        m_tResult__.emplace_back(_T);
+        _T.setLoc(cntLoc__);
+        tResult__.emplace_back(_T);
 
         _T.clear();
         __setState(Phrase_E::BEGIN);
     }
 
-    inline void __setState(Phrase_E _State) noexcept { m_enState__ = _State; }
+    inline void __setState(Phrase_E _State) noexcept { enState__ = _State; }
     inline void __nextChar() noexcept
     {
-        if (m_cntLoc__ >= m_source__.size()) return;
-        if (m_itPc__ == m_source__[m_cntLoc__].cend()) return;
-        ++m_itPc__;
+        if (cntLoc__ >= source__.size()) return;
+        if (itPc__ == source__[cntLoc__].cend()) return;
+        ++itPc__;
     }
     inline void __nextLine() noexcept
     {
-        ++m_cntLoc__;
-        if (m_cntLoc__ < m_source__.size()) { m_itPc__ = m_source__[m_cntLoc__].cbegin(); }
+        ++cntLoc__;
+        if (cntLoc__ < source__.size()) { itPc__ = source__[cntLoc__].cbegin(); }
     }
 
-    bool __isSourceEnd() const noexcept { return m_cntLoc__ >= m_source__.size(); }
+    bool __isSourceEnd() const noexcept { return cntLoc__ >= source__.size(); }
     bool __isLineEnd() const noexcept
     {
-        if (m_cntLoc__ >= m_source__.size()) return true;
-        return m_itPc__ == m_source__[m_cntLoc__].cend();
+        if (cntLoc__ >= source__.size()) return true;
+        return itPc__ == source__[cntLoc__].cend();
     }
 
-    Source_T        m_source__;  // 输入源（值持有，见构造函数注释）
-    Phrase_E        m_enState__ = Phrase_E::BEGIN;  // 解析的状态
-    Pc_T            m_itPc__;
-    size_t          m_cntLoc__ = 0;
-    Tokens_T        m_tResult__;
-    Token           m_tCur__;  ///< 流式模式当前处理中的 token（scan() 使用局部变量，不经此成员）
-    ScanTbl_T       m_tblScanInput__;  // 状态分派表（成员，各自绑定本实例 this）
+    Source_T        source__;  // 输入源（值持有，见构造函数注释）
+    Phrase_E        enState__ = Phrase_E::BEGIN;  // 解析的状态
+    Pc_T            itPc__;
+    size_t          cntLoc__ = 0;
+    Tokens_T        tResult__;
+    Token           tCur__;  ///< 流式模式当前处理中的 token（scan() 使用局部变量，不经此成员）
+    ScanTbl_T       tblScanInput__;  // 状态分派表（成员，各自绑定本实例 this）
 };
 
 class Lexer
@@ -537,14 +537,14 @@ public:
     Scanner::Tokens_T run()
     {
         Scanner::Tokens_T res;
-        if (m_srcEnvs__.size()) {
-            res = Scanner(m_srcEnvs__).scan();
+        if (srcEnvs__.size()) {
+            res = Scanner(srcEnvs__).scan();
             for (auto &r : res) {
                 if (r.getAttr() == Token::Type_E::Variable) { r.setAttr(Token::Type_E::EnvName); }
             }
         }
 
-        auto resInput = Scanner(m_srcInput__).scan();
+        auto resInput = Scanner(srcInput__).scan();
         std::move(resInput.begin(), resInput.end(), std::back_inserter(res));
 
         return res;
@@ -558,8 +558,8 @@ public:
     */
     Tokens_T tokens()
     {
-        if (m_srcInput__.empty()) return {};
-        return __normalize(Scanner(m_srcInput__).scan());
+        if (srcInput__.empty()) return {};
+        return __normalize(Scanner(srcInput__).scan());
     }
 
     /*
@@ -604,15 +604,15 @@ private:
     void __loadEnv(char *_Envp[])
     {
         if (!_Envp) return;
-        for (int i = 0; _Envp[i]; ++i) { m_srcEnvs__.emplace_back(_Envp[i]); }
+        for (int i = 0; _Envp[i]; ++i) { srcEnvs__.emplace_back(_Envp[i]); }
     }
     void __loadInput(int _Argc, char const *_Argv[])
     {
-        for (int i = 0; i < _Argc; ++i) { m_srcInput__.emplace_back(_Argv[i]); }
+        for (int i = 0; i < _Argc; ++i) { srcInput__.emplace_back(_Argv[i]); }
     }
     /* data */
-    Source_T m_srcInput__;  // 输入的源码
-    Source_T m_srcEnvs__;   // 环境变量里的源码
+    Source_T srcInput__;  // 输入的源码
+    Source_T srcEnvs__;   // 环境变量里的源码
 };
 
 }  // namespace detail

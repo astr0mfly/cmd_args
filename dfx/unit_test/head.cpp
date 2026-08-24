@@ -1026,3 +1026,25 @@ TEST_CASE("model: expressions() 返回统一 Expression 视图", "[model]")
     REQUIRE(nOpt == 1);
     REQUIRE(nEnv == 1);
 }
+
+/* ==================== Executor 批量执行器 ==================== */
+
+TEST_CASE("executor: Executor(Model*) 构造 + execute 执行 action", "[executor]")
+{
+    Model model;
+    OptionBuilder ob(&model.m_opts__);
+    ob.addOption<std::string>("task", "t", "")
+        ->onSet([&](std::string const &_V) {
+            model.m_strProgramName__ = "executed:" + _V;
+        });
+
+    Executor exec(&model);  // 新构造签名
+
+    // 模拟解析后状态：手动记录 actionOrder + 赋值
+    model.m_opts__.recordParseOrder("task");
+    model.m_opts__.mgrValues.mutFind("task")->strValue = "build";
+    model.m_opts__.mgrValues.mutFind("task")->bExplicit__ = true;
+
+    exec.execute();
+    REQUIRE(model.m_strProgramName__ == "executed:build");
+}

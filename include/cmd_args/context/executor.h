@@ -26,10 +26,12 @@
 #include "cmd_args/option/option.h"
 #include "cmd_args/option/option_data.h"
 
+#include "model.h"
+
 CMD_ARGS_NAMESPACE_BEGIN
 
 /*
-    Executor（执行器）：解析完成后，按解析顺序执行 OptionData 中的
+    Executor（执行器）：解析完成后，按解析顺序执行 Model 中 OptionData 的
     OptionAction（fnOnSet__ 回调 + action 模板 system_call）。
 
     使用场景：批量解析模式（Context::parse）下，Compiler 纯解析结束后，
@@ -41,16 +43,16 @@ class Executor
 {
 public:
     /// @brief 构造执行器
-    /// @param _Data 底层选项数据仓库（含 actionOrder）
-    explicit Executor(OptionData *_Data) noexcept
-        : pData__(_Data)
+    /// @param _Model 底层模型（含 OptionData）
+    explicit Executor(Model *_Model) noexcept
+        : m_pModel__(_Model)
     {}
 
     /// @brief 按解析顺序执行含 action 的选项：fnOnSet__ 回调 + action 模板 system_call
     void execute()
     {
-        for (auto const &key : pData__->actionOrder()) {
-            auto *pOpt = pData__->mgrValues.mutFind(key);
+        for (auto const &key : m_pModel__->m_opts__.actionOrder()) {
+            auto *pOpt = m_pModel__->m_opts__.mgrValues.mutFind(key);
             if (!pOpt) continue;
 
             // 自定义赋值回调（--env-set 等内置交互选项）
@@ -67,11 +69,11 @@ public:
                 }
             }
         }
-        pData__->clearParseOrder();
+        m_pModel__->m_opts__.clearParseOrder();
     }
 
 private:
-    OptionData *pData__ = nullptr;  ///< 底层选项数据仓库指针
+    Model *m_pModel__ = nullptr;  ///< 底层模型指针（含 OptionData）
 };
 
 CMD_ARGS_NAMESPACE_END

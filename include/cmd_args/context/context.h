@@ -60,7 +60,7 @@ public:
         : m_strPrjName__(_Name)
         , m_instData__()
         , m_compiler__(&m_instData__)
-        , m_executor__(&m_instData__.m_opts__)
+        , m_executor__(&m_instData__)
         , m_interp__(&m_instData__)
     {}
 

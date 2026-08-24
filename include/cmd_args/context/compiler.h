@@ -21,6 +21,7 @@
 #include "cmd_args/option/option_builder.h"
 #include "cmd_args/option/option_parser.h"
 
+#include "describe.h"
 #include "model.h"
 #include "parse_fwd.h"
 
@@ -299,34 +300,17 @@ private:
 
     static std::string __descUsageOf(Model const &_M, Name_T const &_Program)
     {
-        std::ostringstream oss;
-        oss << "usage: " << (_Program.empty() ? _M.strProgramName : _Program)
-            << " [arguments]";
-        oss << _M.args.mgrName.doGetUsage();
-        oss << _M.args.mgrPos.doGetUsage();
-        oss << _M.opts.usageString();
-        oss << "\n";
-        return oss.str();
+        return describe_detail::usageOf(_M, _Program);
     }
 
     static std::string __descHelpOf(Model const &_M)
     {
-        std::ostringstream oss;
-        oss << __descUsageOf(_M, _M.strProgramName);
-        _M.args.mgrName.doGetHelp(oss, 0);
-        _M.args.mgrPos.doGetHelp(oss, 0);
-        if (!_M.opts.empty()) {
-            oss << "\nOptions:\n";
-            size_t maxLen = _M.opts.calcDescMaxLength();
-            _M.opts.appendHelp(oss, maxLen);
-        }
-        oss << "\n";
-        return oss.str();
+        return describe_detail::helpOf(_M);
     }
 
     static std::string __descEnvOf(Model &_M)
     {
-        return EnvParser(&_M.envs).envString(_M.strProgramName);
+        return describe_detail::envOf(_M);
     }
 
     std::string __descUsage() const

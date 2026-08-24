@@ -986,6 +986,82 @@ TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）",
     REQUIRE(p->strValue == "30");
 }
 
+/* ==================== Interpreter 流式字符泵 ==================== */
+
+TEST_CASE("interpreter: 流式 interpret 与批量 parse 结果一致", "[interpreter]")
+{
+    // 批量参照
+    Context app("ut_stream_batch");
+    app.build<ArgumentNamed>("hello", "h");
+    app.addOption<int>("timeout", "t", 30);
+    std::error_code ec;
+    char const *argv1[] = { "test", "--hello", "a", "--timeout", "9", nullptr };
+    app.parse(ec, 5, argv1, nullptr);
+    REQUIRE(!ec);
+    REQUIRE(app.getArgument<std::string>("hello") == "a");
+    REQUIRE(app.getOption<int>("timeout") == 9);
+
+    // 流式：同一命令行逐字符解释
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+    ArgumentBuilder ab(&model.m_args__);
+    ab.build<ArgumentNamed>("hello", "h");
+    OptionBuilder ob(&model.m_opts__);
+    ob.addOption<int>("timeout", "t", 30);
+
+    auto ec2 = interp.interpret("--hello a --timeout 9", errors);
+    REQUIRE(!ec2);
+    REQUIRE(interp.prepared());
+    auto *pH = model.m_args__.mgrName.doGet("hello");
+    REQUIRE(pH != nullptr);
+    REQUIRE(pH->getValue() == "a");
+    auto *pT = model.m_opts__.mgrValues.find("timeout");
+    REQUIRE(pT != nullptr);
+    REQUIRE(pT->strValue == "9");
+}
+
+TEST_CASE("interpreter: 流式逐 Token 立即执行 fnOnSet 且带值/聚合/错误语义正确", "[interpreter]")
+{
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+
+    OptionBuilder ob(&model.m_opts__);
+    std::vector<std::string> fired;
+    ob.addFlag('a', "ena", "flag a");
+    ob.addFlag('b', "enb", "flag b");
+    ob.addOption<std::string>("step", "s", "")
+        ->onSet([&](std::string const &_V) { fired.emplace_back(_V); });
+
+    // 聚合布尔 + 带值选项混合：每个 Expression 完成即执行
+    auto ec1 = interp.interpret("-ab --step one", errors);
+    REQUIRE(!ec1);
+    REQUIRE(fired == std::vector<std::string>{ "one" });
+    REQUIRE(model.m_opts__.mgrValues.find("ena")->strValue == "1");
+    REQUIRE(model.m_opts__.mgrValues.find("enb")->strValue == "1");
+
+    // 行间 reset：第二次 interpret 前选项还原
+    auto ec2 = interp.interpret("--step two", errors);
+    REQUIRE(!ec2);
+    REQUIRE(fired == std::vector<std::string>{ "one", "two" });
+    REQUIRE(model.m_opts__.mgrValues.find("ena")->strValue == "0");  // reset 后回默认
+
+    // 内联 '=' 带值：--step=x 形态
+    auto ec3 = interp.interpret("--step=x", errors);
+    REQUIRE(!ec3);
+    REQUIRE(fired.back() == "x");
+
+    // 错误行：未知长选项报错且不崩溃
+    auto ec4 = interp.interpret("--nope x", errors);
+    REQUIRE(ec4);
+    REQUIRE(!errors.isOk());
+
+    // 值选项缺值：--step 后无更多 token → NEED_VALUE
+    auto ec5 = interp.interpret("--step", errors);
+    REQUIRE(ec5 == make_error_code(ParseError_E::NEED_VALUE));
+}
+
 /* ==================== Expression 类层次 ==================== */
 
 TEST_CASE("expression: 构造 + kind/getName/getHelp 基本访问", "[expression]")

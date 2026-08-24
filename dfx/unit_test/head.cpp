@@ -466,6 +466,16 @@ TEST_CASE("context: --env-set / --env-apply 内置交互", "[env]")
     REQUIRE(app2.get_env("UT_VAR_T") == "two");
 }
 
+TEST_CASE("context: 内置 --env-set 在错误行上副作用已生效（解析期即时语义）", "[context]")
+{
+    Context app("ut_builtin_errside");
+    std::error_code ec;
+    char const *argv[] = { "test", "--env-set", "UT_BUILTIN_ERR=1", "--bogus", nullptr };
+    app.parse(ec, 4, argv, nullptr);
+    REQUIRE(ec);                                       // 行解析失败
+    REQUIRE(app.get_env("UT_BUILTIN_ERR") == "1");     // 但内置选项副作用已生效
+}
+
 TEST_CASE("context: expand_env / has_env / get_env_or", "[env]")
 {
     Context app("ut_expand");
@@ -1218,6 +1228,27 @@ TEST_CASE("model: hasAction 随 actionOrder 翻转", "[model]")
 
     model.m_opts__.clearParseOrder();
     REQUIRE_FALSE(model.hasAction());
+}
+
+TEST_CASE("model: 失败解析后 actionOrder 清空，下次解析不触发陈旧 action", "[model]")
+{
+    Context app("ut_stale_action");
+    std::vector<std::string> fired;
+    app.addOption<std::string>("task", "k", "");
+    app.option("task")->onSet([&](std::string const &_V) { fired.emplace_back(_V); });
+
+    // 第一次解析：先命中 --task 再因未知选项失败
+    std::error_code ec;
+    char const *argv1[] = { "test", "--task", "one", "--bogus", nullptr };
+    app.parse(ec, 4, argv1, nullptr);
+    REQUIRE(ec);                                  // 解析失败
+    REQUIRE(app.model().hasAction() == false);    // 失败即清空（不再残留待执行）
+
+    // 第二次成功解析：只含无关内容，不得触发第一次残留的 task
+    char const *argv2[] = { "test", nullptr };
+    app.parse(ec, 1, argv2, nullptr);
+    REQUIRE(!ec);
+    REQUIRE(fired.empty());                       // 陈旧 action 未被执行
 }
 
 TEST_CASE("model: expressions() 返回统一 Expression 视图", "[model]")

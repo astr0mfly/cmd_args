@@ -194,9 +194,10 @@ app.loop();   // REPL：exit/quit/EOF 退出；每行独立解析
 - 变量值吸收**全部非空白字符**（值内可含 `. - = \ / : @`）。
 - `--` 之后所有 token 一律作为方位参数（流式路径严格遵循；批量路径历史行为含
   「选项结束后 parseNamedOnly 先行消化命名参数」，以流式为准绳的统一留待后续）。
-- 选项 action（system_call）：内置交互选项（--env-set/--load-config 等）**解析期即时生效**；
-  用户 action 由 Executor 在 `Model.hasAction()` 门控下按 actionOrder **后置统一执行**；
-  流式路径（REPL）逐 Token **即时执行**（不经 Executor / actionOrder）。
+- 选项 action（system_call）：内置交互选项（--env-set/--load-config 等）**解析期内联生效**：
+  即使本行解析随后失败，其副作用（环境变量写入/配置加载）也已发生；批量模式下内置选项
+  总是先于用户 action 执行；用户 action 由 Executor 在 `Model.hasAction()` 门控下按
+  actionOrder **后置统一执行**；流式路径（REPL）逐 Token **即时执行**（不经 Executor / actionOrder）。
 - 方位参数数量：剩余 token 数须落在 `[未外部赋值数, 总数]` 区间。
 
 ---

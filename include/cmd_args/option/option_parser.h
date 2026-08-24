@@ -51,13 +51,17 @@ public:
 
     virtual ~OptionParser() = default;
 
-    /// @brief 解析 token 流中的选项 token（纯解析：赋值 + 标记，不触发 action）
+    /// @brief 解析 token 流中的选项 token（赋值 + 标记；内置选项回调内联触发，用户 action 由 Executor 延迟执行）
     /// @param _Tokens 待解析 token 流（已消费项会被移除）
     /// @return 短回路是否已命中（命中即停止本次解析）
     bool parse(Tokens_T &_Tokens)
     {
         bFired__  = false;
         bOptEnd__ = false;
+
+        // 每次解析前清空 actionOrder：上一次失败解析残留的顺序不得在本次/下次
+        // 解析中经 Executor 触发（Model.hasAction() 也据此在解析前为 false）
+        if (pData__) { pData__->clearParseOrder(); }
 
         for (auto it = _Tokens.begin(); it != _Tokens.end();) {
             std::string const &tok = *it;

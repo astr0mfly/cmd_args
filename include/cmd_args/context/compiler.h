@@ -32,8 +32,8 @@ CMD_ARGS_NAMESPACE_BEGIN
     2. 值选项（--long=value / -x value 等）
     3. 命名参数（--name=value）与方位参数（剩余 token 按序赋值）
 
-    纯解析：OptionParser.__assign 仅赋值+标记，不触发 OptionAction。
-    Action 执行由 Executor（批量模式）或 Interpreter（REPL 模式，继承三 parser）负责。
+    OptionParser.__assign：赋值+标记；内置选项回调内联触发，用户 action 记录顺序由 Executor 延迟执行。
+    Interpreter：流式字符泵逐 Token 即时执行（不再继承钩子机制）。
 
     后置步骤（公开方法）：
     - ensureBuiltins()  内置选项注册（--help/--env/--env-set 等，懒注册一次）
@@ -238,25 +238,33 @@ private:
     /// 纯解析流程（不含 finalize，不含 action 执行）
     void __parseTokens(Tokens_T &_Tokens, std::vector<std::string> const &_Env)
     {
-        m_pModel__->m_strProgramName__ = program_name;
-        m_envParser__.parse(_Env);
-        ensureBuiltins();
+        try {
+            m_pModel__->m_strProgramName__ = program_name;
+            m_envParser__.parse(_Env);
+            ensureBuiltins();
 
-        m_bFired__ = m_optParser__.parse(_Tokens);
-        if (m_bFired__) return;
+            m_bFired__ = m_optParser__.parse(_Tokens);
+            if (m_bFired__) return;
 
-        if (m_optParser__.isOptionsEnded()) {
-            m_argParser__.parseNamedOnly(_Tokens);
-            m_argParser__.parsePositionalOnly(_Tokens);
-            m_bFired__ = false;
-            return;
+            if (m_optParser__.isOptionsEnded()) {
+                m_argParser__.parseNamedOnly(_Tokens);
+                m_argParser__.parsePositionalOnly(_Tokens);
+                m_bFired__ = false;
+                return;
+            }
+
+            m_argParser__.parse(_Tokens);
+
+            for (auto const &t : _Tokens) {
+                if (!util::starts_with(t, "-")) continue;
+                throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "unrecognized option or argument: " + t);
+            }
         }
-
-        m_argParser__.parse(_Tokens);
-
-        for (auto const &t : _Tokens) {
-            if (!util::starts_with(t, "-")) continue;
-            throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "unrecognized option or argument: " + t);
+        catch (...) {
+            // 解析失败：本次已记录的顺序一并作废——失败解析不残留待执行 action，
+            // Model.hasAction() 为 false，后续解析不会触发陈旧 action
+            m_pModel__->m_opts__.clearParseOrder();
+            throw;
         }
     }
 

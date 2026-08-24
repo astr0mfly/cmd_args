@@ -969,3 +969,15 @@ TEST_CASE("expression: Option/OptionValue/OptionAction kind() 返回 Option", "[
     REQUIRE(pAct->getName() == "help");
     REQUIRE(pAct->getHelp() == "show help");
 }
+
+TEST_CASE("expression: environment kind() 返回 Env", "[expression]")
+{
+    Model model;
+    EnvBuilder eb(&model.m_envs__);
+    eb.setEnv("MY_KEY", "my_value");
+
+    auto const *p = model.m_envs__.doGet("MY_KEY");
+    REQUIRE(p != nullptr);
+    REQUIRE(p->kind() == ExpressionKind_E::Env);
+    REQUIRE(p->getName() == "MY_KEY");
+}

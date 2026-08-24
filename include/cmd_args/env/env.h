@@ -22,6 +22,7 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
+#include "cmd_args/context/expression.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -34,28 +35,31 @@ CMD_ARGS_NAMESPACE_BEGIN
     这三类标记用于 `-!`/`--env` 的环境展示，让用户一眼看出
     “程序关心了谁、改了谁、造了谁”——这是本库区别于其他命令行解析库的特色之一。
 */
-struct environment
+struct environment : public Expression
 {
-    std::string         strKey;
-     std::string strValue;
-     bool        bReferenced__ = false;
-     bool        bModified__   = false;
-     bool        bNew__        = false;
+    std::string strKey;
+    std::string strValue;
+    bool        bReferenced__ = false;
+    bool        bModified__   = false;
+    bool        bNew__        = false;
 
-    /*
-        纯键构造：用于 std::set<environment>::find/erase 等按名查找；
-        值保持为空（查找临时对象只比较 strKey，operator< 只看键）
-    */
+    // 纯键构造（查找用）：kind = Env，name = Key
     environment(std::string const &_Key)
-        : strKey(_Key)
+        : Expression(ExpressionKind_E::Env, _Key)
+        , strKey(_Key)
     {}
 
+    // 完整构造
     environment(std::string _Key, std::string _Value, bool _New)
-        : strKey(std::move(_Key))
+        : Expression(ExpressionKind_E::Env, _Key)
+        , strKey(std::move(_Key))
         , strValue(std::move(_Value))
         , bModified__(false)
         , bNew__(_New)
     {}
+
+    /// @brief 覆盖基类 getName()：返回自有 strKey（避免双份存储）
+    auto getName() const noexcept -> Name_T const & override { return strKey; }
 
     bool operator<(environment const &_Rhs) const noexcept { return strKey < _Rhs.strKey; }
 };

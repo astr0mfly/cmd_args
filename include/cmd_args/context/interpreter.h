@@ -26,6 +26,7 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/argument/argument_parser.h"
+#include "cmd_args/context/expression_classifier.h"
 #include "cmd_args/context/lexer.h"
 #include "cmd_args/env/env_builder.h"
 #include "cmd_args/env/env_parser.h"
@@ -289,8 +290,15 @@ private:
             return;
         }
 
-        // ── 4. 短选项：-x / 聚合 -abc ──
+        // ── 4. 短选项：-x / 聚合 -abc / 关系 -a?b:c / -a->b ──
         if (util::starts_with(text, "-") && text.size() >= 2) {
+            // 关系语法检测
+            if (__isRelationText(text)) {
+                auto expr = __classifyRelationText(text);
+                __handleRelation(expr);
+                return;
+            }
+
             for (size_t i = 1; i < text.size(); ++i) {
                 char key = text[i];
                 if (auto const *pSc = pModel__->opts.mgrActions.doGet(key)) {
@@ -323,6 +331,92 @@ private:
 
         // ── 5. 普通 token → 方位参数 ──
         vecPos__.emplace_back(text);
+    }
+
+    /// @brief 处理关系语法：条件（-a?b:c）和依赖（-a->b）
+    /// @note 流式模式：条件边即时判断并激活目标；依赖边按序执行
+    void __handleRelation(ClassifiedExpr const &_Expr)
+    {
+        if (_Expr.kind == ExpressionKind_E::Conditional) {
+            // 条件关系：检查条件选项状态
+            bool condState = false;
+            if (auto const *pOpt = pModel__->opts.mgrValues.find(_Expr.strCondition)) {
+                condState = util::parse_bool(pOpt->strValue);
+            }
+
+            if (condState) {
+                // 条件为真：激活 then 分支
+                if (_Expr.strThenBranch != "_") {
+                    if (auto *pOpt = pModel__->opts.mgrValues.mutFind(_Expr.strThenBranch)) {
+                        __executeOptionImmediate(pOpt, "1", true);
+                    }
+                }
+            }
+            else {
+                // 条件为假：激活 else 分支
+                if (!_Expr.strElseBranch.empty() && _Expr.strElseBranch != "_") {
+                    if (auto *pOpt = pModel__->opts.mgrValues.mutFind(_Expr.strElseBranch)) {
+                        __executeOptionImmediate(pOpt, "1", true);
+                    }
+                }
+            }
+        }
+        else if (_Expr.kind == ExpressionKind_E::Dependency) {
+            // 依赖关系：先执行 source，再执行 target
+            // 源选项已被激活（解析序保证），现在激活目标
+            if (auto *pOpt = pModel__->opts.mgrValues.mutFind(_Expr.strDepTarget)) {
+                __executeOptionImmediate(pOpt, "1", true);
+            }
+        }
+    }
+
+    /// @brief 判断文本是否为关系语法（-a?b:c / -a->b）
+    bool __isRelationText(std::string const &_Text) const
+    {
+        if (_Text.size() < 4 || _Text[0] != '-') return false;
+        for (size_t i = 1; i < _Text.size(); ++i) {
+            if (_Text[i] == '?') return true;
+            if (_Text[i] == '-' && i + 1 < _Text.size() && _Text[i + 1] == '>') return true;
+        }
+        return false;
+    }
+
+    /// @brief 从关系文本构造 ClassifiedExpr
+    auto __classifyRelationText(std::string const &_Text) const -> ClassifiedExpr
+    {
+        ClassifiedExpr expr;
+        expr.bExplicit = true;
+
+        size_t qPos = std::string::npos;
+        size_t dPos = std::string::npos;
+        for (size_t i = 1; i < _Text.size(); ++i) {
+            if (_Text[i] == '?' && qPos == std::string::npos) { qPos = i; break; }
+            if (_Text[i] == '-' && i + 1 < _Text.size() && _Text[i + 1] == '>') {
+                dPos = i;
+                break;
+            }
+        }
+
+        if (qPos != std::string::npos) {
+            expr.kind         = ExpressionKind_E::Conditional;
+            expr.strCondition = _Text.substr(1, qPos - 1);
+            auto colonPos     = _Text.find(':', qPos);
+            if (colonPos != std::string::npos) {
+                expr.strThenBranch = _Text.substr(qPos + 1, colonPos - qPos - 1);
+                expr.strElseBranch = _Text.substr(colonPos + 1);
+            }
+            else {
+                expr.strThenBranch = _Text.substr(qPos + 1);
+                expr.strElseBranch = "_";
+            }
+        }
+        else if (dPos != std::string::npos) {
+            expr.kind         = ExpressionKind_E::Dependency;
+            expr.strDepSource = _Text.substr(1, dPos - 1);
+            expr.strDepTarget = _Text.substr(dPos + 2);
+        }
+
+        return expr;
     }
 
     /// @brief 选项赋值 + 立即执行（流式专用）：值 → 标记 → fnOnSet__ → action 模板

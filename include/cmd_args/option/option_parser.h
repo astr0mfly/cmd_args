@@ -26,6 +26,7 @@
 #include "cmd_args/error/parser_error.h"
 #include "cmd_args/option/option.h"
 #include "cmd_args/option/option_data.h"
+#include "cmd_args/option/option_graph.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -50,6 +51,9 @@ public:
     {}
 
     virtual ~OptionParser() = default;
+
+    /// @brief 绑定关系有向图（可选，为 nullptr 时关系语法被忽略）
+    void setGraph(OptionGraph *_Graph) { pGraph__ = _Graph; }
 
     /// @brief 解析 token 流中的选项 token（赋值 + 标记；内置选项回调内联触发，用户 action 由 Executor 延迟执行）
     /// @param _Tokens 待解析 token 流（已消费项会被移除）
@@ -107,6 +111,13 @@ public:
             }
 
             if (util::starts_with(tok, "-") && tok.size() >= 2) {
+                // 新增：检测关系语法 token（-a?b:c / -a->b）
+                if (pGraph__ && __isRelationToken(tok)) {
+                    __parseRelation(tok);
+                    it = _Tokens.erase(it);
+                    continue;
+                }
+
                 if (__fireOnShort(tok, it, _Tokens)) return true;
 
                 if (tok.size() == 2) {
@@ -358,10 +369,54 @@ private:
         return true;
     }
 
+    /// @brief 判断 token 是否为关系语法（-a?b:c / -a?b:_ / -a->b）
+    bool __isRelationToken(std::string const &_Tok) const
+    {
+        if (_Tok.size() < 4 || _Tok[0] != '-') return false;
+        for (size_t i = 1; i < _Tok.size(); ++i) {
+            if (_Tok[i] == '?') return true;
+            if (_Tok[i] == '-' && i + 1 < _Tok.size() && _Tok[i + 1] == '>') return true;
+        }
+        return false;
+    }
+
+    /// @brief 解析关系语法 token 并注册到 OptionGraph
+    void __parseRelation(std::string const &_Tok)
+    {
+        if (!pGraph__) return;
+
+        auto qPos = _Tok.find('?');
+        auto dPos = _Tok.find("->");
+
+        if (qPos != std::string::npos) {
+            // -a?b:c 或 -a?b:_ 或 -a?b
+            auto condition = _Tok.substr(1, qPos - 1);
+            auto colonPos  = _Tok.find(':', qPos);
+            std::string thenBranch, elseBranch;
+            if (colonPos != std::string::npos) {
+                thenBranch = _Tok.substr(qPos + 1, colonPos - qPos - 1);
+                elseBranch = _Tok.substr(colonPos + 1);
+            }
+            else {
+                thenBranch = _Tok.substr(qPos + 1);
+                elseBranch = "_";
+            }
+            pGraph__->addEdge(condition, thenBranch,
+                OptionGraph::EdgeKind_E::Conditional, elseBranch);
+        }
+        else if (dPos != std::string::npos) {
+            // -a->b
+            auto source = _Tok.substr(1, dPos - 1);
+            auto target = _Tok.substr(dPos + 2);
+            pGraph__->addEdge(source, target, OptionGraph::EdgeKind_E::Dependency);
+        }
+    }
+
 private:
-    OptionData *pData__ = nullptr;  ///< 底层选项数据仓库指针
-    bool        bFired__ = false;   ///< 短回路是否已命中（命中即停止本次解析）
-    bool        bOptEnd__ = false;  ///< 是否已结束选项区（`--` 之后）
+    OptionData   *pData__ = nullptr;  ///< 底层选项数据仓库指针
+    OptionGraph  *pGraph__ = nullptr; ///< 关系有向图（可选，为 nullptr 时关系语法被忽略）
+    bool          bFired__ = false;   ///< 短回路是否已命中（命中即停止本次解析）
+    bool          bOptEnd__ = false;  ///< 是否已结束选项区（`--` 之后）
 };
 
 CMD_ARGS_NAMESPACE_END

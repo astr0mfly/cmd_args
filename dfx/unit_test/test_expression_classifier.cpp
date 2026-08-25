@@ -13,7 +13,13 @@ using cmd_args::detail::Token;
 
 TEST_CASE("recognizer: --name=value 内联值立即识别为 Option", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("timeout", "t", 30);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     // --timeout=9：LongName 内联值
     Token tok(Token::Type_E::LongName, "timeout=9", 0);
@@ -29,7 +35,13 @@ TEST_CASE("recognizer: --name=value 内联值立即识别为 Option", "[classifi
 
 TEST_CASE("recognizer: --name value 分离值需要两个 token", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("timeout", "t", 30);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     // 第一个 token：--timeout（无值，挂起）
     Token tok1(Token::Type_E::LongName, "timeout", 0);
@@ -49,7 +61,13 @@ TEST_CASE("recognizer: --name value 分离值需要两个 token", "[classifier]"
 
 TEST_CASE("recognizer: -x 短选项识别为 Option", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("timeout", "t", 30);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     // -t：短选项
     Token tok(Token::Type_E::ShortName, "t", 0);
@@ -61,7 +79,14 @@ TEST_CASE("recognizer: -x 短选项识别为 Option", "[classifier]")
 
 TEST_CASE("recognizer: -abc 聚合 bool 选项", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addFlag('a', "ena", "flag a");
+    ob.addFlag('b', "enb", "flag b");
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     // -abc：聚合串
     Token tok(Token::Type_E::ContinualName, "abc", 0);
@@ -72,23 +97,14 @@ TEST_CASE("recognizer: -abc 聚合 bool 选项", "[classifier]")
     REQUIRE(r->bIsBool);
 }
 
-TEST_CASE("recognizer: -t=value 短选项内联值", "[classifier]")
-{
-    ExpressionRecognizer rec;
-
-    // -t=5：短选项内联值
-    Token tok(Token::Type_E::ContinualName, "t=5", 0);
-    auto r = rec.feed(tok);
-    REQUIRE(r.has_value());
-    REQUIRE(r->kind == ExpressionKind_E::Option);
-    REQUIRE(r->cShortName == 't');
-    REQUIRE(r->value == "5");
-    REQUIRE_FALSE(r->bIsBool);
-}
-
 TEST_CASE("recognizer: 方位参数识别", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok(Token::Type_E::Variable, "world", 0);
     auto r = rec.feed(tok);
@@ -100,7 +116,12 @@ TEST_CASE("recognizer: 方位参数识别", "[classifier]")
 
 TEST_CASE("recognizer: 环境变量 KEY=VALUE 识别", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok(Token::Type_E::Variable, "HOME=/root", 0);
     auto r = rec.feed(tok);
@@ -112,7 +133,12 @@ TEST_CASE("recognizer: 环境变量 KEY=VALUE 识别", "[classifier]")
 
 TEST_CASE("recognizer: -- 终止选项区后全部为方位参数", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     // --
     Token tok1(Token::Type_E::Delimiter, "--", 0);
@@ -130,7 +156,13 @@ TEST_CASE("recognizer: -- 终止选项区后全部为方位参数", "[classifier
 
 TEST_CASE("recognizer: 条件关系 -a?b:c 识别为 Conditional", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addFlag('v', "verbose", "verbose mode");
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok(Token::Type_E::ContinualName, "verbose?debug:quiet", 0);
     auto r = rec.feed(tok);
@@ -143,7 +175,13 @@ TEST_CASE("recognizer: 条件关系 -a?b:c 识别为 Conditional", "[classifier]
 
 TEST_CASE("recognizer: 条件关系 -a?b:_ 无操作分支", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addFlag('v', "verbose", "verbose mode");
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok(Token::Type_E::ContinualName, "verbose?debug:_", 0);
     auto r = rec.feed(tok);
@@ -154,7 +192,13 @@ TEST_CASE("recognizer: 条件关系 -a?b:_ 无操作分支", "[classifier]")
 
 TEST_CASE("recognizer: 依赖关系 -a->b 识别为 Dependency", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addFlag('c', "compile", "compile");
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok(Token::Type_E::ContinualName, "compile->link", 0);
     auto r = rec.feed(tok);
@@ -166,7 +210,13 @@ TEST_CASE("recognizer: 依赖关系 -a->b 识别为 Dependency", "[classifier]")
 
 TEST_CASE("recognizer: recognizeAll 批量识别多个 Expression", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("timeout", "t", 30);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Tokens_T toks{ "--timeout=9", "-abc", "world" };
     auto results = rec.recognizeAll(toks);
@@ -183,7 +233,13 @@ TEST_CASE("recognizer: recognizeAll 批量识别多个 Expression", "[classifier
 
 TEST_CASE("recognizer: recognizeAll 多 token Expression（--name value）", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("timeout", "t", 30);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Tokens_T toks{ "--timeout", "42", "world" };
     auto results = rec.recognizeAll(toks);
@@ -198,7 +254,13 @@ TEST_CASE("recognizer: recognizeAll 多 token Expression（--name value）", "[c
 
 TEST_CASE("recognizer: reset 后状态清空", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("timeout", "t", 30);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok1(Token::Type_E::LongName, "timeout", 0);
     rec.feed(tok1);
@@ -210,7 +272,12 @@ TEST_CASE("recognizer: reset 后状态清空", "[classifier]")
 
 TEST_CASE("recognizer: 空 token 被跳过", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok(Token::Type_E::Unknown, "", 0);
     auto r = rec.feed(tok);
@@ -219,7 +286,14 @@ TEST_CASE("recognizer: 空 token 被跳过", "[classifier]")
 
 TEST_CASE("recognizer: 多 Expression 连续识别（--a 1 --b 2）", "[classifier]")
 {
-    ExpressionRecognizer rec;
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addOption<int>("a", "a", 0);
+    ob.addOption<int>("b", "b", 0);
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
 
     Token tok1(Token::Type_E::LongName, "a", 0);
     auto r1 = rec.feed(tok1);

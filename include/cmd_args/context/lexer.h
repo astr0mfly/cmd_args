@@ -580,6 +580,48 @@ private:
             auto const &t   = _Raw[i];
             auto        attr = t.getAttr();
 
+            // ── 关系语法合并 ──
+            // Scanner 对 -a?b:c 产生: ContinualName("a") + Delimiter("?") + Var("b") + Delimiter(":") + Var("c")
+            // Scanner 对 -a->b  产生: ContinualName("a") + ContinualName(">b")（`>` 被吸进下一个 token）
+            if (attr == Token::Type_E::ContinualName && i + 1 < _Raw.size()) {
+                auto const &next = _Raw[i + 1];
+
+                // -a?b:c / -a?b:_ / -a?b（条件关系）：下一 token 是 "?" Delimiter
+                if (next.getAttr() == Token::Type_E::Delimiter && next.getName() == "?") {
+                    std::string merged = t.toText();  // "-a"
+                    merged += "?";                      // "-a?"
+                    size_t j = i + 2;
+                    // 收集 ? 后面的 token 直到遇到非 Variable/Delimiter(":") token
+                    while (j < _Raw.size()) {
+                        auto const &cur = _Raw[j];
+                        if (cur.getAttr() == Token::Type_E::Variable
+                            || (cur.getAttr() == Token::Type_E::Delimiter
+                                && cur.getName() == ":")) {
+                            merged += cur.toText();
+                            ++j;
+                        }
+                        else {
+                            break;
+                        }
+                    }
+                    i = j - 1;
+                    res.emplace_back(std::move(merged));
+                    continue;
+                }
+
+                // -a->b（依赖关系）：下一 token 是 ContinualName 且以 '>' 开头
+                // Scanner 把 `>` 吸入下一个 ContinualName（name = ">link"，toText = "->link"）
+                if (next.getAttr() == Token::Type_E::ContinualName
+                    && !next.getName().empty() && next.getName()[0] == '>') {
+                    std::string merged = t.toText();  // "-a"
+                    merged += next.toText();            // "-a" + "->link" = "-a->link"
+                    ++i;
+                    res.emplace_back(std::move(merged));
+                    continue;
+                }
+            }
+
+            // ── = 合并 ──
             // --name=value / -x=value / KEY=VALUE 合并为单个 token
             if (i + 2 < _Raw.size()
                 && _Raw[i + 1].getAttr() == Token::Type_E::Delimiter

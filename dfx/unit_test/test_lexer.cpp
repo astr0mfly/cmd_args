@@ -134,3 +134,54 @@ TEST_CASE("lexer: Scanner::step 与批量分词在终结符重派上一致", "[l
         REQUIRE(streamTokens(line) == Lexer::tokensFromLine(line));
     }
 }
+
+/* ==================== Lexer 关系语法合并 ==================== */
+
+TEST_CASE("lexer: -a?b:c 条件关系语法合并为单个 token", "[lexer]")
+{
+    auto lineToks = Lexer::tokensFromLine("-verbose?debug:quiet");
+    REQUIRE(lineToks.size() == 1);
+    REQUIRE(lineToks.front() == "-verbose?debug:quiet");
+}
+
+TEST_CASE("lexer: -a?b:_ 条件关系（无操作分支）", "[lexer]")
+{
+    auto lineToks = Lexer::tokensFromLine("-verbose?debug:_");
+    REQUIRE(lineToks.size() == 1);
+    REQUIRE(lineToks.front() == "-verbose?debug:_");
+}
+
+TEST_CASE("lexer: -a?b 无冒号条件关系", "[lexer]")
+{
+    auto lineToks = Lexer::tokensFromLine("-verbose?debug");
+    REQUIRE(lineToks.size() == 1);
+    REQUIRE(lineToks.front() == "-verbose?debug");
+}
+
+TEST_CASE("lexer: -a->b 依赖关系语法", "[lexer]")
+{
+    auto lineToks = Lexer::tokensFromLine("-compile->link");
+    REQUIRE(lineToks.size() == 1);
+    REQUIRE(lineToks.front() == "-compile->link");
+}
+
+TEST_CASE("lexer: 普通聚合 -abc 不受关系语法影响", "[lexer]")
+{
+    auto lineToks = Lexer::tokensFromLine("-abc");
+    REQUIRE(lineToks.size() == 1);
+    REQUIRE(lineToks.front() == "-abc");
+}
+
+TEST_CASE("lexer: 关系语法与普通选项混合", "[lexer]")
+{
+    auto lineToks = Lexer::tokensFromLine("-verbose?debug:quiet -abc hello");
+    // 应产出：关系token + 聚合token + 方位参数
+    REQUIRE(lineToks.size() == 3);
+    REQUIRE(lineToks.front() == "-verbose?debug:quiet");
+    // 跳过中间的
+    auto it = lineToks.begin();
+    ++it;
+    REQUIRE(*it == "-abc");
+    ++it;
+    REQUIRE(*it == "hello");
+}

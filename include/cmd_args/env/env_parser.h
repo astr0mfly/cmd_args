@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "cmd_args/base/def.h"
+#include "cmd_args/context/expression_classifier.h"
 #include "cmd_args/context/parse_fwd.h"
 
 #include "cmd_args/env/env.h"
@@ -45,6 +46,32 @@ public:
     EnvParser(EnvData *_Data) noexcept
         : pData__(_Data)
     {}
+
+    // ===== Expression 识别规则（编译前端接口） =====
+
+    /// @brief 识别环境变量串是否匹配 Env 规则
+    /// @param _EnvStr 环境变量串（"KEY=VALUE" 格式）
+    /// @return 识别成功返回 ClassifiedExpr，否则 nullopt
+    auto recognize(std::string const &_EnvStr) const -> std::optional<ClassifiedExpr>
+    {
+        auto eq = _EnvStr.find('=');
+        if (eq == std::string::npos) return std::nullopt;
+
+        ClassifiedExpr expr;
+        expr.kind      = ExpressionKind_E::Env;
+        expr.name      = _EnvStr.substr(0, eq);
+        expr.value     = _EnvStr.substr(eq + 1);
+        expr.bExplicit = true;
+        return expr;
+    }
+
+    /// @brief 将识别结果应用到 EnvData
+    /// @param _Expr recognize() 返回的识别结果
+    void apply(ClassifiedExpr const &_Expr)
+    {
+        if (_Expr.kind != ExpressionKind_E::Env) return;
+        pData__->doPush(_Expr.name, _Expr.value, false);
+    }
 
     /// @brief 装载进程环境（envp "KEY=VALUE" 串）
     /// @param _Envp 环境串列表（无 '=' 的行忽略）

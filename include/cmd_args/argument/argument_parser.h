@@ -22,6 +22,7 @@
 
 #include "cmd_args/argument/argument.h"
 #include "cmd_args/argument/argument_data.h"
+#include "cmd_args/context/expression_classifier.h"
 #include "cmd_args/context/parse_fwd.h"
 #include "cmd_args/error/parser_error.h"
 
@@ -41,6 +42,82 @@ public:
     ArgumentParser(ArgumentData *_Data)
         : pData__(_Data)
     {}
+
+    // ===== Expression 识别规则（编译前端接口） =====
+
+    /// @brief 识别当前迭代器指向的 token 是否匹配参数规则
+    /// @param _It 当前 token 迭代器
+    /// @param _Tokens 完整 token 流（用于消费 value token）
+    /// @return 识别成功返回 ClassifiedExpr，否则 nullopt
+    auto recognize(Tokens_T::iterator _It, Tokens_T const &_Tokens) const -> std::optional<ClassifiedExpr>
+    {
+        if (_It == _Tokens.end()) return std::nullopt;
+        std::string const &tok = *_It;
+
+        // --name=value / --name value 命名参数
+        if (util::starts_with(tok, "--") && tok.size() > 2) {
+            auto body = tok.substr(2);
+            auto eq   = body.find('=');
+            std::string name = (eq == std::string::npos) ? body : body.substr(0, eq);
+            // 检查是否为已注册的命名参数
+            if (pData__->mgrName.doGet(name)) {
+                ClassifiedExpr expr;
+                expr.kind      = ExpressionKind_E::Argument;
+                expr.name      = name;
+                expr.bExplicit = true;
+                if (eq != std::string::npos) { expr.value = body.substr(eq + 1); }
+                return expr;
+            }
+        }
+
+        // 普通 token（非 - 开头）→ 方位参数
+        if (!util::starts_with(tok, "-")) {
+            ClassifiedExpr expr;
+            expr.kind      = ExpressionKind_E::Argument;
+            expr.name      = tok;
+            expr.value     = tok;
+            expr.bExplicit = true;
+            return expr;
+        }
+
+        return std::nullopt;  // 不匹配参数规则（可能是选项）
+    }
+
+    /// @brief 将识别结果应用到 ArgumentData
+    /// @param _Expr recognize() 返回的识别结果
+    /// @param _It 当前 token 迭代器（apply 后会消费已处理的 token）
+    /// @param _Tokens 完整 token 流（用于消费 value token）
+    void apply(ClassifiedExpr const &_Expr, Tokens_T::iterator &_It, Tokens_T &_Tokens)
+    {
+        if (_Expr.kind != ExpressionKind_E::Argument) return;
+
+        // 命名参数
+        if (util::starts_with(*_It, "--") && _It->size() > 2) {
+            auto *p = pData__->mgrName.mutGet(_Expr.name);
+            if (!p) {
+                ++_It;  // 未注册，留给上层
+                return;
+            }
+
+            std::string value = _Expr.value;
+            if (value.empty()) {
+                auto nx = std::next(_It);
+                if (nx == _Tokens.end()) {
+                    throw ErrorParse(ParseError_E::NEED_VALUE,
+                        "named argument '--" + _Expr.name + "' need a value");
+                }
+                value = *nx;
+                _Tokens.erase(nx);
+            }
+
+            p->set(std::move(value));
+            _It = _Tokens.erase(_It);
+            return;
+        }
+
+        // 方位参数：由 parse() 统一处理（需要数量校验）
+        // 此处不消费 token，留给 parse() 处理
+    }
 
     /**
      * @brief 解析 token 流：先消化命名参数，再分配方位参数并做数量校验

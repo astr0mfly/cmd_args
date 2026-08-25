@@ -23,63 +23,14 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
+#include "cmd_args/context/classified_expr.h"
 #include "cmd_args/context/expression.h"
 #include "cmd_args/context/lexer.h"
+#include "cmd_args/option/option_parser.h"
+#include "cmd_args/argument/argument_parser.h"
+#include "cmd_args/env/env_parser.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
-
-// 前向声明
-class OptionParser;
-class ArgumentParser;
-class EnvParser;
-
-/**
- * @brief 表达式中间表示：多个 Token 经模式匹配后产出的结构化数据。
- *
- * 编译前端视角：Token 是词法单元，Expression 是语法单元。
- * 一个 Expression 由一个或多个 Token 组成（如 --timeout=9 由 LongName + "=" + Variable 组成），
- * ExpressionRecognizer 通过模式匹配识别 Token 序列何时构成完整的 Expression。
- *
- * 与 Expression 基类的区别：
- * - Expression 基类是 Model 中持久存储的实体（Argument/OptionValue/OptionAction/environment）
- * - ClassifiedExpr 是解析管线中的瞬态中间表示
- * - 下游（Compiler/Interpreter）根据 kind 分支将 ClassifiedExpr apply 到 Model
- */
-struct ClassifiedExpr
-{
-    ExpressionKind_E kind = ExpressionKind_E::Option;  ///< 分类种类
-
-    // ===== 通用字段 =====
-    std::string name;               ///< 选项长名 / 参数名 / 环境变量键
-    std::string value;              ///< 值（选项值 / 参数值 / 环境变量值）
-    bool        bExplicit = false;  ///< 是否被命令行显式赋值
-
-    // ===== Option 专用 =====
-    char        cShortName = '\0';  ///< 短名（'\0' 表示无短名）
-    bool        bIsBool    = false; ///< 是否 bool 类型选项
-    bool        bIsBuiltin = false; ///< 是否内置交互选项
-    bool        bIsAction  = false; ///< 是否短回路选项（命中即回调）
-    std::string strType;            ///< 类型标识（"bool" / "int" / "double" / "std::string"）
-
-    // ===== Conditional 关系专用 =====
-    std::string strCondition;       ///< 条件选项名（-a?b:c 中的 a）
-    std::string strThenBranch;      ///< 条件为真时激活的选项（b）
-    std::string strElseBranch;      ///< 条件为假时激活的选项（c 或 "_"）
-
-    // ===== Dependency 关系专用 =====
-    std::string strDepSource;       ///< 依赖源（-a->b 中的 a）
-    std::string strDepTarget;       ///< 依赖目标（-a->b 中的 b）
-
-    // ===== 环境变量专用 =====
-    bool bEnvNew = false;           ///< 是否新建的环境变量
-
-    /// @brief 是否为关系表达式（Conditional 或 Dependency）
-    bool isRelation() const noexcept
-    {
-        return kind == ExpressionKind_E::Conditional
-            || kind == ExpressionKind_E::Dependency;
-    }
-};
 
 /**
  * @brief 表达式识别器：编译前端——把 Token 流通过模式匹配识别为 Expression 序列。
@@ -193,18 +144,70 @@ private:
             return std::nullopt;  // '--' 自身不产出 Expression
         }
 
-        // ── 4. 长选项：--name[=value] ──
+        // ── 4. 委托 Parser 规则（当注入时） ──
+        if (bUseParserRules__) {
+            auto expr = __tryParserRules(_Text);
+            if (expr) return expr;
+        }
+
+        // ── 5. 长选项：--name[=value] ──
         if (util::starts_with(_Text, "--") && _Text.size() > 2) {
             return __recognizeLongOption(_Text, _InlineEq);
         }
 
-        // ── 5. 短选项/关系语法：-x / -abc / -a?b:c / -a->b ──
+        // ── 6. 短选项/关系语法：-x / -abc / -a?b:c / -a->b ──
         if (util::starts_with(_Text, "-") && _Text.size() >= 2) {
             return __recognizeShortOptionOrRelation(_Text);
         }
 
-        // ── 6. 普通 token：环境变量或方位参数 ──
+        // ── 7. 普通 token：环境变量或方位参数 ──
         return __recognizeVariableOrEnv(_Text);
+    }
+
+    /// @brief 尝试使用 Parser 规则识别 token
+    auto __tryParserRules(std::string const &_Text) -> std::optional<ClassifiedExpr>
+    {
+        // 构造临时 token 列表供 Parser.recognize() 使用
+        Tokens_T tmp{ _Text };
+        auto it = tmp.begin();
+
+        // 按优先级尝试各 Parser 规则
+        if (pOptParser__) {
+            auto expr = pOptParser__->recognize(it, tmp);
+            if (expr) {
+                // 处理挂起逻辑（长选项无值时）
+                if (expr->kind == ExpressionKind_E::Option && expr->value.empty()
+                    && util::starts_with(_Text, "--") && _Text.size() > 2) {
+                    strPendingKey__    = expr->name;
+                    enPendingKind__    = PendingKind_E::LongOpt;
+                    bPendingInlineEq__ = false;
+                    return std::nullopt;  // 还在收集
+                }
+                return expr;
+            }
+        }
+
+        if (pArgParser__) {
+            auto expr = pArgParser__->recognize(it, tmp);
+            if (expr) {
+                // 处理挂起逻辑（命名参数无值时）
+                if (expr->kind == ExpressionKind_E::Argument && expr->value.empty()
+                    && util::starts_with(_Text, "--") && _Text.size() > 2) {
+                    strPendingKey__    = expr->name;
+                    enPendingKind__    = PendingKind_E::NamedArg;
+                    bPendingInlineEq__ = false;
+                    return std::nullopt;  // 还在收集
+                }
+                return expr;
+            }
+        }
+
+        if (pEnvParser__) {
+            auto expr = pEnvParser__->recognize(_Text);
+            if (expr) return expr;
+        }
+
+        return std::nullopt;
     }
 
     /// @brief 识别长选项模式：--name[=value] 或 --name value

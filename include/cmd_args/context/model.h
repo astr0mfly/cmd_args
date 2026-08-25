@@ -25,6 +25,7 @@
 #include "cmd_args/context/expression.h"
 #include "cmd_args/env/env_data.h"
 #include "cmd_args/option/option_data.h"
+#include "cmd_args/option/option_graph.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -60,6 +61,7 @@ public:
     ArgumentData args;
     OptionData   opts;
     EnvData      envs;
+    OptionGraph  optionGraph;  ///< Option 关系有向图（条件/依赖边）
 
     /* argv[0] 探测出的程序名，供内置帮助/环境展示使用 */
     std::string strProgramName;

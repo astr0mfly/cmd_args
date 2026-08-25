@@ -194,6 +194,9 @@ private:
             envParser__.parse(_Env);
             ensureBuiltins();
 
+            // 绑定关系图到 OptionParser
+            optParser__.setGraph(&pModel__->optionGraph);
+
             bFired__ = optParser__.parse(_Tokens);
             if (bFired__) return;
 
@@ -201,10 +204,13 @@ private:
                 argParser__.parseNamedOnly(_Tokens);
                 argParser__.parsePositionalOnly(_Tokens);
                 bFired__ = false;
-                return;
             }
+            else {
+                argParser__.parse(_Tokens);
 
-            argParser__.parse(_Tokens);
+                // 根据关系图求值：条件边激活目标选项
+                pModel__->optionGraph.evaluate();
+            }
 
             for (auto const &t : _Tokens) {
                 if (!util::starts_with(t, "-")) continue;
@@ -212,9 +218,8 @@ private:
             }
         }
         catch (...) {
-            // 解析失败：本次已记录的顺序一并作废——失败解析不残留待执行 action，
-            // Model.hasAction() 为 false，后续解析不会触发陈旧 action
             pModel__->opts.clearParseOrder();
+            pModel__->optionGraph.clear();
             throw;
         }
     }

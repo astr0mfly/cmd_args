@@ -25,12 +25,14 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-/// @brief 表达式种类：Argument（参数）/ Option（选项）/ Env（环境变量）
+/// @brief 表达式种类：Argument（参数）/ Option（选项）/ Env（环境变量）/ Conditional（条件关系）/ Dependency（依赖关系）
 enum class ExpressionKind_E : char
 {
-    Argument,  ///< 命名/方位参数
-    Option,    ///< 值选项/标志/短回路选项
-    Env        ///< 环境变量条目
+    Argument,     ///< 命名/方位参数
+    Option,       ///< 值选项/标志/短回路选项
+    Env,          ///< 环境变量条目
+    Conditional,  ///< 条件关系：-a?b:c（a 为真时激活 b，否则激活 c）
+    Dependency    ///< 依赖关系：-a->b（先执行 a，再执行 b）
 };
 
 /**

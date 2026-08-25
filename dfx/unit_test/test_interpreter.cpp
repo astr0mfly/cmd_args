@@ -233,3 +233,76 @@ TEST_CASE("interpreter: 短选项带值接受 dash 值（-t=-5 与 -t -5 均与�
     REQUIRE(!ec2);
     REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "-5");
 }
+
+/* ==================== 实时解析状态机：idxCursor 游标 + token 栈归约 ==================== */
+
+TEST_CASE("interpreter: 实时解析凑满一个 Expression 立即执行且时点可观测", "[interpreter]")
+{
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+    OptionBuilder ob(&model.opts);
+
+    std::vector<size_t> cursors;   // onSet 触发瞬间的游标快照
+    std::vector<size_t> stacks;    // onSet 触发瞬间的栈深快照
+    ob.addOption<std::string>("step", "s", "")
+        ->onSet([&](std::string const &) {
+            cursors.emplace_back(interp.getCursor());
+            stacks.emplace_back(interp.getStackSize());
+        });
+
+    // "--step one"：'one' 在流结束符处终结成 token，
+    // 与挂起的 "step" 凑满一个 Expression → 此刻立即执行：
+    // 游标停在 10（流尾），值 token 已随归约出栈（栈深 0）
+    auto ec = interp.interpret("--step one", errors);
+    REQUIRE(!ec);
+
+    REQUIRE(cursors.size() == 1);
+    REQUIRE(cursors[0] == 10);
+    REQUIRE(stacks[0] == 0);
+    REQUIRE(model.opts.mgrValues.find("step")->strValue == "one");
+
+    // 整行解释完：游标抵达流尾、栈已排干
+    REQUIRE(interp.getCursor() == std::string("--step one").size());
+    REQUIRE(interp.getStackSize() == 0);
+}
+
+TEST_CASE("interpreter: 多个 Expression 按流序逐个即时执行", "[interpreter]")
+{
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+    OptionBuilder ob(&model.opts);
+
+    std::vector<std::string> trace;
+    ob.addOption<std::string>("alpha", "a", "")
+        ->onSet([&](std::string const &_V) { trace.emplace_back("alpha=" + _V); });
+    ob.addOption<std::string>("beta", "b", "")
+        ->onSet([&](std::string const &_V) { trace.emplace_back("beta=" + _V); });
+
+    auto ec = interp.interpret("--beta 2 --alpha 1", errors);
+    REQUIRE(!ec);
+    // 栈每凑满一个 Expression 就地执行一个：顺序 = 流序，而非行尾统一提交
+    REQUIRE(trace == std::vector<std::string>{ "beta=2", "alpha=1" });
+    REQUIRE(interp.getCursor() == std::string("--beta 2 --alpha 1").size());
+    REQUIRE(interp.getStackSize() == 0);
+}
+
+TEST_CASE("interpreter: 长选项挂起遇 dash 值当场报 NEED_VALUE 且不吞后续 token", "[interpreter]")
+{
+    Model model;
+    Errors errors;
+    Interpreter interp(&model);
+    OptionBuilder ob(&model.opts);
+
+    std::vector<std::string> trace;
+    ob.addOption<std::string>("alpha", "a", "");
+    ob.addOption<std::string>("mark", "m", "")
+        ->onSet([&](std::string const &_V) { trace.emplace_back("mark=" + _V); });
+
+    // "--alpha" 挂起等值，下一个 token "--mark" 以 dash 开头 → 归约当场抛 NEED_VALUE，
+    // "v" 根本不会被处理（mark 回调不触发）
+    auto ec = interp.interpret("--alpha --mark v", errors);
+    REQUIRE(ec == make_error_code(ParseError_E::NEED_VALUE));
+    REQUIRE(trace.empty());
+}

@@ -12,7 +12,7 @@ Context 为通用容器：持有 Model（数据仓库 + Expression 统一视图�
 | `expression.h` | `Expression` / `ExpressionKind_E` | **表达式基类**：Argument/Option/Env 的统一视图，kind() 自动分类 |
 | `context.h` | `Context` | **通用容器**：组合 Model+Builder+Compiler+Executor+Interpreter；build/parse/once/loop/model() |
 | `compiler.h` | `Compiler` | **编译引擎**（原 Parser）：Lexer → 三 Parser → Expression 分类入库 Model；ensureBuiltins/finalize |
-| `interpreter.h` | `Interpreter` | **流式引擎**：Scanner::step 逐字符分词 → Token 完成即分类 → 按 Expression 类型立即执行 |
+| `interpreter.h` | `Interpreter` | **流式引擎**：idxCursor 游标逐字符泵入 Scanner → token 压栈 → 凑满一个 Expression 立即归约执行 |
 | `executor.h` | `Executor` | **批量执行器**：hasAction 门控下按 actionOrder 顺序执行 OptionAction |
 | `model.h` | `Model` | **数据仓库**：三类 Data + 程序名 + 内置标记 + hasAction() + expressions() 统一视图 |
 | `lexer.h` | `Lexer` / `Scanner` | Scanner 状态机（批量 scan）+ step() 增量分词（流式）|
@@ -30,9 +30,9 @@ Compiler::ensureBuiltins → Compiler::parse(tokens)
 ## 流式模式（Interpreter::loop / interpret）
 ```
 per-line: Interpreter.interpret(line)
-  → reset → Scanner.step 逐字符分词
-  → 每个 Token 完成即分类（短回路/Option/命名参数/方位参数）
-  → 按 Expression 类型立即执行（回调触发 / fnOnSet__+模板 / set / 缓冲）
+  → reset → __lineReset（idxCursor 归零指向流入口，token 栈清空）
+  → idxCursor 逐字符喂 Scanner.step，完整 Token 即压入 vecStack__
+  → __reduceStack：栈凑满一个 Expression 立即出栈执行（短回路回调 / fnOnSet__+模板 / 命名参数 set / 方位缓冲）
   → 方位参数按序提交（数量校验同批量）→ finalize
 ```
 
@@ -43,4 +43,4 @@ per-line: Interpreter.interpret(line)
 
 ## 命名约定
 - Context 成员：m_strPrjName__ / m_instData__ / m_compiler__ / m_executor__ / m_interp__ / m_bFired__
-- 引擎内部挂起状态：strPendingKey / bPendingInlineEq / PendingKind_E（interpreter.h）
+- 引擎内部流式状态：idxCursor__ / vecStack__ / strPendingKey__ / enPendingKind__ / bPendingInlineEq__ / bOptEnd__ / vecPos__ / vecDashLeft__（interpreter.h）

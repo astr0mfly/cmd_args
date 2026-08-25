@@ -39,8 +39,9 @@ CMD_ARGS_NAMESPACE_BEGIN
 
 /*
     Interpreter（流式实时引擎）：把一行命令行当做字符流，
-    经 Scanner::step 逐字符吐出 Token；每得到一个完整 Token 即分类成
-    Expression（Option / Argument / 方位参数），并按类型立即执行——
+    以成员 idxCursor__ 作输入流游标自入口（下标 0）逐字符泵入 Scanner；
+    每识别出一个完整 Token 即压入 token 栈 vecStack__，
+    栈内内容凑满一个 Expression（Option / Argument / 方位参数）时立刻出栈执行——
     选项赋值即刻触发 fnOnSet__ 与 action 模板，命名参数即刻 set，
     方位参数按序缓冲至流空后统一提交（数量校验与批量一致）。直到 Stream 为空。
 
@@ -60,7 +61,7 @@ public:
 
     /* ===== 逐行解释 ===== */
 
-    /// @brief 解释执行一行：reset → 字符泵逐 Token 分类 → 立即执行 → 方位参数提交 → finalize
+    /// @brief 解释执行一行：reset → idxCursor 逐字符泵入 Scanner → token 压栈 → 凑满一个 Expression 立即执行 → 方位参数提交 → finalize
     std::error_code interpret(std::string const &_Line, Errors &_Errors)
     {
         pModel__->args.mgrName.doMutVisit([](Argument &a) { a.reset(); });
@@ -70,151 +71,36 @@ public:
 
         try {
             cmd_args::detail::Scanner sc({});
-            std::vector<std::string> vecPos;        ///< 方位参数缓冲（流空后按序提交）
-            std::vector<std::string> vecDashLeft;   ///< 未识别 dash token 缓冲（不参与方位参数校验/赋值）
-            std::string strPendingKey;              ///< 等待取值的选项/命名参数名
-            /// 挂起方类型：决定取值消费规则与 NEED_VALUE 文案（对齐批量语义）
-            enum class PendingKind_E : char { None, LongOpt, ShortOpt, NamedArg };
-            PendingKind_E enPending      = PendingKind_E::None;
-            bool          bPendingInlineEq = false;  ///< 挂起方是否由 '=' 内联分隔（仅 LongOpt 有意义）
-            bool          bOptEnd        = false;    ///< '--' 之后
+            __lineReset();                                       // 游标归零指向输入流入口，栈与挂起状态清空
 
-            auto pump = [&](char _C) {
-                auto tokOpt = sc.step(_C);
-                if (!tokOpt) return;
-                std::string text   = tokOpt->toText();
-                bool        bInlineEq = tokOpt->hasInlineEq();
-
-                // ── 挂起取值：当前 token 就是值 ──
-                if (!strPendingKey.empty()) {
-                    // 消费规则（批量语义）：
-                    // - LongOpt：拒绝 dash 开头值，除非挂起方带内联 '='（--opt=-5）
-                    // - ShortOpt：无条件接受下一个 token（option_parser.h 短路径无 dash 检查）
-                    // - NamedArg：无条件接受下一个 token（ArgumentParser::parseNamedOnly 语义）
-                    if (enPending == PendingKind_E::LongOpt && !bPendingInlineEq
-                        && util::starts_with(text, "-")) {
-                        throw ErrorParse(ParseError_E::NEED_VALUE,
-                            "option --" + strPendingKey + " need a value");
-                    }
-                    if (enPending == PendingKind_E::NamedArg) {
-                        if (auto *pArg = pModel__->args.mgrName.mutGet(strPendingKey)) {
-                            pArg->set(text);
-                        }
-                    }
-                    else if (enPending == PendingKind_E::ShortOpt) {
-                        // 短名按 char 查（mutFind(std::string) 只按长名匹配）
-                        if (auto *pOpt = pModel__->opts.mgrValues.mutFind(strPendingKey.front())) {
-                            __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
-                        }
-                    }
-                    else if (auto *pOpt = pModel__->opts.mgrValues.mutFind(strPendingKey)) {
-                        __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
-                    }
-                    strPendingKey.clear();
-                    enPending = PendingKind_E::None;
-                    return;
-                }
-
-                // ── '--' 之后全部方位参数 ──
-                if (bOptEnd) { vecPos.emplace_back(text); return; }
-
-                if (text == "--") { bOptEnd = true; return; }
-
-                // ── 长选项 / 命名参数：--name[=value] ──
-                if (util::starts_with(text, "--") && text.size() > 2) {
-                    auto        body  = text.substr(2);
-                    auto        eq    = body.find('=');
-                    std::string name  = body.substr(0, eq == std::string::npos ? body.size() : eq);
-                    std::string value = eq == std::string::npos ? "" : body.substr(eq + 1);
-
-                    if (auto const *pSc = pModel__->opts.mgrActions.doGet(name)) {
-                        static_cast<OptionAction const *>(pSc)->fnCallback();  // 短回路：立即回调
-                        return;
-                    }
-                    if (auto *pOpt = pModel__->opts.mgrValues.mutFind(name)) {
-                        // 无内联值：等待下一 token 取值。bInlineEq 表达「值在下个 token
-                        // 且允许 dash 开头」（--opt=value 被 Scanner 在 '=' 处切开）
-                        if (value.empty() && (bInlineEq || pOpt->strType != "bool")) {
-                            strPendingKey = name; enPending = PendingKind_E::LongOpt;
-                            bPendingInlineEq = bInlineEq;
-                            return;
-                        }
-                        __executeOptionImmediate(pOpt, value, pOpt->strType == "bool");
-                        return;
-                    }
-                    if (auto *pArg = pModel__->args.mgrName.mutGet(name)) {
-                        if (value.empty()) {
-                            strPendingKey = name; enPending = PendingKind_E::NamedArg;
-                            bPendingInlineEq = false;
-                            return;
-                        }
-                        pArg->set(std::move(value));  // 命名参数表达式：立即 set
-                        return;
-                    }
-                    vecDashLeft.emplace_back(text);  // 未识别长选项：独立缓冲，流末统一报 UNKNOWN_OPTION
-                    return;
-                }
-
-                // ── 短选项：-x / 聚合 -abc ──
-                if (util::starts_with(text, "-") && text.size() >= 2) {
-                    for (size_t i = 1; i < text.size(); ++i) {
-                        char key = text[i];
-                        if (auto const *pSc = pModel__->opts.mgrActions.doGet(key)) {
-                            static_cast<OptionAction const *>(pSc)->fnCallback();
-                            continue;
-                        }
-                        auto *pOpt = pModel__->opts.mgrValues.mutFind(key);
-                        if (!pOpt) {
-                            throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
-                                "unrecognized short option '" + std::string(1, key) + "' in " + text);
-                        }
-                        if (pOpt->strType == "bool") {
-                            __executeOptionImmediate(pOpt, "", true);
-                            continue;
-                        }
-                        std::string val = text.substr(i + 1);  // 值选项：余下即值（-tvalue / -t=value）
-                        if (!val.empty() && val.front() == '=') { val = val.substr(1); }
-                        if (val.empty()) {
-                            // 值在下一个 token（含聚合串末尾，如 -bt）：批量短路径无条件接受
-                            strPendingKey.assign(1, key); enPending = PendingKind_E::ShortOpt;
-                            bPendingInlineEq = false;
-                            return;
-                        }
-                        __executeOptionImmediate(pOpt, val, false);
-                        return;                              // 聚合串中值选项即终结
-                    }
-                    return;
-                }
-
-                // ── 普通 token → 方位参数 ──
-                vecPos.emplace_back(text);
-            };
-
-            for (char c : _Line) { pump(c); }
-            pump('\0');                                          // 流结束：flush 最后一个 token
+            while (idxCursor__ < _Line.size()) {
+                __feedChar(sc, _Line[idxCursor__]);              // 逐字符识别：完整 token 压栈并尝试归约
+                ++idxCursor__;
+            }
+            __feedChar(sc, '\0');                                // 流结束：flush 最后一个 token
 
             // 流空后仍有挂起取值（--opt / --name 后无值）：与批量路径一致报 NEED_VALUE
-            if (!strPendingKey.empty()) {
-                if (enPending == PendingKind_E::NamedArg) {
+            if (!strPendingKey__.empty()) {
+                if (enPendingKind__ == PendingKind_E::NamedArg) {
                     throw ErrorParse(ParseError_E::NEED_VALUE,
-                        "named argument '--" + strPendingKey + "' need a value");
+                        "named argument '--" + strPendingKey__ + "' need a value");
                 }
-                if (enPending == PendingKind_E::LongOpt) {
+                if (enPendingKind__ == PendingKind_E::LongOpt) {
                     throw ErrorParse(ParseError_E::NEED_VALUE,
-                        "option --" + strPendingKey + " need a value");
+                        "option --" + strPendingKey__ + " need a value");
                 }
                 throw ErrorParse(ParseError_E::NEED_VALUE,
-                    "option -" + strPendingKey + " need a value");
+                    "option -" + strPendingKey__ + " need a value");
             }
 
             // 未识别 dash token：先于方位参数提交报 UNKNOWN_OPTION（UNKNOWN_OPTION 优先，
             // 且绝不占用方位槽位、不产生赋值副作用——批量语义中 dash token 不进方位缓冲）。
-            if (!vecDashLeft.empty()) {
+            if (!vecDashLeft__.empty()) {
                 throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
-                    "unrecognized option or argument: " + vecDashLeft.front());
+                    "unrecognized option or argument: " + vecDashLeft__.front());
             }
 
-            __assignPositional(vecPos);                          // 数量校验 + 按序提交
+            __assignPositional(vecPos__);                        // 数量校验 + 按序提交
 
             __finalize();
             bParsed__ = true;
@@ -255,6 +141,14 @@ public:
         return std::string("(parse error) ") + _Ec.message() + "\n" + _Errors.dump();
     }
 
+    /* ===== 实时解析观测 ===== */
+
+    /// @brief 当前输入流游标（指向下一个待识别字符；行首为 0，整行解释完等于行长）
+    auto getCursor() const noexcept -> size_t { return idxCursor__; }
+
+    /// @brief 当前 token 栈深（已识别但尚未凑满 Expression 的 token 数；整行解释完应为 0）
+    auto getStackSize() const noexcept -> size_t { return vecStack__.size(); }
+
     [[noreturn]] void once()
     {
         if (!bParsed__) { throw ErrorInterp(InterpError_E::STOPPED); }
@@ -282,6 +176,155 @@ public:
     }
 
 private:
+    // ===== 流式解析状态机 =====
+
+    /// @brief 行首复位：游标归零指向输入流入口，token 栈与挂起状态全部清空
+    void __lineReset()
+    {
+        idxCursor__        = 0;
+        vecStack__.clear();
+        strPendingKey__.clear();
+        enPendingKind__    = PendingKind_E::None;
+        bPendingInlineEq__ = false;
+        bOptEnd__          = false;
+        vecPos__.clear();
+        vecDashLeft__.clear();
+    }
+
+    /// @brief 泵入单字符：Scanner 识别出完整 token 即压入 token 栈，随后尝试归约执行
+    void __feedChar(detail::Scanner &_Sc, char _C)
+    {
+        auto tokOpt = _Sc.step(_C);
+        if (!tokOpt) return;
+        vecStack__.emplace_back(std::move(*tokOpt));  ///< 识别即压栈
+        __reduceStack();                              ///< 栈凑满一个 Expression 就立即执行
+    }
+
+    /**
+     * @brief 归约：检查 token 栈顶，凑满一个 Expression 即出栈立即执行
+     * @note 归约规则（与批量 Parser 语义逐条对齐）：
+     *       1. 有挂起取值方：栈顶 token 就是值 → 组合立即执行并清除挂起；
+     *       2. '--' 之后一律方位参数；'--' 本身切换纯方位模式；
+     *       3. --name[=v]：短回路/bool 即刻完成；非 bool 等下个 token 凑满（头出栈转挂起键）；
+     *       4. -x / -abc 聚合：bool 位即刻完成；值选项吃余串或挂起等下个 token；
+     *       5. 普通 token 入方位缓冲（流空后统一校验数量再按序提交）。
+     */
+    void __reduceStack()
+    {
+        auto tok = std::move(vecStack__.back());
+        vecStack__.pop_back();
+        std::string text      = tok.toText();
+        bool        bInlineEq = tok.hasInlineEq();
+
+        // ── 1. 挂起取值：当前 token 就是值 ──
+        if (!strPendingKey__.empty()) {
+            // 消费规则（批量语义）：
+            // - LongOpt：拒绝 dash 开头值，除非挂起方带内联 '='（--opt=-5）
+            // - ShortOpt：无条件接受下一个 token（option_parser.h 短路径无 dash 检查）
+            // - NamedArg：无条件接受下一个 token（ArgumentParser::parseNamedOnly 语义）
+            if (enPendingKind__ == PendingKind_E::LongOpt && !bPendingInlineEq__
+                && util::starts_with(text, "-")) {
+                throw ErrorParse(ParseError_E::NEED_VALUE,
+                    "option --" + strPendingKey__ + " need a value");
+            }
+            if (enPendingKind__ == PendingKind_E::NamedArg) {
+                if (auto *pArg = pModel__->args.mgrName.mutGet(strPendingKey__)) {
+                    pArg->set(text);
+                }
+            }
+            else if (enPendingKind__ == PendingKind_E::ShortOpt) {
+                // 短名按 char 查（mutFind(std::string) 只按长名匹配）
+                if (auto *pOpt = pModel__->opts.mgrValues.mutFind(strPendingKey__.front())) {
+                    __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
+                }
+            }
+            else if (auto *pOpt = pModel__->opts.mgrValues.mutFind(strPendingKey__)) {
+                __executeOptionImmediate(pOpt, text, pOpt->strType == "bool");
+            }
+            strPendingKey__.clear();
+            enPendingKind__    = PendingKind_E::None;
+            bPendingInlineEq__ = false;
+            return;
+        }
+
+        // ── 2. '--' 之后全部方位参数 ──
+        if (bOptEnd__) { vecPos__.emplace_back(text); return; }
+
+        if (text == "--") { bOptEnd__ = true; return; }
+
+        // ── 3. 长选项 / 命名参数：--name[=value] ──
+        if (util::starts_with(text, "--") && text.size() > 2) {
+            auto        body  = text.substr(2);
+            auto        eq    = body.find('=');
+            std::string name  = body.substr(0, eq == std::string::npos ? body.size() : eq);
+            std::string value = eq == std::string::npos ? "" : body.substr(eq + 1);
+
+            if (auto const *pSc = pModel__->opts.mgrActions.doGet(name)) {
+                static_cast<OptionAction const *>(pSc)->fnCallback();  // 短回路：立即回调
+                return;
+            }
+            if (auto *pOpt = pModel__->opts.mgrValues.mutFind(name)) {
+                // 无内联值：等待下一 token 取值。bInlineEq 表达「值在下个 token
+                // 且允许 dash 开头」（--opt=value 被 Scanner 在 '=' 处切开）
+                if (value.empty() && (bInlineEq || pOpt->strType != "bool")) {
+                    strPendingKey__    = name;
+                    enPendingKind__    = PendingKind_E::LongOpt;
+                    bPendingInlineEq__ = bInlineEq;
+                    return;
+                }
+                __executeOptionImmediate(pOpt, value, pOpt->strType == "bool");
+                return;
+            }
+            if (auto *pArg = pModel__->args.mgrName.mutGet(name)) {
+                if (value.empty()) {
+                    strPendingKey__    = name;
+                    enPendingKind__    = PendingKind_E::NamedArg;
+                    bPendingInlineEq__ = false;
+                    return;
+                }
+                pArg->set(std::move(value));  // 命名参数表达式：立即 set
+                return;
+            }
+            vecDashLeft__.emplace_back(text);  // 未识别长选项：独立缓冲，流末统一报 UNKNOWN_OPTION
+            return;
+        }
+
+        // ── 4. 短选项：-x / 聚合 -abc ──
+        if (util::starts_with(text, "-") && text.size() >= 2) {
+            for (size_t i = 1; i < text.size(); ++i) {
+                char key = text[i];
+                if (auto const *pSc = pModel__->opts.mgrActions.doGet(key)) {
+                    static_cast<OptionAction const *>(pSc)->fnCallback();
+                    continue;
+                }
+                auto *pOpt = pModel__->opts.mgrValues.mutFind(key);
+                if (!pOpt) {
+                    throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                        "unrecognized short option '" + std::string(1, key) + "' in " + text);
+                }
+                if (pOpt->strType == "bool") {
+                    __executeOptionImmediate(pOpt, "", true);
+                    continue;
+                }
+                std::string val = text.substr(i + 1);  // 值选项：余下即值（-tvalue / -t=value）
+                if (!val.empty() && val.front() == '=') { val = val.substr(1); }
+                if (val.empty()) {
+                    // 值在下一个 token（含聚合串末尾，如 -bt）：批量短路径无条件接受
+                    strPendingKey__.assign(1, key);
+                    enPendingKind__    = PendingKind_E::ShortOpt;
+                    bPendingInlineEq__ = false;
+                    return;
+                }
+                __executeOptionImmediate(pOpt, val, false);
+                return;                              // 聚合串中值选项即终结
+            }
+            return;
+        }
+
+        // ── 5. 普通 token → 方位参数 ──
+        vecPos__.emplace_back(text);
+    }
+
     /// @brief 选项赋值 + 立即执行（流式专用）：值 → 标记 → fnOnSet__ → action 模板
     /// @note 流式路径不经 OptionParser::__assign，内置选项回调在此触发（等价其内联语义）
     void __executeOptionImmediate(OptionValue *_Opt, std::string const &_Value, bool _IsBool)
@@ -380,9 +423,24 @@ private:
     }
 
 private:
+    // ===== 引擎常驻状态 =====
     Model *pModel__ = nullptr;
     bool   bParsed__   = false;
     int    nExitCode__ = 0;
+
+    // ===== 流式解析状态（每次 interpret 经 __lineReset 复位） =====
+
+    /// 挂起方类型：决定取值消费规则与 NEED_VALUE 文案（对齐批量语义）
+    enum class PendingKind_E : char { None, LongOpt, ShortOpt, NamedArg };
+
+    size_t                     idxCursor__        = 0;                    ///< 输入流游标：指向当前行下一待识别字符（入口为 0）
+    std::vector<detail::Token> vecStack__;                                ///< token 栈：识别即压入，凑满一个 Expression 立即归约执行
+    std::string                strPendingKey__    = {};                   ///< 等待取值的选项/命名参数名
+    PendingKind_E              enPendingKind__    = PendingKind_E::None;  ///< 挂起取值方类型
+    bool                       bPendingInlineEq__ = false;                ///< 挂起方是否由 '=' 内联分隔（仅 LongOpt 有意义）
+    bool                       bOptEnd__          = false;                ///< '--' 之后（纯方位模式）
+    std::vector<std::string>   vecPos__;                                  ///< 方位参数缓冲（流空后统一校验数量按序提交）
+    std::vector<std::string>   vecDashLeft__;                             ///< 未识别 dash token 缓冲（流末统一报 UNKNOWN_OPTION）
 };
 
 CMD_ARGS_NAMESPACE_END

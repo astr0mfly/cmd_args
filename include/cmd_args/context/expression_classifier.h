@@ -97,16 +97,16 @@ public:
         return __classifyText(text, _Tok.hasInlineEq());
     }
 
-    /// @brief 批量分类：Token 列表 → ClassifiedExpr 列表（Compiler 使用）
-    /// @param _Tokens 待分类的 Token 流（已归一化）
+    /// @brief 批量分类：字符串 Token 列表 → ClassifiedExpr 列表（Compiler 使用）
+    /// @param _Tokens 待分类的 Token 流（已归一化的字符串列表，Tokens_T = std::list<std::string>）
     /// @return 分类后的 ClassifiedExpr 列表
     auto classifyAll(Tokens_T const &_Tokens) const -> std::vector<ClassifiedExpr>
     {
         std::vector<ClassifiedExpr> result;
         result.reserve(_Tokens.size());
         for (auto const &tok : _Tokens) {
-            auto expr = classifyOne(tok);
-            if (expr) { result.emplace_back(std::move(*expr)); }
+            if (tok.empty()) continue;
+            result.emplace_back(__classifyText(tok, false));
         }
         return result;
     }

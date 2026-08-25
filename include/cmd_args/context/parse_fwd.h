@@ -35,4 +35,11 @@ using Desc_T      = std::string;   // 描述/帮助文本
 using Tokens_T    = std::list<std::string>;  // token 流（Lexer 输出 / Compiler 消费）
 using Envs_T      = std::vector<std::string>;  // "KEY=VALUE" 环境串列表
 
+/* 执行引擎种类：make_context 工厂据此注入对应派生上下文 */
+enum class EngineKind_E : char
+{
+    E_STEP,      ///< 批量步进引擎（Compiler + Executor → ContextStep）
+    E_RUN_TIME   ///< 流式运行时引擎（Interpreter → ContextRuntime）
+};
+
 CMD_ARGS_NAMESPACE_END

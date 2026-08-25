@@ -28,6 +28,11 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+// 前向声明
+class OptionParser;
+class ArgumentParser;
+class EnvParser;
+
 /**
  * @brief 表达式中间表示：多个 Token 经模式匹配后产出的结构化数据。
  *
@@ -102,6 +107,19 @@ struct ClassifiedExpr
 class ExpressionRecognizer
 {
 public:
+    /// @brief 默认构造（使用内置硬编码规则，向后兼容）
+    ExpressionRecognizer() = default;
+
+    /// @brief 注入 Parser 规则构造（委托给 Parser 的 recognize() 方法）
+    /// @param _Opt OptionParser 引用
+    /// @param _Arg ArgumentParser 引用
+    /// @param _Env EnvParser 引用
+    ExpressionRecognizer(OptionParser *_Opt, ArgumentParser *_Arg, EnvParser *_Env)
+        : pOptParser__(_Opt)
+        , pArgParser__(_Arg)
+        , pEnvParser__(_Env)
+        , bUseParserRules__(_Opt != nullptr || _Arg != nullptr || _Env != nullptr)
+    {}
     /// @brief 流式识别：逐 Token 喂入，凑满一个 Expression 时返回
     /// @param _Tok 词法单元
     /// @return 识别出完整 Expression 时返回之，否则 nullopt（仍在收集）
@@ -390,6 +408,12 @@ private:
     PendingKind_E              enPendingKind__    = PendingKind_E::None;  ///< 挂起类型
     bool                       bPendingInlineEq__ = false; ///< 挂起方是否带内联 '='
     bool                       bOptEnd__          = false; ///< '--' 之后（纯方位模式）
+
+    // ===== Parser 规则引用（可选，为 nullptr 时使用内置硬编码规则） =====
+    OptionParser  *pOptParser__     = nullptr;  ///< 选项解析器（可选）
+    ArgumentParser *pArgParser__    = nullptr;  ///< 参数解析器（可选）
+    EnvParser     *pEnvParser__     = nullptr;  ///< 环境变量解析器（可选）
+    bool           bUseParserRules__ = false;   ///< 是否使用 Parser 规则
 };
 
 CMD_ARGS_NAMESPACE_END

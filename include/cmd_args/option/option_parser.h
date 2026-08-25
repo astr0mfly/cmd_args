@@ -22,6 +22,7 @@
 #include <iostream>
 #include <type_traits>
 
+#include "cmd_args/context/expression_classifier.h"
 #include "cmd_args/context/parse_fwd.h"
 #include "cmd_args/error/parser_error.h"
 #include "cmd_args/option/option.h"
@@ -55,135 +56,202 @@ public:
     /// @brief 绑定关系有向图（可选，为 nullptr 时关系语法被忽略）
     void setGraph(OptionGraph *_Graph) { pGraph__ = _Graph; }
 
-    /// @brief 解析 token 流中的选项 token（赋值 + 标记；内置选项回调内联触发，用户 action 由 Executor 延迟执行）
+    // ===== Expression 识别规则（编译前端接口） =====
+
+    /// @brief 识别当前迭代器指向的 token 是否匹配选项规则
+    auto recognize(Tokens_T::iterator _It, Tokens_T const &_Tokens) const -> std::optional<ClassifiedExpr>
+    {
+        if (_It == _Tokens.end()) return std::nullopt;
+        std::string const &tok = *_It;
+
+        if (tok == "--") return std::nullopt;
+
+        // --name[=value] 长选项
+        if (util::starts_with(tok, "--") && tok.size() > 2) {
+            auto body = tok.substr(2);
+            auto eq   = body.find('=');
+            ClassifiedExpr expr;
+            expr.kind      = ExpressionKind_E::Option;
+            expr.bExplicit = true;
+            expr.name      = (eq == std::string::npos) ? body : body.substr(0, eq);
+            if (eq != std::string::npos) { expr.value = body.substr(eq + 1); }
+            return expr;
+        }
+
+        // -x / -x=value / -xvalue / -abc / -a?b:c / -a->b
+        if (util::starts_with(tok, "-") && tok.size() >= 2) {
+            if (__isRelationToken(tok)) {
+                ClassifiedExpr expr;
+                expr.bExplicit = true;
+                auto qPos = tok.find('?');
+                auto dPos = tok.find("->");
+                if (qPos != std::string::npos) {
+                    expr.kind         = ExpressionKind_E::Conditional;
+                    expr.strCondition = tok.substr(1, qPos - 1);
+                    auto colonPos     = tok.find(':', qPos);
+                    if (colonPos != std::string::npos) {
+                        expr.strThenBranch = tok.substr(qPos + 1, colonPos - qPos - 1);
+                        expr.strElseBranch = tok.substr(colonPos + 1);
+                    } else {
+                        expr.strThenBranch = tok.substr(qPos + 1);
+                        expr.strElseBranch = "_";
+                    }
+                } else if (dPos != std::string::npos) {
+                    expr.kind         = ExpressionKind_E::Dependency;
+                    expr.strDepSource = tok.substr(1, dPos - 1);
+                    expr.strDepTarget = tok.substr(dPos + 2);
+                }
+                return expr;
+            }
+
+            // 短选项：-x / -abc（bool 聚合）/ -x=value / -xvalue
+            ClassifiedExpr expr;
+            expr.kind       = ExpressionKind_E::Option;
+            expr.cShortName = tok[1];
+            expr.name       = std::string(1, tok[1]);
+            expr.bExplicit  = true;
+            expr.bIsBool    = true;  // 默认为 bool，apply 根据注册类型决定
+            return expr;
+        }
+
+        return std::nullopt;
+    }
+
+    /// @brief 将识别结果应用到 OptionData（赋值 + 标记 + 回调触发）
+    void apply(ClassifiedExpr const &_Expr, Tokens_T::iterator &_It, Tokens_T &_Tokens)
+    {
+        // 关系语法
+        if (_Expr.kind == ExpressionKind_E::Conditional || _Expr.kind == ExpressionKind_E::Dependency) {
+            if (pGraph__) __parseRelation(*_It);
+            _It = _Tokens.erase(_It);
+            return;
+        }
+
+        std::string const &tok = *_It;
+
+        // 长选项：检查是否注册
+        if (util::starts_with(tok, "--") && tok.size() > 2) {
+            // 短回路检测
+            if (__fireOnLong(_Expr.name, _It, _Tokens)) return;
+
+            auto *pOpt = pData__->mgrValues.mutFind(_Expr.name);
+            if (!pOpt) {
+                ++_It;  // 未注册，留给上层（可能是命名参数）
+                return;
+            }
+
+            std::string value = _Expr.value;
+            if (value.empty() && pOpt->strType != "bool") {
+                auto nx = std::next(_It);
+                if (nx == _Tokens.end() || util::starts_with(*nx, "-")) {
+                    throw ErrorParse(ParseError_E::NEED_VALUE,
+                        "option --" + _Expr.name + " need a value");
+                }
+                value = *nx;
+                _Tokens.erase(nx);
+            }
+            __assign(pOpt, value, pOpt->strType == "bool");
+            _It = _Tokens.erase(_It);
+            return;
+        }
+
+        // 短选项
+        if (util::starts_with(tok, "-") && tok.size() >= 2) {
+            // 短回路检测
+            if (__fireOnShort(tok, _It, _Tokens)) return;
+            if (__fireOnShortChar(_Expr.cShortName, _It, _Tokens)) return;
+
+            // 聚合短选项：-abc（多个 bool 标志）
+            if (tok.size() > 2 && _Expr.value.empty()) {
+                for (size_t i = 1; i < tok.size(); ++i) {
+                    char key = tok[i];
+                    if (__fireOnShortChar(key, _It, _Tokens)) return;
+
+                    auto *pOpt = pData__->mgrValues.mutFind(key);
+                    if (!pOpt) {
+                        throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                            "unrecognized short option '" + std::string(1, key) + "' in " + tok);
+                    }
+                    if (pOpt->strType == "bool") {
+                        __assign(pOpt, "", true);
+                    }
+                    else {
+                        std::string val = tok.substr(i + 1);
+                        if (!val.empty() && val.front() == '=') { val = val.substr(1); }
+                        if (val.empty()) {
+                            auto nx = std::next(_It);
+                            if (nx == _Tokens.end()) {
+                                throw ErrorParse(ParseError_E::NEED_VALUE,
+                                    "option -" + std::string(1, key) + " need a value");
+                            }
+                            val = *nx;
+                            _Tokens.erase(nx);
+                        }
+                        __assign(pOpt, val, false);
+                        _It = _Tokens.erase(_It);
+                        return;
+                    }
+                }
+                _It = _Tokens.erase(_It);
+                return;
+            }
+
+            // 单个短选项或带值短选项
+            auto *pOpt = pData__->mgrValues.mutFind(_Expr.cShortName);
+            if (!pOpt) {
+                ++_It;  // 未注册，留给上层报错
+                return;
+            }
+
+            // 从 token 文本提取值（-t5 → "5", -t=5 → "5"）
+            std::string value;
+            if (tok.size() > 2) {
+                value = tok.substr(2);
+                if (!value.empty() && value.front() == '=') { value = value.substr(1); }
+            }
+
+            if (value.empty() && pOpt->strType != "bool") {
+                auto nx = std::next(_It);
+                if (nx == _Tokens.end()) {
+                    throw ErrorParse(ParseError_E::NEED_VALUE,
+                        "option -" + std::string(1, _Expr.cShortName) + " need a value");
+                }
+                value = *nx;
+                _Tokens.erase(nx);
+            }
+            __assign(pOpt, value, pOpt->strType == "bool");
+            _It = _Tokens.erase(_It);
+            return;
+        }
+    }
+
+    /// @brief 解析 token 流中的选项 token（通过 recognize + apply 规则驱动）
     /// @param _Tokens 待解析 token 流（已消费项会被移除）
     /// @return 短回路是否已命中（命中即停止本次解析）
     bool parse(Tokens_T &_Tokens)
     {
         bFired__  = false;
         bOptEnd__ = false;
-
-        // 每次解析前清空 actionOrder：上一次失败解析残留的顺序不得在本次/下次
-        // 解析中经 Executor 触发（Model.hasAction() 也据此在解析前为 false）
         if (pData__) { pData__->clearParseOrder(); }
 
         for (auto it = _Tokens.begin(); it != _Tokens.end();) {
-            std::string const &tok = *it;
-
-            if (tok == "--") {
-                // 结束选项区：其后的 token 全部留给位置参数
+            // -- 终止选项区
+            if (*it == "--") {
                 _Tokens.erase(it);
                 bOptEnd__ = true;
                 break;
             }
 
-            if (util::starts_with(tok, "--") && tok.size() > 2) {
-                auto          body = tok.substr(2);
-                auto          eq   = body.find('=');
-                std::string   name = (eq == std::string::npos) ? body : body.substr(0, eq);
-                std::string   value;
-                if (eq != std::string::npos) { value = body.substr(eq + 1); }
-
-                if (__fireOnLong(name, it, _Tokens)) return true;
-
-                auto *pOpt = pData__->mgrValues.mutFind(name);
-                if (pOpt) {
-                    // --long=value 与 --long value 两种形式都支持；
-                    // 未显式给值且非 bool 选项时，消费下一个 token 作为值
-                    if (value.empty() && pOpt->strType != "bool") {
-                        auto nx = std::next(it);
-                        if (nx == _Tokens.end() || util::starts_with(*nx, "-")) {
-                            throw ErrorParse(
-                                ParseError_E::NEED_VALUE,
-                                "option --" + name + " need a value");
-                        }
-                        value = *nx;
-                        _Tokens.erase(nx);
-                    }
-                    __assign(pOpt, value, pOpt->strType == "bool");
-                    it = _Tokens.erase(it);
-                    continue;
-                }
-
-                // 不是选项：可能是命名参数（--name=value），留给上层
-                ++it;
+            // 识别：调用内置规则
+            auto expr = recognize(it, _Tokens);
+            if (!expr) {
+                ++it;  // 不匹配选项规则，留给参数解析
                 continue;
             }
 
-            if (util::starts_with(tok, "-") && tok.size() >= 2) {
-                // 新增：检测关系语法 token（-a?b:c / -a->b）
-                if (pGraph__ && __isRelationToken(tok)) {
-                    __parseRelation(tok);
-                    it = _Tokens.erase(it);
-                    continue;
-                }
-
-                if (__fireOnShort(tok, it, _Tokens)) return true;
-
-                if (tok.size() == 2) {
-                    auto *pOpt = pData__->mgrValues.mutFind(tok[1]);
-                    if (!pOpt) {
-                        ++it;  // 可能是未识别短选项，交给上层统一报错
-                        continue;
-                    }
-                    if (pOpt->strType == "bool") {
-                        __assign(pOpt, "", true);
-                    }
-                    else {
-                        auto nx = std::next(it);
-                        if (nx == _Tokens.end()) {
-                            throw ErrorParse(
-                                ParseError_E::NEED_VALUE,
-                                "option -" + std::string(1, tok[1]) + " need a value");
-                        }
-                        __assign(pOpt, *nx, false);
-                        _Tokens.erase(nx);
-                    }
-                    it = _Tokens.erase(it);
-                    continue;
-                }
-
-                // 聚合短选项：-abc 或 -tvalue
-                bool consumed = false;
-                for (size_t i = 1; i < tok.size() && !consumed; ++i) {
-                    char key = tok[i];
-                    if (__fireOnShortChar(key, it, _Tokens)) return true;
-
-                    auto *pOpt = pData__->mgrValues.mutFind(key);
-                    if (!pOpt) {
-                        throw ErrorParse(
-                            ParseError_E::UNKNOWN_OPTION,
-                            "unrecognized short option '" + std::string(1, key) + "' in " + tok);
-                    }
-                    if (pOpt->strType == "bool") {
-                        __assign(pOpt, "", true);
-                        continue;
-                    }
-
-                    // 值选项出现在聚合串中：余下部分就是它的值（-tvalue）
-                    std::string val = tok.substr(i + 1);
-                    if (!val.empty() && val.front() == '=') { val = val.substr(1); }
-                    if (val.empty()) {
-                        auto nx = std::next(it);
-                        if (nx == _Tokens.end()) {
-                            throw ErrorParse(
-                                ParseError_E::NEED_VALUE,
-                                "option -" + std::string(1, key) + " need a value");
-                        }
-                        val = *nx;
-                        _Tokens.erase(nx);
-                    }
-                    __assign(pOpt, val, false);
-                    consumed = true;
-                }
-
-                it = _Tokens.erase(it);
-                continue;
-            }
-
-            // 普通 token：留给参数解析
-            ++it;
-            continue;
+            // 应用：写入 OptionData
+            apply(*expr, it, _Tokens);
+            if (bFired__) return true;
         }
 
         return bFired__;

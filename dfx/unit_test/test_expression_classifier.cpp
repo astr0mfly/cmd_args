@@ -9,84 +9,131 @@
 using namespace cmd_args;
 using cmd_args::detail::Token;
 
-/* ==================== ExpressionClassifier：Token → ClassifiedExpr ==================== */
+/* ==================== ExpressionRecognizer：Token 序列 → Expression 模式匹配 ==================== */
 
-TEST_CASE("classifier: 长选项分类为 Option Expression", "[classifier]")
+TEST_CASE("recognizer: --name=value 内联值立即识别为 Option", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
-    // --timeout=9 → Option, name="timeout", value="9"
-    // Token::toText() for LongName returns "--" + name, so name must include "=9"
-    Token tok1(Token::Type_E::LongName, "timeout=9", 0);
-    tok1.setInlineEq(true);
-    auto r1 = classifier.classifyOne(tok1);
-    REQUIRE(r1.has_value());
-    REQUIRE(r1->kind == ExpressionKind_E::Option);
-    REQUIRE(r1->name == "timeout");
-    REQUIRE(r1->value == "9");
-    REQUIRE(r1->bExplicit);
+    // --timeout=9：LongName 内联值
+    Token tok(Token::Type_E::LongName, "timeout=9", 0);
+    tok.setInlineEq(true);
+    auto r = rec.feed(tok);
+    REQUIRE(r.has_value());
+    REQUIRE(r->kind == ExpressionKind_E::Option);
+    REQUIRE(r->name == "timeout");
+    REQUIRE(r->value == "9");
+    REQUIRE(r->bExplicit);
+    REQUIRE_FALSE(rec.hasPending());
+}
 
-    // --timeout (无值) → Option, name="timeout", value=""
-    Token tok2(Token::Type_E::LongName, "timeout", 0);
-    auto r2 = classifier.classifyOne(tok2);
+TEST_CASE("recognizer: --name value 分离值需要两个 token", "[classifier]")
+{
+    ExpressionRecognizer rec;
+
+    // 第一个 token：--timeout（无值，挂起）
+    Token tok1(Token::Type_E::LongName, "timeout", 0);
+    auto r1 = rec.feed(tok1);
+    REQUIRE_FALSE(r1.has_value());  // 还在收集
+    REQUIRE(rec.hasPending());
+
+    // 第二个 token：9（值）
+    Token tok2(Token::Type_E::Variable, "9", 0);
+    auto r2 = rec.feed(tok2);
     REQUIRE(r2.has_value());
     REQUIRE(r2->kind == ExpressionKind_E::Option);
     REQUIRE(r2->name == "timeout");
-    REQUIRE(r2->value.empty());
+    REQUIRE(r2->value == "9");
+    REQUIRE_FALSE(rec.hasPending());
 }
 
-TEST_CASE("classifier: 短选项分类为 Option Expression", "[classifier]")
+TEST_CASE("recognizer: -x 短选项识别为 Option", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
-    // -t → Option, cShortName='t'
-    Token tok1(Token::Type_E::ShortName, "t", 0);
-    auto r1 = classifier.classifyOne(tok1);
-    REQUIRE(r1.has_value());
-    REQUIRE(r1->kind == ExpressionKind_E::Option);
-    REQUIRE(r1->cShortName == 't');
-
-    // -abc → Option, cShortName='a'（聚合串首字符）
-    Token tok2(Token::Type_E::ContinualName, "abc", 0);
-    auto r2 = classifier.classifyOne(tok2);
-    REQUIRE(r2.has_value());
-    REQUIRE(r2->kind == ExpressionKind_E::Option);
-    REQUIRE(r2->cShortName == 'a');
+    // -t：短选项
+    Token tok(Token::Type_E::ShortName, "t", 0);
+    auto r = rec.feed(tok);
+    REQUIRE(r.has_value());
+    REQUIRE(r->kind == ExpressionKind_E::Option);
+    REQUIRE(r->cShortName == 't');
 }
 
-TEST_CASE("classifier: 方位参数分类为 Argument Expression", "[classifier]")
+TEST_CASE("recognizer: -abc 聚合 bool 选项", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
+
+    // -abc：聚合串
+    Token tok(Token::Type_E::ContinualName, "abc", 0);
+    auto r = rec.feed(tok);
+    REQUIRE(r.has_value());
+    REQUIRE(r->kind == ExpressionKind_E::Option);
+    REQUIRE(r->cShortName == 'a');
+    REQUIRE(r->bIsBool);
+}
+
+TEST_CASE("recognizer: -t=value 短选项内联值", "[classifier]")
+{
+    ExpressionRecognizer rec;
+
+    // -t=5：短选项内联值
+    Token tok(Token::Type_E::ContinualName, "t=5", 0);
+    auto r = rec.feed(tok);
+    REQUIRE(r.has_value());
+    REQUIRE(r->kind == ExpressionKind_E::Option);
+    REQUIRE(r->cShortName == 't');
+    REQUIRE(r->value == "5");
+    REQUIRE_FALSE(r->bIsBool);
+}
+
+TEST_CASE("recognizer: 方位参数识别", "[classifier]")
+{
+    ExpressionRecognizer rec;
 
     Token tok(Token::Type_E::Variable, "world", 0);
-    auto r = classifier.classifyOne(tok);
+    auto r = rec.feed(tok);
     REQUIRE(r.has_value());
     REQUIRE(r->kind == ExpressionKind_E::Argument);
     REQUIRE(r->name == "world");
     REQUIRE(r->value == "world");
 }
 
-TEST_CASE("classifier: 环境变量 KEY=VALUE 分类为 Env Expression", "[classifier]")
+TEST_CASE("recognizer: 环境变量 KEY=VALUE 识别", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
-    // 环境变量在 Lexer 归一化后以 "KEY=VALUE" plain token 形式出现
     Token tok(Token::Type_E::Variable, "HOME=/root", 0);
-    auto r = classifier.classifyOne(tok);
+    auto r = rec.feed(tok);
     REQUIRE(r.has_value());
     REQUIRE(r->kind == ExpressionKind_E::Env);
     REQUIRE(r->name == "HOME");
     REQUIRE(r->value == "/root");
 }
 
-TEST_CASE("classifier: 条件关系 -a?b:c 分类为 Conditional", "[classifier]")
+TEST_CASE("recognizer: -- 终止选项区后全部为方位参数", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
-    // -verbose?debug:quiet → Conditional
-    // Token::toText() for ContinualName returns "-" + name, so name = "verbose?debug:quiet"
+    // --
+    Token tok1(Token::Type_E::Delimiter, "--", 0);
+    auto r1 = rec.feed(tok1);
+    REQUIRE_FALSE(r1.has_value());  // '--' 自身不产出 Expression
+    REQUIRE_FALSE(rec.hasPending());
+
+    // -x（在 -- 之后应作为方位参数）
+    Token tok2(Token::Type_E::ContinualName, "x", 0);
+    auto r2 = rec.feed(tok2);
+    REQUIRE(r2.has_value());
+    REQUIRE(r2->kind == ExpressionKind_E::Argument);
+    REQUIRE(r2->name == "-x");
+}
+
+TEST_CASE("recognizer: 条件关系 -a?b:c 识别为 Conditional", "[classifier]")
+{
+    ExpressionRecognizer rec;
+
     Token tok(Token::Type_E::ContinualName, "verbose?debug:quiet", 0);
-    auto r = classifier.classifyOne(tok);
+    auto r = rec.feed(tok);
     REQUIRE(r.has_value());
     REQUIRE(r->kind == ExpressionKind_E::Conditional);
     REQUIRE(r->strCondition == "verbose");
@@ -94,67 +141,103 @@ TEST_CASE("classifier: 条件关系 -a?b:c 分类为 Conditional", "[classifier]
     REQUIRE(r->strElseBranch == "quiet");
 }
 
-TEST_CASE("classifier: 条件关系 -a?b:_ 分类为 Conditional（无操作分支）", "[classifier]")
+TEST_CASE("recognizer: 条件关系 -a?b:_ 无操作分支", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
-    // -verbose?debug:_ → Conditional, else="_"
     Token tok(Token::Type_E::ContinualName, "verbose?debug:_", 0);
-    auto r = classifier.classifyOne(tok);
+    auto r = rec.feed(tok);
     REQUIRE(r.has_value());
     REQUIRE(r->kind == ExpressionKind_E::Conditional);
-    REQUIRE(r->strCondition == "verbose");
-    REQUIRE(r->strThenBranch == "debug");
     REQUIRE(r->strElseBranch == "_");
 }
 
-TEST_CASE("classifier: 条件关系 -a?b 无冒号等价 -a?b:_", "[classifier]")
+TEST_CASE("recognizer: 依赖关系 -a->b 识别为 Dependency", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
-    Token tok(Token::Type_E::ContinualName, "verbose?debug", 0);
-    auto r = classifier.classifyOne(tok);
-    REQUIRE(r.has_value());
-    REQUIRE(r->kind == ExpressionKind_E::Conditional);
-    REQUIRE(r->strCondition == "verbose");
-    REQUIRE(r->strThenBranch == "debug");
-    REQUIRE(r->strElseBranch == "_");
-}
-
-TEST_CASE("classifier: 依赖关系 -a->b 分类为 Dependency", "[classifier]")
-{
-    ExpressionClassifier classifier;
-
-    // -compile->link → Dependency
     Token tok(Token::Type_E::ContinualName, "compile->link", 0);
-    auto r = classifier.classifyOne(tok);
+    auto r = rec.feed(tok);
     REQUIRE(r.has_value());
     REQUIRE(r->kind == ExpressionKind_E::Dependency);
     REQUIRE(r->strDepSource == "compile");
     REQUIRE(r->strDepTarget == "link");
 }
 
-TEST_CASE("classifier: classifyAll 批量分类", "[classifier]")
+TEST_CASE("recognizer: recognizeAll 批量识别多个 Expression", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
 
     Tokens_T toks{ "--timeout=9", "-abc", "world" };
-    auto results = classifier.classifyAll(toks);
+    auto results = rec.recognizeAll(toks);
 
     REQUIRE(results.size() == 3);
     REQUIRE(results[0].kind == ExpressionKind_E::Option);
     REQUIRE(results[0].name == "timeout");
+    REQUIRE(results[0].value == "9");
     REQUIRE(results[1].kind == ExpressionKind_E::Option);
     REQUIRE(results[1].cShortName == 'a');
     REQUIRE(results[2].kind == ExpressionKind_E::Argument);
     REQUIRE(results[2].name == "world");
 }
 
-TEST_CASE("classifier: 空 token 返回 nullopt", "[classifier]")
+TEST_CASE("recognizer: recognizeAll 多 token Expression（--name value）", "[classifier]")
 {
-    ExpressionClassifier classifier;
+    ExpressionRecognizer rec;
+
+    Tokens_T toks{ "--timeout", "42", "world" };
+    auto results = rec.recognizeAll(toks);
+
+    REQUIRE(results.size() == 2);
+    REQUIRE(results[0].kind == ExpressionKind_E::Option);
+    REQUIRE(results[0].name == "timeout");
+    REQUIRE(results[0].value == "42");
+    REQUIRE(results[1].kind == ExpressionKind_E::Argument);
+    REQUIRE(results[1].name == "world");
+}
+
+TEST_CASE("recognizer: reset 后状态清空", "[classifier]")
+{
+    ExpressionRecognizer rec;
+
+    Token tok1(Token::Type_E::LongName, "timeout", 0);
+    rec.feed(tok1);
+    REQUIRE(rec.hasPending());
+
+    rec.reset();
+    REQUIRE_FALSE(rec.hasPending());
+}
+
+TEST_CASE("recognizer: 空 token 被跳过", "[classifier]")
+{
+    ExpressionRecognizer rec;
 
     Token tok(Token::Type_E::Unknown, "", 0);
-    auto r = classifier.classifyOne(tok);
+    auto r = rec.feed(tok);
     REQUIRE_FALSE(r.has_value());
+}
+
+TEST_CASE("recognizer: 多 Expression 连续识别（--a 1 --b 2）", "[classifier]")
+{
+    ExpressionRecognizer rec;
+
+    Token tok1(Token::Type_E::LongName, "a", 0);
+    auto r1 = rec.feed(tok1);
+    REQUIRE_FALSE(r1.has_value());  // 挂起
+
+    Token tok2(Token::Type_E::Variable, "1", 0);
+    auto r2 = rec.feed(tok2);
+    REQUIRE(r2.has_value());
+    REQUIRE(r2->name == "a");
+    REQUIRE(r2->value == "1");
+
+    Token tok3(Token::Type_E::LongName, "b", 0);
+    auto r3 = rec.feed(tok3);
+    REQUIRE_FALSE(r3.has_value());  // 挂起
+
+    Token tok4(Token::Type_E::Variable, "2", 0);
+    auto r4 = rec.feed(tok4);
+    REQUIRE(r4.has_value());
+    REQUIRE(r4->name == "b");
+    REQUIRE(r4->value == "2");
 }

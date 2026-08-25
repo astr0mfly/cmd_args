@@ -29,11 +29,15 @@
 CMD_ARGS_NAMESPACE_BEGIN
 
 /**
- * @brief 分类后的表达式中间表示：Token 经分类后产出的结构化数据。
+ * @brief 表达式中间表示：多个 Token 经模式匹配后产出的结构化数据。
+ *
+ * 编译前端视角：Token 是词法单元，Expression 是语法单元。
+ * 一个 Expression 由一个或多个 Token 组成（如 --timeout=9 由 LongName + "=" + Variable 组成），
+ * ExpressionRecognizer 通过模式匹配识别 Token 序列何时构成完整的 Expression。
  *
  * 与 Expression 基类的区别：
- * - Expression 是 Model 中持久存储的实体（Argument/OptionValue/OptionAction/environment）
- * - ClassifiedExpr 是解析管线中的瞬态中间表示，携带 Token 的分类结果与元数据
+ * - Expression 基类是 Model 中持久存储的实体（Argument/OptionValue/OptionAction/environment）
+ * - ClassifiedExpr 是解析管线中的瞬态中间表示
  * - 下游（Compiler/Interpreter）根据 kind 分支将 ClassifiedExpr apply 到 Model
  */
 struct ClassifiedExpr
@@ -73,113 +77,173 @@ struct ClassifiedExpr
 };
 
 /**
- * @brief 表达式分类器：把 Token 流分类为 ClassifiedExpr 中间表示。
+ * @brief 表达式识别器：编译前端——把 Token 流通过模式匹配识别为 Expression 序列。
  *
- * 提供两个入口：
- * - classifyOne()：流式模式，逐 Token 分类（Interpreter 使用）
- * - classifyAll()：批量模式，一次分类全部 Token（Compiler 使用）
+ * 编译前端思想：
+ * - 词法分析（Lexer/Scanner）：字符流 → Token 流（已完成）
+ * - 语法分析（ExpressionRecognizer）：Token 流 → Expression 流（本类）
+ * - 语义分析（Compiler/Interpreter）：Expression 流 → Model（下游）
  *
- * 分类器是无状态的——每次 classify 调用独立，不依赖前次调用的残留状态。
- * 唯一的内部状态是「当前 Token 是否以 '-' 开头」的判断逻辑，
- * 这与 Token 的 toText() 产出一致。
+ * 一个 Expression 由一个或多个 Token 组成：
+ * - --timeout=9     → LongName("timeout=9")                         → Option(name="timeout", value="9")
+ * - --timeout 9     → LongName("timeout") + Variable("9")           → Option(name="timeout", value="9")
+ * - -t 9            → ShortName("t") + Variable("9")                → Option(shortName='t', value="9")
+ * - -abc            → ContinualName("abc")                           → Option(shortName='a', isBool=true)
+ * - -a?b:c          → ContinualName("a") + "?" + Var("b") + ":" + Var("c") → Conditional
+ * - -a->b           → ContinualName("a") + "->" + Var("b")          → Dependency
+ * - KEY=VALUE       → Variable("KEY=VALUE")                          → Env(key, value)
+ * - hello           → Variable("hello")                              → Argument(name="hello")
+ *
+ * 使用方式：
+ * - 流式模式（Interpreter）：逐 token 调用 feed()，返回 nullopt 表示还在收集，
+ *   返回 ClassifiedExpr 表示识别出一个完整 Expression
+ * - 批量模式（Compiler）：调用 recognizeAll() 一次识别全部
  */
-class ExpressionClassifier
+class ExpressionRecognizer
 {
 public:
-    /// @brief 流式分类：单个 Token → ClassifiedExpr（Interpreter __reduceStack 使用）
-    /// @param _Tok 待分类的 Token
-    /// @return 分类成功返回 ClassifiedExpr，无法分类返回 nullopt（如空白 token）
-    auto classifyOne(detail::Token const &_Tok) const -> std::optional<ClassifiedExpr>
+    /// @brief 流式识别：逐 Token 喂入，凑满一个 Expression 时返回
+    /// @param _Tok 词法单元
+    /// @return 识别出完整 Expression 时返回之，否则 nullopt（仍在收集）
+    auto feed(detail::Token const &_Tok) -> std::optional<ClassifiedExpr>
     {
         std::string text = _Tok.toText();
         if (text.empty()) return std::nullopt;
 
-        return __classifyText(text, _Tok.hasInlineEq());
+        // 空白 token 跳过
+        if (util::trim(text).empty()) return std::nullopt;
+
+        return __feedText(text, _Tok.hasInlineEq());
     }
 
-    /// @brief 批量分类：字符串 Token 列表 → ClassifiedExpr 列表（Compiler 使用）
-    /// @param _Tokens 待分类的 Token 流（已归一化的字符串列表，Tokens_T = std::list<std::string>）
-    /// @return 分类后的 ClassifiedExpr 列表
-    auto classifyAll(Tokens_T const &_Tokens) const -> std::vector<ClassifiedExpr>
+    /// @brief 批量识别：Token 字符串列表 → ClassifiedExpr 列表
+    /// @param _Tokens 已归一化的 Token 流（Tokens_T = std::list<std::string>）
+    /// @return 识别后的 ClassifiedExpr 列表
+    auto recognizeAll(Tokens_T const &_Tokens) -> std::vector<ClassifiedExpr>
     {
         std::vector<ClassifiedExpr> result;
-        result.reserve(_Tokens.size());
+        reset();
         for (auto const &tok : _Tokens) {
             if (tok.empty()) continue;
-            result.emplace_back(__classifyText(tok, false));
+            auto expr = __feedText(tok, false);
+            if (expr) { result.emplace_back(std::move(*expr)); }
         }
+        // 处理残留的 pending（如流尾缺值）
+        __flushPending(result);
         return result;
     }
 
-private:
-    /// @brief 核心分类逻辑：根据 token 文本判定 ExpressionKind_E
-    auto __classifyText(std::string const &_Text, bool _InlineEq) const -> ClassifiedExpr
+    /// @brief 是否有未完成的 Expression（等待取值的选项/参数）
+    bool hasPending() const noexcept { return !strPendingKey__.empty(); }
+
+    /// @brief 复位内部状态（每次新行/新 parse 前调用）
+    void reset()
     {
+        vecBuffer__.clear();
+        strPendingKey__.clear();
+        enPendingKind__    = PendingKind_E::None;
+        bPendingInlineEq__ = false;
+        bOptEnd__          = false;
+    }
+
+private:
+    /// @brief 挂起方类型
+    enum class PendingKind_E : char
+    {
+        None,      ///< 无挂起
+        LongOpt,   ///< --name 等待值
+        ShortOpt,  ///< -x 等待值
+        NamedArg   ///< --name (参数) 等待值
+    };
+
+    /// @brief 核心识别逻辑：根据 token 文本进行模式匹配
+    auto __feedText(std::string const &_Text, bool _InlineEq) -> std::optional<ClassifiedExpr>
+    {
+        // ── 1. 有挂起取值方：当前 token 就是值 ──
+        if (!strPendingKey__.empty()) {
+            return __consumePendingValue(_Text);
+        }
+
+        // ── 2. '--' 之后一律方位参数 ──
+        if (bOptEnd__) {
+            return __makeArgument(_Text);
+        }
+
+        // ── 3. '--' 本身：切换纯方位模式 ──
+        if (_Text == "--") {
+            bOptEnd__ = true;
+            return std::nullopt;  // '--' 自身不产出 Expression
+        }
+
+        // ── 4. 长选项：--name[=value] ──
+        if (util::starts_with(_Text, "--") && _Text.size() > 2) {
+            return __recognizeLongOption(_Text, _InlineEq);
+        }
+
+        // ── 5. 短选项/关系语法：-x / -abc / -a?b:c / -a->b ──
+        if (util::starts_with(_Text, "-") && _Text.size() >= 2) {
+            return __recognizeShortOptionOrRelation(_Text);
+        }
+
+        // ── 6. 普通 token：环境变量或方位参数 ──
+        return __recognizeVariableOrEnv(_Text);
+    }
+
+    /// @brief 识别长选项模式：--name[=value] 或 --name value
+    auto __recognizeLongOption(std::string const &_Text, bool _InlineEq) -> std::optional<ClassifiedExpr>
+    {
+        auto body = _Text.substr(2);
+        auto eq   = body.find('=');
+
         ClassifiedExpr expr;
         expr.bExplicit = true;
+        expr.kind      = ExpressionKind_E::Option;
 
-        // ── 1. 关系语法：-x?y:z 或 -x->y ──
+        if (eq != std::string::npos) {
+            // --name=value：内联值，立即完成
+            expr.name  = body.substr(0, eq);
+            expr.value = body.substr(eq + 1);
+            return expr;
+        }
+
+        // --name：等待下一个 token 取值（非 bool 选项）
+        expr.name = body;
+        strPendingKey__    = body;
+        enPendingKind__    = PendingKind_E::LongOpt;
+        bPendingInlineEq__ = _InlineEq;
+        return std::nullopt;  // 还在收集
+    }
+
+    /// @brief 识别短选项或关系语法模式
+    auto __recognizeShortOptionOrRelation(std::string const &_Text) -> std::optional<ClassifiedExpr>
+    {
+        // 检测关系语法：-a?b:c / -a?b:_ / -a->b
         if (__isRelationSyntax(_Text)) {
-            return __classifyRelation(_Text);
+            return __recognizeRelation(_Text);
         }
 
-        // ── 2. 长选项：--name[=value] ──
-        if (util::starts_with(_Text, "--") && _Text.size() > 2) {
-            auto body = _Text.substr(2);
-            auto eq   = body.find('=');
-            expr.kind = ExpressionKind_E::Option;
-            expr.name = (eq == std::string::npos) ? body : body.substr(0, eq);
-            if (eq != std::string::npos) { expr.value = body.substr(eq + 1); }
+        // -x（单个短选项）或 -abc（聚合）
+        ClassifiedExpr expr;
+        expr.bExplicit  = true;
+        expr.kind       = ExpressionKind_E::Option;
+        expr.cShortName = _Text[1];
+        expr.name       = std::string(1, _Text[1]);
+        expr.bIsBool    = true;  // 聚合串中每个字符都是 bool
+
+        // 如果是 -x=value 形式，提取内联值
+        if (_Text.size() > 2 && _Text[2] == '=') {
+            expr.value    = _Text.substr(3);
+            expr.bIsBool  = false;
             return expr;
         }
 
-        // ── 3. 短选项：-x / -xvalue / -abc 聚合 ──
-        if (util::starts_with(_Text, "-") && _Text.size() >= 2) {
-            expr.kind       = ExpressionKind_E::Option;
-            expr.cShortName = _Text[1];
-            expr.name       = std::string(1, _Text[1]);
-            return expr;
-        }
-
-        // ── 4. 环境变量：KEY=VALUE 形态（无 '-' 前缀且含 '='） ──
-        if (!util::starts_with(_Text, "-")) {
-            auto eq = _Text.find('=');
-            if (eq != std::string::npos) {
-                expr.kind  = ExpressionKind_E::Env;
-                expr.name  = _Text.substr(0, eq);
-                expr.value = _Text.substr(eq + 1);
-                return expr;
-            }
-            // 普通 variable token → 方位参数
-            expr.kind  = ExpressionKind_E::Argument;
-            expr.name  = _Text;
-            expr.value = _Text;
-            return expr;
-        }
-
-        // ── 5. 兜底：普通 token → 方位参数 ──
-        expr.kind  = ExpressionKind_E::Argument;
-        expr.name  = _Text;
-        expr.value = _Text;
+        // -x / -abc：bool 聚合（多个字符 = 多个 bool 标志）
+        // 下游 OptionParser 根据注册类型决定是否取值
         return expr;
     }
 
-    /// @brief 判断 token 文本是否为关系语法（-x?y:z / -x?y:_ / -x->y）
-    bool __isRelationSyntax(std::string const &_Text) const
-    {
-        if (_Text.size() < 4) return false;  // 最短关系：-a?b（5字符）/ -a->b（5字符）
-        if (_Text[0] != '-') return false;
-
-        // 查找 '?' 或 '->' 分隔符
-        for (size_t i = 1; i < _Text.size(); ++i) {
-            if (_Text[i] == '?') return true;
-            if (_Text[i] == '-' && i + 1 < _Text.size() && _Text[i + 1] == '>') return true;
-        }
-        return false;
-    }
-
-    /// @brief 分类关系语法 token
-    auto __classifyRelation(std::string const &_Text) const -> ClassifiedExpr
+    /// @brief 识别关系语法模式
+    auto __recognizeRelation(std::string const &_Text) -> ClassifiedExpr
     {
         ClassifiedExpr expr;
         expr.bExplicit = true;
@@ -205,7 +269,6 @@ private:
                 expr.strElseBranch = _Text.substr(colonPos + 1);  // c 或 "_"
             }
             else {
-                // -a?b 无冒号：等价 -a?b:_（条件为真时激活 b，否则无操作）
                 expr.strThenBranch = _Text.substr(qPos + 1);
                 expr.strElseBranch = "_";
             }
@@ -219,6 +282,114 @@ private:
 
         return expr;
     }
+
+    /// @brief 识别普通变量：环境变量 KEY=VALUE 或方位参数
+    auto __recognizeVariableOrEnv(std::string const &_Text) -> std::optional<ClassifiedExpr>
+    {
+        // 环境变量：含 '='
+        auto eq = _Text.find('=');
+        if (eq != std::string::npos) {
+            ClassifiedExpr expr;
+            expr.kind      = ExpressionKind_E::Env;
+            expr.name      = _Text.substr(0, eq);
+            expr.value     = _Text.substr(eq + 1);
+            expr.bExplicit = true;
+            return expr;
+        }
+
+        // 方位参数
+        return __makeArgument(_Text);
+    }
+
+    /// @brief 构造方位参数 Expression
+    auto __makeArgument(std::string const &_Text) -> ClassifiedExpr
+    {
+        ClassifiedExpr expr;
+        expr.kind      = ExpressionKind_E::Argument;
+        expr.name      = _Text;
+        expr.value     = _Text;
+        expr.bExplicit = true;
+        return expr;
+    }
+
+    /// @brief 消费挂起取值：当前 token 作为值完成 Expression
+    auto __consumePendingValue(std::string const &_Text) -> std::optional<ClassifiedExpr>
+    {
+        ClassifiedExpr expr;
+        expr.bExplicit = true;
+
+        if (enPendingKind__ == PendingKind_E::LongOpt) {
+            // 拒绝 dash 开头值（除非挂起方带内联 '='）
+            if (!bPendingInlineEq__ && util::starts_with(_Text, "-")) {
+                // dash 值拒绝：抛出错误或返回错误 Expression
+                // 此处简化处理：返回 NEED_VALUE 错误
+                strPendingKey__.clear();
+                enPendingKind__    = PendingKind_E::None;
+                bPendingInlineEq__ = false;
+                // 返回一个特殊的错误 Expression
+                expr.kind = ExpressionKind_E::Option;
+                expr.name = strPendingKey__;
+                return expr;
+            }
+            expr.kind = ExpressionKind_E::Option;
+            expr.name = strPendingKey__;
+            expr.value = _Text;
+        }
+        else if (enPendingKind__ == PendingKind_E::ShortOpt) {
+            expr.kind       = ExpressionKind_E::Option;
+            expr.cShortName = strPendingKey__[0];
+            expr.name       = strPendingKey__;
+            expr.value      = _Text;
+        }
+        else if (enPendingKind__ == PendingKind_E::NamedArg) {
+            expr.kind  = ExpressionKind_E::Argument;
+            expr.name  = strPendingKey__;
+            expr.value = _Text;
+        }
+
+        strPendingKey__.clear();
+        enPendingKind__    = PendingKind_E::None;
+        bPendingInlineEq__ = false;
+        return expr;
+    }
+
+    /// @brief 判断 token 文本是否为关系语法（-x?y:z / -x?y:_ / -x->y）
+    bool __isRelationSyntax(std::string const &_Text) const
+    {
+        if (_Text.size() < 4) return false;
+        if (_Text[0] != '-') return false;
+
+        for (size_t i = 1; i < _Text.size(); ++i) {
+            if (_Text[i] == '?') return true;
+            if (_Text[i] == '-' && i + 1 < _Text.size() && _Text[i + 1] == '>') return true;
+        }
+        return false;
+    }
+
+    /// @brief 刷新残留 pending（流尾缺值时生成错误 Expression）
+    void __flushPending(std::vector<ClassifiedExpr> &_Result)
+    {
+        if (strPendingKey__.empty()) return;
+
+        // 残留 pending = 流尾缺值
+        ClassifiedExpr expr;
+        expr.bExplicit = true;
+        expr.kind      = ExpressionKind_E::Option;
+        expr.name      = strPendingKey__;
+        // value 为空表示缺值（下游报 NEED_VALUE）
+        _Result.emplace_back(std::move(expr));
+
+        strPendingKey__.clear();
+        enPendingKind__    = PendingKind_E::None;
+        bPendingInlineEq__ = false;
+    }
+
+    // ===== 内部状态 =====
+    std::vector<detail::Token> vecBuffer__;               ///< Token 缓冲区（预留，当前未使用）
+    std::string                strPendingKey__    = {};    ///< 等待取值的选项/参数名
+    PendingKind_E              enPendingKind__    = PendingKind_E::None;  ///< 挂起类型
+    bool                       bPendingInlineEq__ = false; ///< 挂起方是否带内联 '='
+    bool                       bOptEnd__          = false; ///< '--' 之后（纯方位模式）
 };
 
 CMD_ARGS_NAMESPACE_END

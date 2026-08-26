@@ -218,8 +218,8 @@ private:
         __parseTokensLegacy(legacy, _Env);
     }
 
-    /// @brief 分派单条 Expression 到对应 Parser
-    void __applyOne(ClassifiedExpr &_E, std::vector<std::string> &_Pos)
+    /// @brief 分派单条 Expression 到对应 Parser（右值引用，避免拷贝）
+    void __applyOne(ClassifiedExpr &&_E, std::vector<std::string> &_Pos)
     {
         switch (_E.kind) {
         case ExpressionKind_E::Option: {

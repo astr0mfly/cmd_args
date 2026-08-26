@@ -17,6 +17,7 @@
  */
 #pragma once
 
+#include <deque>
 #include <optional>
 #include <string>
 #include <vector>
@@ -182,7 +183,7 @@ private:
                 e.strRaw = "--" + strPendingKey__;
                 _Out.push_back(std::move(e));
                 __clearPending();
-                vecBuf__.erase(vecBuf__.begin());
+                vecBuf__.pop_front();
                 return true;
             }
             e.kind   = ExpressionKind_E::Option;
@@ -191,7 +192,7 @@ private:
             e.strRaw = "--" + strPendingKey__;
             _Out.push_back(std::move(e));
             __clearPending();
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             return true;
 
         case PendingKind_E::ShortOpt:
@@ -202,7 +203,7 @@ private:
             e.strRaw     = "-" + strPendingKey__;
             _Out.push_back(std::move(e));
             __clearPending();
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             return true;
 
         case PendingKind_E::NamedArg:
@@ -212,7 +213,7 @@ private:
             e.strRaw = "--" + strPendingKey__;
             _Out.push_back(std::move(e));
             __clearPending();
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             return true;
 
         default: return false;
@@ -233,7 +234,7 @@ private:
         // ── 1. '--' 切换纯方位模式 ──
         if (tokAttr == Token::Type_E::LongName && tokName.empty()) {
             bOptEnd__ = true;
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             _Progress = true;
             return true;
         }
@@ -241,7 +242,7 @@ private:
         // ── 2. bOptEnd__：一律方位参数 ──
         if (bOptEnd__) {
             _Out.push_back(__makePositional(vecBuf__[0]));
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             _Progress = true;
             return true;
         }
@@ -259,7 +260,7 @@ private:
                 e.bExplicit = true;
                 e.strRaw    = tokText;
                 _Out.push_back(std::move(e));
-                vecBuf__.erase(vecBuf__.begin());
+                vecBuf__.pop_front();
                 _Progress = true;
                 return true;
             }
@@ -274,14 +275,14 @@ private:
                     e.bExplicit = true;
                     e.strRaw    = tokText;
                     _Out.push_back(std::move(e));
-                    vecBuf__.erase(vecBuf__.begin());
+                    vecBuf__.pop_front();
                     _Progress = true;
                     return true;
                 }
                 strPendingKey__    = name;
                 enPendingKind__    = PendingKind_E::LongOpt;
                 bPendingInlineEq__ = tokInln;
-                vecBuf__.erase(vecBuf__.begin());
+                vecBuf__.pop_front();
                 _Progress = true;
                 return true;
             }
@@ -290,14 +291,14 @@ private:
             if (pArgParser__ && pArgParser__->recognizeToken(vecBuf__[0])) {
                 strPendingKey__ = name;
                 enPendingKind__ = PendingKind_E::NamedArg;
-                vecBuf__.erase(vecBuf__.begin());
+                vecBuf__.pop_front();
                 _Progress = true;
                 return true;
             }
 
             // 3d. 未识别 → dash-left
             vecDashLeft__.push_back(tokText);
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             _Progress = true;
             return true;
         }
@@ -341,11 +342,11 @@ private:
         if (enSeq__ == SeqKind_E::CondAwaitColon) {
             if (tokAttr == Token::Type_E::Variable) {
                 strSeqB__ = tokName;
-                vecBuf__.erase(vecBuf__.begin());
+                vecBuf__.pop_front();
                 if (!vecBuf__.empty() && vecBuf__[0].getAttr() == Token::Type_E::Delimiter
                     && vecBuf__[0].getName() == ":") {
                     enSeq__ = SeqKind_E::CondAwaitElse;
-                    vecBuf__.erase(vecBuf__.begin());
+                    vecBuf__.pop_front();
                 } else {
                     ClassifiedExpr e;
                     e.kind          = ExpressionKind_E::Conditional;
@@ -380,7 +381,7 @@ private:
                 e.strElseBranch = tokName;
                 e.bExplicit     = true;
                 _Out.push_back(std::move(e));
-                vecBuf__.erase(vecBuf__.begin());
+                vecBuf__.pop_front();
                 __clearSeq();
                 _Progress = true;
                 return true;
@@ -408,13 +409,13 @@ private:
 
         // ── 6. 其他 Token ──
         if (tokAttr == Token::Type_E::Delimiter && tokName == "=") {
-            vecBuf__.erase(vecBuf__.begin());
+            vecBuf__.pop_front();
             _Progress = true;
             return true;
         }
 
         _Out.push_back(__makePositional(vecBuf__[0]));
-        vecBuf__.erase(vecBuf__.begin());
+        vecBuf__.pop_front();
         _Progress = true;
         return true;
     }
@@ -444,7 +445,7 @@ private:
     }
 
     // ===== 内部状态 =====
-    std::vector<Token>       vecBuf__;
+    std::deque<Token>        vecBuf__;
     std::string              strPendingKey__    = {};
     PendingKind_E            enPendingKind__    = PendingKind_E::None;
     bool                     bPendingInlineEq__ = false;

@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 
 #include "cmd_args/base/def.h"
@@ -37,6 +38,7 @@ CMD_ARGS_NAMESPACE_BEGIN
     - parse 管线：Compiler 纯解析入库 → hasAction 门控 Executor → finalize（批量语义）
     - once()/loop()：沿用历史行为——once 以退出码退出进程；loop 委托 Interpreter 流式 REPL
     - 兼容期保留：新代码请优先使用 make_context(E_STEP / E_RUN_TIME) 注入对应派生上下文
+    - 子命令支持：支持层级子命令路由（如 git remote add）
 */
 class Context : public ContextBase
 {
@@ -113,8 +115,9 @@ protected:
         
         // 如果匹配到子命令，路由到子 Context
         if (activeSubContext_) {
-            // 剩余 token 传给子 Context
-            Tokens_T remainingToks(_Toks.begin() + consumed, _Toks.end());
+            // 剩余 token 传给子 Context（使用 std::next 因为 Tokens_T 是 std::list）
+            auto startIt = std::next(_Toks.begin(), consumed);
+            Tokens_T remainingToks(startIt, _Toks.end());
             activeSubContext_->parse(remainingToks, _Envs);
             _markParsed();
             return;
@@ -172,8 +175,9 @@ private:
         size_t consumed = 0;
 
         // 从 token 流开头扫描连续的子命令名称
-        for (size_t i = 0; i < _Toks.size(); ++i) {
-            auto const &tok = _Toks[i];
+        auto it = _Toks.begin();
+        for (size_t i = 0; i < _Toks.size(); ++i, ++it) {
+            auto const &tok = *it;
 
             // 跳过以 '-' 开头的 token（选项）
             if (tok.empty() || tok[0] == '-') {
@@ -181,7 +185,7 @@ private:
             }
 
             // 检查当前 Context 是否有这个子命令
-            auto const *factory = current->subcommandRegistry_.find(tok);
+            auto const *factory = current->subcommands().find(tok);
             if (!factory) {
                 break;
             }
@@ -193,17 +197,17 @@ private:
             activeSubcommandPath_.push_back(tok);
             
             // 设置子 Context 的程序名为父程序名 + 子命令路径
-            std::string childProgramName = current->instData_.strProgramName;
+            std::string childProgramName = current->mutableModel().strProgramName;
             for (auto const &seg : activeSubcommandPath_) {
                 childProgramName += " " + seg;
             }
-            child->instData_.strProgramName = std::move(childProgramName);
+            child->mutableModel().strProgramName = std::move(childProgramName);
 
             // 传递环境变量
-            child->instData_.envs = current->instData_.envs;
+            child->mutableModel().envs = current->mutableModel().envs;
 
             // 传递 builtin 选项设置
-            child->instData_.bBuiltinOptions = current->instData_.bBuiltinOptions;
+            child->mutableModel().bBuiltinOptions = current->mutableModel().bBuiltinOptions;
 
             // 移动到子 Context
             activeSubContext_ = std::move(child);

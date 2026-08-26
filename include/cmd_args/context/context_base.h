@@ -387,11 +387,27 @@ public:
         return !subcommandRegistry_.empty();
     }
 
+    /// @brief 获取子命令注册表（只读）
+    SubcommandRegistry const &subcommands() const noexcept
+    {
+        return subcommandRegistry_;
+    }
+
+    /// @brief 获取底层 Model 引用（可读写，供子命令路由使用）
+    Model &mutableModel() noexcept { return instData_; }
+
+    /// @brief 获取底层 Model 引用（只读，供子命令路由使用）
+    Model const &mutableModel() const noexcept { return instData_; }
+
     using Errors::dump;
     using Errors::getLast;
     using Errors::getLastMsg;
     using Errors::getLastVal;
     using Errors::isOk;
+
+public:
+    /// @brief 底层数据仓库访问器（供子命令上下文传递用）
+    auto &_instData() noexcept { return instData_; }
 
 protected:
     /// @brief 标记「已完成一次解析」（once() 门控依据）

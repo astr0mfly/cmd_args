@@ -58,6 +58,13 @@ public:
     using Tokens_T   = std::vector<Token>;
     using ScanProc_T = std::function<void(char const _Cur, Token &_T)>;
 
+    /// @brief 词法模式
+    enum class LexMode_E : char
+    {
+        CommandLine,  ///< 命令行模式（argv 输入）
+        EnvLine       ///< 环境行模式（envp 输入：支持 :: 级联与 = 断句）
+    };
+
     enum class Phrase_E
     {
         BEGIN,
@@ -72,13 +79,16 @@ public:
         IN_VARIABLE,          // 专有名词，用作子模块或者其他参数
         IN_SINGLE_DELIMITER,  // 其他分隔符
         IN_DOUBLE_DELIMITER,  // 其他分隔符
+        IN_SCOPE_COLON,       // EnvLine：已吞入一个 ':'，等待判定 '::' 或单 ':'
+        IN_ENV_VALUE,         // EnvLine：'=' 之后的值吸收态
         END                   // 解析结束
     };
     using ScanTbl_T = std::map<Phrase_E, ScanProc_T>;
     // 源按值持有：Scanner({}) 等临时源构造不再悬垂（成员引用绑定临时对象是 UB，
     // 流式 step() 逐字符触碰 source__，必须保证其生命周期覆盖整个 Scanner）
-    Scanner(Source_T _Source)
+    explicit Scanner(Source_T _Source, LexMode_E _Mode = LexMode_E::CommandLine)
         : source__(std::move(_Source))
+        , enMode__(_Mode)
     {
         if (!source__.empty()) { itPc__ = source__.front().cbegin(); }
         __initScanTable();
@@ -95,6 +105,10 @@ public:
                 continue;
             }
             tblScanInput__[enState__](*itPc__, tDefault);
+            // 状态机设 END 但未调 __processEnd：补发（避免 scan 循环重派同一字符）
+            if (enState__ == Phrase_E::END) {
+                __processEnd('\0', tDefault);
+            }
         }
         __flush(tDefault);
 
@@ -114,10 +128,10 @@ public:
             tblScanInput__[enState__](_Cur, tCur__);
             if (enState__ == Phrase_E::END) {
                 __processEnd('\0', tCur__);  // 排水当前 token，状态复位 BEGIN
-                if (_Cur != '\0' && _Cur != '=') {
+                if (_Cur != '\0' && !(enMode__ == LexMode_E::CommandLine && _Cur == '=')) {
                     // 与批量 scan() 一致：终结字符在 BEGIN 态重派，避免丢字符
-                    // （空白是无害 no-op；'=' 已由 hasInlineEq 表达，重派会产生
-                    //   Task 10 误读的赘余 Delimiter "=" token）
+                    // （空白是无害 no-op；'=' 在 CommandLine 模式已由 hasInlineEq 表达，
+                    //   EnvLine 模式下 '=' 需要正常重派产生 Delimiter token）
                     tblScanInput__[Phrase_E::BEGIN](_Cur, tCur__);
                     // BEGIN 态不会立即完成，此守卫仅作保险
                     if (enState__ == Phrase_E::END) { __processEnd('\0', tCur__); }
@@ -157,6 +171,10 @@ private:
               std::bind(&Scanner::__processSingleDelimiter, this, sp::_1, sp::_2) },
             { Phrase_E::IN_DOUBLE_DELIMITER,
               std::bind(&Scanner::__processDoubleDelimiter, this, sp::_1, sp::_2) },
+            { Phrase_E::IN_SCOPE_COLON,
+              std::bind(&Scanner::__processScopeColon, this, sp::_1, sp::_2) },
+            { Phrase_E::IN_ENV_VALUE,
+              std::bind(&Scanner::__processEnvValue, this, sp::_1, sp::_2) },
             { Phrase_E::END, std::bind(&Scanner::__processEnd, this, sp::_1, sp::_2) }
         };
     }
@@ -182,6 +200,8 @@ private:
         case Phrase_E::IN_CONTINUAL_NAME: _T.setAttr(Token::Type_E::ContinualName); break;
         case Phrase_E::IN_LONG_NAME: _T.setAttr(Token::Type_E::LongName); break;
         case Phrase_E::IN_VARIABLE: _T.setAttr(Token::Type_E::Variable); break;
+        case Phrase_E::IN_SCOPE_COLON: _T.setAttr(Token::Type_E::ScopeSep); break;
+        case Phrase_E::IN_ENV_VALUE:   _T.setAttr(Token::Type_E::String);   break;
         default: _T.setAttr(Token::Type_E::Unknown); break;
         }
 
@@ -199,6 +219,13 @@ private:
     void __processBegin(char const _Cur, Token &_T)
     {
         if (std::isspace(static_cast<unsigned char>(_Cur))) {
+            __nextChar();
+            return;
+        }
+        // EnvLine 值区：一切字符直接吸收至空白
+        if (enMode__ == LexMode_E::EnvLine && bEnvValuePos__) {
+            __setState(Phrase_E::IN_ENV_VALUE);
+            _T.pick(_Cur);
             __nextChar();
             return;
         }
@@ -363,6 +390,14 @@ private:
     }
     void __processVariable(char const _Cur, Token &_T)
     {
+        // EnvLine 模式：在 ':' 或 '=' 处断句（不吸收分隔符）
+        if (enMode__ == LexMode_E::EnvLine
+            && (_Cur == ':' || _Cur == '=')) {
+            _T.setAttr(Token::Type_E::Variable);
+            __setState(Phrase_E::END);
+            return;  // 不消费当前字符，END 后由 BEGIN 重派
+        }
+
         // 值 token：吸收到空白为止。argv 的每个元素本就按空白切分好了，
         // 值里的 . - = \ / : @ 等一律并入，避免 out.txt、C:\path、a=b 被拆碎
         if (!std::isspace(static_cast<unsigned char>(_Cur))) {
@@ -372,14 +407,16 @@ private:
             return;
         }
 
-        auto k = magic_enum::enum_cast<Token::KeyWord_E>(_T.getName());
-        if (k.has_value()) {
-            enState__ = Phrase_E::IN_KEYWORD;
+        // EnvLine 模式：不做关键字判断
+        if (enMode__ != LexMode_E::EnvLine) {
+            auto k = magic_enum::enum_cast<Token::KeyWord_E>(_T.getName());
+            if (k.has_value()) {
+                enState__ = Phrase_E::IN_KEYWORD;
+                return;
+            }
         }
-        else {
-            _T.setAttr(Token::Type_E::Variable);
-            __setState(Phrase_E::END);
-        }
+        _T.setAttr(Token::Type_E::Variable);
+        __setState(Phrase_E::END);
     }
     void __processKeyWord(char const _Cur, Token &_T)
     {
@@ -388,6 +425,12 @@ private:
     }
     void __processSingleDelimiter(char const _Cur, Token &_T)
     {
+        // EnvLine 模式：':' 后跟 ':' → ScopeSep（:: 级联分隔符）
+        if (enMode__ == LexMode_E::EnvLine && _Cur == ':') {
+            __setState(Phrase_E::IN_SCOPE_COLON);
+            return;
+        }
+
         switch (_Cur) {
         case '>':
         case '<':
@@ -400,6 +443,11 @@ private:
             return;
         }
         default: break;
+        }
+
+        // EnvLine 模式：'=' 标记后续进入值吸收区
+        if (enMode__ == LexMode_E::EnvLine && _Cur == '=') {
+            bEnvValuePos__ = true;
         }
 
         _T.setAttr(Token::Type_E::Delimiter);
@@ -423,6 +471,34 @@ private:
 
         _T.clear();
         __setState(Phrase_E::BEGIN);
+    }
+
+    /// @brief EnvLine 模式：首个 ':' 已吞入，判定是 '::'（ScopeSep）还是单 ':'（Delimiter）
+    void __processScopeColon(char const _Cur, Token &_T)
+    {
+        if (_Cur == ':') {
+            _T.pick(_Cur);                    // 补第二个 ':'
+            _T.setAttr(Token::Type_E::ScopeSep);
+            __nextChar();
+            __setState(Phrase_E::END);
+            return;
+        }
+        // 单 ':'：终结为 Delimiter，消费当前字符后直接 emit（避免 scan 循环重派）
+        _T.setAttr(Token::Type_E::Delimiter);
+        __nextChar();
+        __processEnd('\0', _T);
+    }
+
+    /// @brief EnvLine 模式：'=' 之后的值吸收态（吸收至空白/EOL）
+    void __processEnvValue(char const _Cur, Token &_T)
+    {
+        if (std::isspace(static_cast<unsigned char>(_Cur))) {
+            _T.setAttr(Token::Type_E::String);  // 值统一标记为 String
+            __setState(Phrase_E::END);
+            return;
+        }
+        _T.pick(_Cur);
+        __nextChar();
     }
 
     inline void __setState(Phrase_E _State) noexcept { enState__ = _State; }
@@ -452,6 +528,8 @@ private:
     Tokens_T        tResult__;
     Token           tCur__;  ///< 流式模式当前处理中的 token（scan() 使用局部变量，不经此成员）
     ScanTbl_T       tblScanInput__;  // 状态分派表（成员，各自绑定本实例 this）
+    LexMode_E       enMode__       = LexMode_E::CommandLine;  ///< 词法模式
+    bool            bEnvValuePos__ = false;  ///< EnvLine 模式：当前处于 '=' 右侧值区
 };
 
 class Lexer

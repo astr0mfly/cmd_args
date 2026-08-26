@@ -185,3 +185,61 @@ TEST_CASE("lexer: 关系语法与普通选项混合", "[lexer]")
     ++it;
     REQUIRE(*it == "hello");
 }
+
+/* ==================== Scanner Env 行模式 ==================== */
+
+TEST_CASE("lexer: scanEnvLine(A::B::C=D) 产出 ScopeSep", "[lexer][envscope]")
+{
+    using cmd_args::detail::Scanner;
+    using cmd_args::detail::Source_T;
+    using cmd_args::detail::Token;
+
+    Source_T src{ "A::B::C=D" };
+    Scanner sc(src, Scanner::LexMode_E::EnvLine);
+    auto toks = sc.scan();
+    REQUIRE(toks.size() == 7);
+    REQUIRE(toks[0].getAttr() == Token::Type_E::Variable);   REQUIRE(toks[0].getName() == "A");
+    REQUIRE(toks[1].getAttr() == Token::Type_E::ScopeSep);   REQUIRE(toks[1].getName() == "::");
+    REQUIRE(toks[2].getAttr() == Token::Type_E::Variable);   REQUIRE(toks[2].getName() == "B");
+    REQUIRE(toks[3].getAttr() == Token::Type_E::ScopeSep);   REQUIRE(toks[3].getName() == "::");
+    REQUIRE(toks[4].getAttr() == Token::Type_E::Variable);   REQUIRE(toks[4].getName() == "C");
+    REQUIRE(toks[5].getAttr() == Token::Type_E::Delimiter);  REQUIRE(toks[5].getName() == "=");
+    REQUIRE(toks[6].getAttr() == Token::Type_E::String);     REQUIRE(toks[6].getName() == "D");
+}
+
+TEST_CASE("lexer: scanEnvLine 单 ':' 产出 Delimiter", "[lexer][envscope]")
+{
+    using cmd_args::detail::Scanner;
+    using cmd_args::detail::Source_T;
+    Source_T src{ "KEY:value" };
+    Scanner sc(src, Scanner::LexMode_E::EnvLine);
+    auto toks = sc.scan();
+    REQUIRE(toks.size() == 3);
+    REQUIRE(toks[1].getName() == ":");
+}
+
+TEST_CASE("lexer: scanEnvLine 值为空 (KEY=)", "[lexer][envscope]")
+{
+    using cmd_args::detail::Scanner;
+    using cmd_args::detail::Source_T;
+    Source_T src{ "KEY=" };
+    Scanner sc(src, Scanner::LexMode_E::EnvLine);
+    auto toks = sc.scan();
+    REQUIRE(toks.size() == 2);
+    REQUIRE(toks[0].getName() == "KEY");
+    REQUIRE(toks[1].getName() == "=");
+}
+
+TEST_CASE("lexer: scanEnvLine 值含路径分隔符 (VAL=/usr/bin)", "[lexer][envscope]")
+{
+    using cmd_args::detail::Scanner;
+    using cmd_args::detail::Source_T;
+    Source_T src{ "PATH=/usr/bin" };
+    Scanner sc(src, Scanner::LexMode_E::EnvLine);
+    auto toks = sc.scan();
+    // 值含 '/' 应被完整吸收为一个 token
+    REQUIRE(toks.size() == 3);
+    REQUIRE(toks[0].getName() == "PATH");
+    REQUIRE(toks[1].getName() == "=");
+    REQUIRE(toks[2].getName() == "/usr/bin");
+}

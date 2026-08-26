@@ -1,2 +1,6 @@
 includes("once")
 includes("config")
+includes("chain")
+includes("declare")
+includes("group")
+includes("deduce")

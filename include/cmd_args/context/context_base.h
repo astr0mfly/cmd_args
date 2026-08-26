@@ -106,13 +106,13 @@ public:
     template <typename... Args_T>
     ContextBase &group(Name_T _GroupName, Args_T &&..._Args)
     {
-        // 1. 注册选项到 Model
-        Builder(&instData_).declare(std::forward<Args_T>(_Args)...);
-        // 2. 记录分组关系
+        // 1. 先提取分组成员名（在 declare 移动之前）
         OptionGroup grp;
         grp.name = std::move(_GroupName);
         _collectGroupMembers(grp, std::forward<Args_T>(_Args)...);
         instData_.groups_.push_back(std::move(grp));
+        // 2. 再注册选项到 Model
+        Builder(&instData_).declare(std::forward<Args_T>(_Args)...);
         return *this;
     }
 

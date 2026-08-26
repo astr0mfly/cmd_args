@@ -162,4 +162,28 @@ TEST_CASE("recognizer: 流尾 pending 缺值产出 valueless Expression", "[clas
     REQUIRE(out[0].value.empty());
 }
 
+TEST_CASE("recognizer: aggregate -abc 后跟 positional 走快速路径", "[classifier]")
+{
+    Model model;
+    OptionBuilder ob(&model.opts);
+    ob.addFlag('a', "ena", "a");
+    ob.addFlag('b', "enb", "b");
+    OptionParser op(&model.opts);
+    ArgumentParser ap(&model.args);
+    EnvParser ep(&model.envs);
+    ExpressionRecognizer rec(&op, &ap, &ep);
+
+    TokenStream_T toks{
+        Token(Token::Type_E::ContinualName, "ab", 0),
+        Token(Token::Type_E::Variable, "val", 0),
+        Token(Token::Type_E::Variable, "extra", 0)
+    };
+    auto exprs = rec.recognizeAll(toks);
+    REQUIRE(exprs.size() == 2);
+    REQUIRE(exprs[0].kind == ExpressionKind_E::Option);
+    REQUIRE(exprs[0].cShortName == 'a');
+    REQUIRE(exprs[1].bPositional);
+    REQUIRE(exprs[1].name == "val");
+}
+
 

@@ -305,6 +305,22 @@ private:
 
         // ── 4. 关系序列组装 ──
         if (enSeq__ == SeqKind_E::HeadStash) {
+            // 快速路径：vecBuf__ 有两个 token 且第二个不可能是关系尾
+            if (vecBuf__.size() > 1) {
+                auto const nextAttr = vecBuf__[1].getAttr();
+                if (nextAttr == Token::Type_E::Variable
+                    || nextAttr == Token::Type_E::Integer
+                    || nextAttr == Token::Type_E::String
+                    || nextAttr == Token::Type_E::Real) {
+                    // 不可能是关系尾（'?' 是 Delimiter，'>' 是 ContinualName 前缀）
+                    // 直接 emit aggregate，跳过 HeadStash 等待
+                    _Out.push_back(__makeAggregateCandidate(vecBuf__.front()));
+                    vecBuf__.pop_front();
+                    __clearSeq();
+                    _Progress = true;
+                    return true;
+                }
+            }
             // vecBuf__[0]=head, vecBuf__[1]=current — check vecBuf__[1] for disambiguation
             if (vecBuf__.size() > 1
                 && vecBuf__[1].getAttr() == Token::Type_E::Delimiter

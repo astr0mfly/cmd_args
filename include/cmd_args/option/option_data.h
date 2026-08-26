@@ -38,7 +38,7 @@ namespace option_detail {
 struct OptMgrItf
 {
     virtual Option const *doGet(char _Key) const noexcept        = 0;
-    virtual Option const *doGet(std::string _Key) const noexcept = 0;
+    virtual Option const *doGet(Name_T _Key) const noexcept = 0;
 };
 
 /**
@@ -61,7 +61,7 @@ public:
     }
 
     /// @brief 按长名查询（只读，未找到返回 nullptr）
-    Option const *doGet(std::string _Key) const noexcept override
+    Option const *doGet(Name_T _Key) const noexcept override
     {
         auto it = std::find_if(
             vecValues__.cbegin(),
@@ -78,7 +78,8 @@ public:
     /// @param _Help 帮助文本
     /// @param _Type 类型标识
     /// @param _Value 默认值
-    void push(char _SName, std::string _LName, std::string _Help, std::string _Type, std::string _Value)
+    void push(Option::NameShort_T _SName, Option::NameLong_T _LName, Option::Desc_T _Help,
+              OptionValue::Type_T _Type, OptionValue::Value_T _Value)
     {
         vecValues__.emplace_back(
             _SName, std::move(_LName), std::move(_Help), std::move(_Type), std::move(_Value));
@@ -89,7 +90,8 @@ public:
     /// @param _Help 帮助文本
     /// @param _Type 类型标识
     /// @param _Value 默认值
-    void push(std::string _LName, std::string _Help, std::string _Type, std::string _Value)
+    void push(Option::NameLong_T _LName, Option::Desc_T _Help,
+              OptionValue::Type_T _Type, OptionValue::Value_T _Value)
     {
         vecValues__.emplace_back(std::move(_LName), std::move(_Help), std::move(_Type), std::move(_Value));
     }
@@ -106,7 +108,7 @@ public:
     }
 
     /// @brief 按长名查找（只读，未找到返回 nullptr）
-    auto find(std::string _Key) const -> OptionValue const *
+    auto find(Name_T _Key) const -> OptionValue const *
     {
         for (auto const &v : vecValues__) {
             if (v.strLongName == _Key) return std::addressof(v);
@@ -127,7 +129,7 @@ public:
     }
 
     /// @brief 按长名查找（可变：解析期写入 strValue / 标记 bExplicit__ / 触发 fnOnSet__）
-    auto mutFind(std::string _Key) -> OptionValue *
+    auto mutFind(Name_T _Key) -> OptionValue *
     {
         for (auto &v : vecValues__) {
             if (v.strLongName == _Key) return std::addressof(v);
@@ -136,14 +138,18 @@ public:
         return nullptr;
     }
 
+    using FnValueVisitor_T    = std::function<void(OptionValue &)>;
+    using FnValueVisitorC_T   = std::function<void(OptionValue const &)>;
+    using ShortIndexMap_T     = std::map<char, Option::NameLong_T>;
+
     /// @brief 遍历值选项（可变）
-    void forEachValue(std::function<void(OptionValue &)> const &_Fn)
+    void forEachValue(FnValueVisitor_T const &_Fn)
     {
         for (auto &v : vecValues__) { _Fn(v); }
     }
 
     /// @brief 遍历值选项（只读）
-    void forEachValue(std::function<void(OptionValue const &)> const &_Fn) const
+    void forEachValue(FnValueVisitorC_T const &_Fn) const
     {
         for (auto const &v : vecValues__) { _Fn(v); }
     }
@@ -207,7 +213,7 @@ public:
     }
 
     /// @brief 按长名查询（只读，未找到返回 nullptr）
-    Option const *doGet(std::string _Key) const noexcept override
+    Option const *doGet(Name_T _Key) const noexcept override
     {
         auto it = std::find_if(
             vecActions__.cbegin(),
@@ -218,20 +224,23 @@ public:
         return std::addressof(*it);
     }
 
+    using FnActionVisitorC_T = std::function<void(OptionAction const &)>;
+
     /// @brief 追加短回路选项（含短名）
-    void push(char _SName, std::string _LName, std::string _Help, std::function<void(void)> _Cb)
+    void push(Option::NameShort_T _SName, Option::NameLong_T _LName, Option::Desc_T _Help,
+              OptionAction::FnCallback_T _Cb)
     {
         vecActions__.emplace_back(_SName, std::move(_LName), std::move(_Help), std::move(_Cb));
     }
 
     /// @brief 追加短回路选项（仅长名）
-    void push(std::string _LName, std::string _Help, std::function<void(void)> _Cb)
+    void push(Option::NameLong_T _LName, Option::Desc_T _Help, OptionAction::FnCallback_T _Cb)
     {
         vecActions__.emplace_back(std::move(_LName), std::move(_Help), std::move(_Cb));
     }
 
     /// @brief 遍历短回路选项（只读）
-    void forEachAction(std::function<void(OptionAction const &)> const &_Fn) const
+    void forEachAction(FnActionVisitorC_T const &_Fn) const
     {
         for (auto const &v : vecActions__) { _Fn(v); }
     }
@@ -277,19 +286,21 @@ private:
 /// @brief 选项数据仓库：短回路选项 + 值选项 + 短名索引
 struct OptionData
 {
+    using ActionOrder_T = std::vector<Name_T>;  ///< 含 action 的选项解析顺序类型
+
     ActionOptMgr mgrActions;              ///< 短回路选项管理器（命中即停，如 -?/--help）
     ValueOptMgr  mgrValues;               ///< 值选项/标志管理器（--long value / -x）
-    std::map<char, std::string> mapShortNameIndex;  ///< 短名 → 长名 索引（预留）
+    ValueOptMgr::ShortIndexMap_T mapShortNameIndex;  ///< 短名 → 长名 索引（预留）
 
     /// @brief 记录含 action 的选项解析顺序（供 Executor 按序执行）
-    void recordParseOrder(std::string const &_Key)
+    void recordParseOrder(Name_T const &_Key)
     {
         for (auto const &k : actionOrder__) { if (k == _Key) return; }
         actionOrder__.push_back(_Key);
     }
 
     /// @brief 获取解析顺序
-    auto actionOrder() const -> std::vector<std::string> const & { return actionOrder__; }
+    auto actionOrder() const -> ActionOrder_T const & { return actionOrder__; }
 
     /// @brief 清空解析顺序（每次解析前调用）
     void clearParseOrder() { actionOrder__.clear(); }
@@ -301,7 +312,7 @@ struct OptionData
     }
 
     /// @brief 选项部分的使用行片段：[-? | --help] [-x | --timeout <int>]
-    auto usageString() const -> std::string
+    auto usageString() const -> OptionValue::Value_T
     {
         std::ostringstream oss;
         mgrActions.forEachAction([&](OptionAction const &_A) {
@@ -337,7 +348,7 @@ struct OptionData
     }
 
 private:
-    std::vector<std::string> actionOrder__;  ///< 含 action 的选项解析顺序（Executor 按序执行）
+    ActionOrder_T actionOrder__;  ///< 含 action 的选项解析顺序（Executor 按序执行）
 };
 
 }  // namespace option_detail

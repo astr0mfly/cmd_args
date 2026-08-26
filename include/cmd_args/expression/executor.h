@@ -26,7 +26,7 @@
 #include "cmd_args/option/option.h"
 #include "cmd_args/option/option_data.h"
 
-#include "model.h"
+#include "cmd_args/context/model.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 

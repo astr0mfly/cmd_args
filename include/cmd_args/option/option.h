@@ -25,7 +25,7 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
-#include "cmd_args/context/expression.h"
+#include "cmd_args/expression/expression.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -71,10 +71,12 @@ struct Option : public Expression
  */
 struct OptionValue : Option
 {
-    using Self_T    = OptionValue;
-    using Type_T    = std::string;
-    using Value_T   = std::string;
-    using NameEnv_T = std::string;
+    using Self_T      = OptionValue;
+    using Type_T      = std::string;
+    using Value_T     = std::string;
+    using NameEnv_T   = std::string;
+    using FnOnSet_T   = std::function<void(Value_T const &)>;
+    using ActionCmd_T = std::string;
 
     // ===== 公开取值 =====
     Type_T          strType;   ///< 类型标识（"bool" / "int" / "double" / "std::string"）
@@ -88,8 +90,8 @@ struct OptionValue : Option
 
     // ===== 构造期默认与钩子 =====
     Value_T     strDefault__;      ///< 构造时的内置默认值（loop reset 还原用）
-    mutable std::function<void(std::string const &)> fnOnSet__;  ///< 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
-    std::string strActionTemplate__;  ///< 绑定的系统调用命令模板（action）：解析时该选项被显式命中后立即执行，模板中的 {value} 占位符替换为该选项本次命中的值；空串表示未绑定
+    mutable FnOnSet_T fnOnSet__;  ///< 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
+    ActionCmd_T strActionTemplate__;  ///< 绑定的系统调用命令模板（action）：解析时该选项被显式命中后立即执行，模板中的 {value} 占位符替换为该选项本次命中的值；空串表示未绑定
 
     /// @brief 构造值选项（含短名）
     /// @param _SName 短名（'\0' 表示无短名）
@@ -128,7 +130,7 @@ struct OptionValue : Option
     /// @brief 绑定自定义赋值回调（--env-set 等内置交互选项）
     /// @param _Fn 命令行赋值成功后回调
     /// @return OptionValue& 支持链式调用
-    auto onSet(std::function<void(std::string const &)> _Fn) -> Self_T &
+    auto onSet(FnOnSet_T _Fn) -> Self_T &
     {
         fnOnSet__ = std::move(_Fn);
         return *this;
@@ -141,7 +143,7 @@ struct OptionValue : Option
      * @note 仅在 CLI 显式命中时触发（环境变量兜底 / YAML 外部赋值 / 内置默认均不触发）
      * @note 同一选项多次命中则每次执行；std::system 返回非 0 时打印告警，不中断解析
      */
-    auto action(std::string _CmdTemplate) -> Self_T &
+    auto action(ActionCmd_T _CmdTemplate) -> Self_T &
     {
         strActionTemplate__ = std::move(_CmdTemplate);
         return *this;
@@ -150,7 +152,7 @@ struct OptionValue : Option
     /// @brief 外部赋值（来自配置文件 YAML）：写入值并标记 bExternal__
     /// @param _V 配置值
     /// @return OptionValue& 支持链式调用
-    auto setExternal(std::string const &_V) -> Self_T &
+    auto setExternal(Value_T const &_V) -> Self_T &
     {
         strValue    = _V;
         bExternal__ = true;
@@ -160,7 +162,7 @@ struct OptionValue : Option
     /// @brief 外部赋值（右值版本，支持移动语义）
     /// @param _V 配置值（会被移动）
     /// @return OptionValue& 支持链式调用
-    auto setExternal(std::string &&_V) -> Self_T &
+    auto setExternal(Value_T &&_V) -> Self_T &
     {
         strValue    = std::move(_V);
         bExternal__ = true;
@@ -185,14 +187,16 @@ struct OptionValue : Option
  */
 struct OptionAction : Option
 {
-    std::function<void(void)> fnCallback;  ///< 命中时立即执行的回调
+    using FnCallback_T = std::function<void(void)>;
+
+    FnCallback_T fnCallback;  ///< 命中时立即执行的回调
 
     /// @brief 构造短回路选项（含短名）
     /// @param _SName 短名（'\0' 表示无短名）
     /// @param _LName 长名
     /// @param _Help 帮助文本
     /// @param _Cb 命中回调
-    OptionAction(Option::NameShort_T _SName, Option::NameLong_T _LName, Option::Desc_T _Help, std::function<void(void)> _Cb)
+    OptionAction(Option::NameShort_T _SName, Option::NameLong_T _LName, Option::Desc_T _Help, FnCallback_T _Cb)
         : Option(_SName, std::move(_LName), std::move(_Help))
         , fnCallback(std::move(_Cb))
     {}
@@ -201,7 +205,7 @@ struct OptionAction : Option
     /// @param _LName 长名
     /// @param _Help 帮助文本
     /// @param _Cb 命中回调
-    OptionAction(Option::NameLong_T _LName, Option::Desc_T _Help, std::function<void(void)> _Cb)
+    OptionAction(Option::NameLong_T _LName, Option::Desc_T _Help, FnCallback_T _Cb)
         : Option('\0', std::move(_LName), std::move(_Help))
         , fnCallback(std::move(_Cb))
     {}

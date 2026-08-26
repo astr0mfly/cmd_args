@@ -2,7 +2,7 @@
 
 ## 模块概述
 命令行参数（命名参数 / 方位参数）的数据层、构筑层与解析层。
-Argument 自 2026-08 起继承 `context/expression.h` 的 `Expression` 基类（`kind()` 自动分类，
+Argument 自 2026-08 起继承 `expression/expression.h` 的 `Expression` 基类（`kind()` 自动分类，
 `ExpressionKind_E::Argument`），`getName()` 返回自有存储（基类存储由构造时传入）。
 
 ## 文件职责

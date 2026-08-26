@@ -111,7 +111,7 @@ public:
     /// @param _Long 长名（不含 -- 前缀）
     /// @param _Help 帮助文本
     /// @param _Cb 命中回调
-    void addShortCircuit(char _Short, NameLong_T _Long, Desc_T _Help, std::function<void(void)> _Cb)
+    void addShortCircuit(char _Short, NameLong_T _Long, Desc_T _Help, OptionAction::FnCallback_T _Cb)
     {
         checkAddOptionSname(_Short);
         checkAddOptionLname(_Long);
@@ -134,7 +134,7 @@ private:
     /// @brief 校验长名非空、无非法前缀且未被占用
     /// @param _Key 待校验长名
     /// @note 空名抛 NEED_NAME，带前缀抛 BAD_PREFIX，已存在抛 DUPLICATE_NAME
-    void checkAddOptionLname(std::string const &_Key) const
+    void checkAddOptionLname(Name_T const &_Key) const
     {
         if (_Key.empty()) { throw ErrorArgument(BuildError_E::NEED_NAME); }
         if (util::starts_with(_Key, "--") || _Key.front() == '-') {

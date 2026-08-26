@@ -11,8 +11,8 @@
 | `option_data.h` | `OptMgrItf` / `ValueOptMgr` / `ActionOptMgr` / `OptionData` | 管理器接口与实现 + 仓库（含 actionOrder 解析顺序） |
 | `option_builder.h` | `OptionBuilder` | 构筑层：`addOption<T>` / `addFlag` / `addShortCircuit`，含重名/前缀/类型校验 |
 | `option_parser.h` | `OptionParser` | **纯解析层**：赋值 + 标记 + 记录解析顺序；内置交互选项（--env-set 等）解析期即时触发回调 |
-| `context/executor.h` | `Executor` | **批量执行层**：hasAction 门控下按 actionOrder 顺序统一触发 fnOnSet__ + action template |
-| `context/interpreter.h` | `Interpreter` | **流式引擎**：字符泵逐 Token 分类，`__executeOptionImmediate` 即时执行 |
+| `expression/executor.h` | `Executor` | **批量执行层**：hasAction 门控下按 actionOrder 顺序统一触发 fnOnSet__ + action template |
+| `expression/interpreter.h` | `Interpreter` | **流式引擎**：字符泵逐 Token 分类，`__executeOptionImmediate` 即时执行 |
 
 ## 选项 action 时序
 

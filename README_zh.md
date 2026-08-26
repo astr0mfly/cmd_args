@@ -35,7 +35,7 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
 
 ## Expression 表达式类层次
 
-`context/expression.h` 定义表达式基类 `Expression` 与分类枚举 `ExpressionKind_E`：
+`expression/expression.h` 定义表达式基类 `Expression` 与分类枚举 `ExpressionKind_E`：
 
 - `ExpressionKind_E::{Argument, Option, Env}` —— 分别对应参数 / 选项 / 环境变量条目三类表达式；
 - `Argument`、`Option`（`OptionValue` / `OptionAction`）与 `environment` 均继承 `Expression`，

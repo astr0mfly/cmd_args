@@ -29,8 +29,9 @@
 
 #include "builtin_options.h"
 #include "context_base.h"
-#include "compiler.h"
-#include "executor.h"
+
+#include "cmd_args/expression/compiler.h"
+#include "cmd_args/expression/executor.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 

@@ -60,7 +60,7 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
 
 ## 3. 源码地图
 
-> 各子目录的详细模块说明见对应的 `AGENT.md`（`argument/AGENT.md`、`option/AGENT.md`、`env/AGENT.md`、`context/AGENT.md`）。
+> 各子目录的详细模块说明见对应的 `AGENT.md`（`argument/AGENT.md`、`option/AGENT.md`、`env/AGENT.md`、`context/AGENT.md`、`expression/AGENT.md`）。
 
 ```
 include/cmd_args/
@@ -69,16 +69,19 @@ include/cmd_args/
 │   ├── def.h                       # 命名空间宏 CMD_ARGS_NAMESPACE_BEGIN/END、ARRAY_SIZE、ENUM_NAME
 │   ├── util.h                      # parse_value<T> / parse_bool / type_string / starts_with / trim 等
 │   └── defer.hpp                   # RAII defer
-├── context/                        # 上下文/解析管线（详见 context/AGENT.md）
+├── context/                        # 上下文门面与数据仓库（详见 context/AGENT.md）
 │   ├── context.h                   # Context 门面：build/parse/once/loop/env/model
-│   ├── expression.h                # Expression 基类 + ExpressionKind_E（三表达式统一视图）
 │   ├── builder.h                   # Builder 构筑桥接
-│   ├── compiler.h                  # Compiler 编译引擎（原 Parser）：Lexer → 三 Parser → 入库 Model
-│   ├── interpreter.h               # Interpreter 流式引擎（字符泵逐 Token 解析即执行）
-│   ├── executor.h                  # Executor 批量执行（hasAction 门控下按 actionOrder 后置执行）
 │   ├── model.h                     # Model 数据仓库（hasAction() / expressions() 统一视图）
-│   ├── lexer.h                     # Lexer/Scanner 状态机（scan 批量 / step 增量分词）
 │   └── parse_fwd.h                 # 类型前置声明
+├── expression/                     # 表达式/编译引擎层（详见 expression/AGENT.md）
+│   ├── expression.h                # Expression 基类 + ExpressionKind_E（三表达式统一视图）
+│   ├── classified_expr.h           # ClassifiedExpr 解析管线瞬态中间表示
+│   ├── lexer.h                     # Lexer/Scanner 状态机（scan 批量 / step 增量分词）
+│   ├── expression_classifier.h     # ExpressionRecognizer 语法前端（委托三 Parser 规则）
+│   ├── compiler.h                  # Compiler 编译引擎：Lexer → 三 Parser → 入库 Model
+│   ├── interpreter.h               # Interpreter 流式引擎（字符泵逐 Token 解析即执行）
+│   └── executor.h                  # Executor 批量执行（hasAction 门控下按 actionOrder 后置执行）
 ├── argument/                       # 参数子系统（详见 argument/AGENT.md）
 │   ├── argument.h                  # Argument / ArgumentNamed / ArgumentPosition
 │   ├── argument_builder.h          # ArgumentBuilder 构筑层
@@ -147,7 +150,7 @@ std::string s = app.getArgument<std::string>("hello");
 int t = app.getOption<int>("timeout");
 app.hasOption("--timeout");  app.isParsed("verbose");
 
-// ── Expression 统一视图（expression.h）────────────────
+// ── Expression 统一视图（expression/expression.h）──────────────
 // ExpressionKind_E::{Argument, Option, Env}：Argument / Option / environment
 // 均继承 Expression 基类；kind() 自动分类，getName()/getHelp() 虚函数可返回自有存储
 app.model();                                // 只读 Model 引用（Context::model()）
@@ -189,7 +192,7 @@ app.loop();   // REPL：exit/quit/EOF 退出；每行独立解析
 
 ## 6. Lexer / Compiler 行为约定
 
-> 详细说明见 `include/cmd_args/context/AGENT.md`。以下为关键规则摘要。
+> 详细说明见 `include/cmd_args/context/AGENT.md` 与 `include/cmd_args/expression/AGENT.md`。以下为关键规则摘要。
 
 - token 归一化：`--foo=bar`（长+值）、`-x=value`（短+值）、`-abc`（聚合短标志）、
   `KEY=VALUE`（Continual+`=`）、`x.y`（piece）、`-5`（数字短名）均被 Scanner 正确切分。
@@ -246,7 +249,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    形参 `_Xxx`（`_Name`/`_Help`）；方法 camelCase 小写动词开头；命名空间用宏；注释用中文 Doxygen。
 2. **提交信息**：gitmoji `type(scope): emoji message`，scope 取子系统（core/Lexer/Parser/builder/env/example/test/docs）。
 3. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`。
-4. **测试门槛**：`dfx/unit_test/` 目前 58 个 TEST_CASE / 330 条断言（用例按子模块拆分为
+4. **测试门槛**：`dfx/unit_test/` 目前 111 个 TEST_CASE / 523 条断言（用例按子模块拆分为
    `test_*.cpp` 多文件，`main.cpp` 仅保留 Catch2 main 入口）；
    任何行为改动应保持或增加覆盖，禁止回退。
 
@@ -263,7 +266,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 ## 11. Agent 工作守则
 
 1. 修改前先读目标文件与相关头文件（源码即文档）。
-2. **修改子目录代码前先读该目录的 `AGENT.md`**（`argument/AGENT.md`、`option/AGENT.md`、`env/AGENT.md`、`context/AGENT.md`），理解模块设计后再动手。
+2. **修改子目录代码前先读该目录的 `AGENT.md`**（`argument/AGENT.md`、`option/AGENT.md`、`env/AGENT.md`、`context/AGENT.md`、`expression/AGENT.md`），理解模块设计后再动手。
 3. 优先最小改动；改公共 API 必须先更新 §4 签名与双语 README。
 4. 每次改动后至少运行 `xmake build unit_test` + `xmake run unit_test`；
    涉及示例的改动再跑 `xmake build once`。

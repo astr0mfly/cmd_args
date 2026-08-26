@@ -29,7 +29,8 @@
 
 #include "builtin_options.h"
 #include "context_base.h"
-#include "interpreter.h"
+
+#include "cmd_args/expression/interpreter.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 

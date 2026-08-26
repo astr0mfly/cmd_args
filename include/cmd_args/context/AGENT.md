@@ -7,31 +7,28 @@ Context 为通用容器：持有 Model（数据仓库 + Expression 统一视图�
 
 ## 文件职责
 
+> 2026-08 目录重组：表达式基类、词法/语法前端与三引擎已迁至 `expression/`
+> （expression.h / classified_expr.h / expression_classifier.h / lexer.h /
+> compiler.h / interpreter.h / executor.h），详见 `../expression/AGENT.md`。
+
 | 文件 | 类 | 职责 |
 |------|---|------|
-| `expression.h` | `Expression` / `ExpressionKind_E` | **表达式基类**：Argument/Option/Env/Conditional/Dependency 的统一视图 |
-| `classified_expr.h` | `ClassifiedExpr` | **中间表示**：Token 经模式匹配后产出的结构化数据 |
-| `expression_classifier.h` | `ExpressionRecognizer` | **编译前端**：Token 序列 → Expression 模式匹配，可委托 Parser 规则 |
 | `context.h` | `Context` | **通用容器**：组合 Model+Builder+Compiler+Executor+Interpreter |
-| `compiler.h` | `Compiler` | **编译引擎**：Lexer → Tokens → 三 Parser → Expression 入库 Model；OptionGraph.evaluate() |
-| `interpreter.h` | `Interpreter` | **流式引擎**：idxCursor 游标逐字符泵入 Scanner → token 压栈 → 凑满一个 Expression 立即归约执行 |
-| `executor.h` | `Executor` | **批量执行器**：hasAction 门控下按 actionOrder 顺序执行 OptionAction |
 | `model.h` | `Model` | **数据仓库**：三类 Data + OptionGraph + 程序名 + 内置标记 |
-| `lexer.h` | `Lexer` / `Scanner` | Scanner 状态机（批量 scan）+ step() 增量分词（流式）；`__normalize` 合并关系语法 token |
 | `builder.h` | `Builder` / `BuildHelper` | 构筑桥接 → ArgumentBuilder / OptionBuilder |
-| `parse_fwd.h` | — | 共用类型别名 |
+| `context_fwd.h` | — | 共用类型别名（Tokens_T / Envs_T / TokenStream_T） |
 
-## Parser 规则化架构
+## Parser Token 规则接口（编译前端）
 
-每个 Parser 内置自己的 Expression 识别规则：
-- `OptionParser::recognize()` — 识别 `--name[=value]`、`-x`、`-abc`、`-a?b:c`、`-a->b`
-- `ArgumentParser::recognize()` — 识别 `--name=value`、`--name value`、方位参数
-- `EnvParser::recognize()` — 识别 `KEY=VALUE`
-
-每个 Parser 内置自己的应用逻辑：
-- `OptionParser::apply()` — 写入 OptionData + 触发回调
-- `ArgumentParser::apply()` — 写入 ArgumentData
-- `EnvParser::apply()` — 写入 EnvData
+每个 Parser 提供类型化 Token→Expression 转换接口，供 ExpressionRecognizer 委托：
+- `OptionParser::recognizeToken(Token)` — 单 Token 语法分类（LongName/ShortName/ContinualName）
+- `OptionParser::applyExpr(ClassifiedExpr)` — Type-safe 应用（写入 OptionData）
+- `OptionParser::applyRelation(ClassifiedExpr)` — 结构化关系入图
+- `ArgumentParser::recognizeToken(Token)` — 命名参数 / 方位候选
+- `ArgumentParser::applyExpr(ClassifiedExpr, vector<string>&)` — named 分配 / positional 入缓冲
+- `ArgumentParser::assignPositional(vector<string>)` — 数量校验 + 按序提交（消除重复实现）
+- `EnvParser::recognizeEnvAssign(TokenStream_T, size_t)` — Env 行模式序列匹配（Variable(::Variable)* = Value）
+- `EnvParser::applyExpr(ClassifiedExpr)` — 写入 EnvData
 
 `ExpressionRecognizer` 可委托 Parser 规则（通过构造函数注入 Parser 引用）。
 
@@ -61,6 +58,6 @@ Scanner.step() → Token → ExpressionRecognizer.feed() → ClassifiedExpr
 
 ## 命名约定
 - Context 成员：strPrjName_ / instData_ / compiler__ / executor__ / interp__ / bFired__
-- 引擎内部流式状态：idxCursor__ / vecStack__ / strPendingKey__ / enPendingKind__ / bPendingInlineEq__ / bOptEnd__ / vecPos__ / vecDashLeft__（interpreter.h）
+- 引擎内部流式状态：idxCursor__ / vecStack__ / strPendingKey__ / enPendingKind__ / bPendingInlineEq__ / bOptEnd__ / vecPos__ / vecDashLeft__（expression/interpreter.h）
 - OptionGraph：OptionData.optionGraph（model.h）；OptionParser.pGraph__（option_parser.h）
 - Parser 规则：OptionParser/ArgumentParser/EnvParser 各自的 recognize() + apply() 方法

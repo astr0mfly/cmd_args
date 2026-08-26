@@ -26,8 +26,8 @@
 #include <vector>
 
 #include "cmd_args/base/def.h"
-#include "cmd_args/context/classified_expr.h"
-#include "cmd_args/context/parse_fwd.h"
+#include "cmd_args/expression/classified_expr.h"
+#include "cmd_args/context/context_fwd.h"
 
 #include "cmd_args/env/env.h"
 #include "cmd_args/env/env_data.h"

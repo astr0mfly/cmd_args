@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "cmd_args/cmd_args.hpp"
-#include "cmd_args/context/expression_classifier.h"
+#include "cmd_args/expression/expression_recognizer.h"
 
 using namespace cmd_args;
 using cmd_args::detail::Token;

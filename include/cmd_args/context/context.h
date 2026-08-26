@@ -48,12 +48,24 @@ public:
 
     void once() override
     {
+        // 如果有激活的子命令，委托给子 Context
+        if (activeSubContext_) {
+            activeSubContext_->once();
+            return;
+        }
+
         if (!bParsed_) { throw ErrorInterp(InterpError_E::STOPPED); }
         std::exit(nExitCode_);
     }
 
     void loop() override
     {
+        // 如果有激活的子命令，委托给子 Context
+        if (activeSubContext_) {
+            activeSubContext_->loop();
+            return;
+        }
+
         compiler__.ensureBuiltins();
         interp__.loop(_errors());
     }

@@ -243,3 +243,100 @@ TEST_CASE("lexer: scanEnvLine 值含路径分隔符 (VAL=/usr/bin)", "[lexer][en
     REQUIRE(toks[1].getName() == "=");
     REQUIRE(toks[2].getName() == "/usr/bin");
 }
+
+/* ==================== Lexer 类型化 scan() ==================== */
+
+TEST_CASE("lexer: scan() 产出类型化 Token 流", "[lexer][typed]")
+{
+    Lexer lx("--timeout 9");
+    auto stream = lx.scan();
+    REQUIRE(stream.size() == 2);
+    REQUIRE(stream[0].getAttr() == Token::Type_E::LongName);
+    REQUIRE(stream[0].getName() == "timeout");
+    REQUIRE_FALSE(stream[0].hasInlineEq());
+    REQUIRE(stream[1].getAttr() == Token::Type_E::Integer);
+    REQUIRE(stream[1].getName() == "9");
+}
+
+TEST_CASE("lexer: scan() --opt=val 内联等号", "[lexer][typed]")
+{
+    Lexer lx("--opt=42");
+    auto stream = lx.scan();
+    // LongName("opt",inlineEq) Delimiter("=") Integer("42") = 3 tokens
+    REQUIRE(stream.size() == 3);
+    REQUIRE(stream[0].getAttr() == Token::Type_E::LongName);
+    REQUIRE(stream[0].hasInlineEq());
+    REQUIRE(stream[1].getAttr() == Token::Type_E::Delimiter);
+    REQUIRE(stream[1].getName() == "=");
+    REQUIRE(stream[2].getAttr() == Token::Type_E::Integer);
+    REQUIRE(stream[2].getName() == "42");
+}
+
+TEST_CASE("lexer: scan() -t=5 短选项等号分隔", "[lexer][typed]")
+{
+    Lexer lx("-t=5");
+    auto stream = lx.scan();
+    REQUIRE(stream.size() == 3);
+    REQUIRE(stream[0].getAttr() == Token::Type_E::ShortName);
+    REQUIRE(stream[1].getName() == "=");
+    REQUIRE(stream[2].getName() == "5");
+}
+
+TEST_CASE("lexer: scanEnvLine 批量产出", "[lexer][typed]")
+{
+    auto stream = Lexer::scanEnvLine("A::B::C=D");
+    REQUIRE(stream.size() == 7);
+    REQUIRE(stream[0].getAttr() == Token::Type_E::Variable);
+    REQUIRE(stream[1].getAttr() == Token::Type_E::ScopeSep);
+    REQUIRE(stream[5].getName() == "=");
+    REQUIRE(stream[6].getName() == "D");
+}
+
+/* ==================== Lexer 增量 pop() ==================== */
+
+TEST_CASE("lexer: pop() 逐个吐出 Token，行为与 scan() 等价", "[lexer][pop]")
+{
+    Lexer lx("--timeout 9");
+    std::vector<Token> collected;
+    while (lx.hasNext()) { collected.push_back(lx.pop()); }
+    auto batch = Lexer("--timeout 9").scan();
+    REQUIRE(collected.size() == batch.size());
+    for (size_t i = 0; i < collected.size(); ++i) {
+        REQUIRE(collected[i].getAttr() == batch[i].getAttr());
+        REQUIRE(collected[i].getName() == batch[i].getName());
+    }
+}
+
+TEST_CASE("lexer: pop() 多行 argv 逐个吐出", "[lexer][pop]")
+{
+    Lexer lx("--hello a --timeout 9");
+    size_t count = 0;
+    while (lx.hasNext()) { lx.pop(); ++count; }
+    REQUIRE(count == 4);
+}
+
+/* ==================== scanStrings 往返 ==================== */
+
+TEST_CASE("lexer: scanStrings 还原归一化串的类型化信息", "[lexer][typed]")
+{
+    Tokens_T normalized{ "--timeout=9", "-abc", "hello" };
+    auto stream = Lexer::scanStrings(normalized);
+    // "--timeout=9" → LongName(timeout,eq) Delimiter("=") Integer(9) = 3 tokens
+    // "-abc" → ContinualName(abc) = 1 token
+    // "hello" → Variable(hello) = 1 token
+    REQUIRE(stream.size() == 5);
+    REQUIRE(stream[0].getAttr() == Token::Type_E::LongName);
+    REQUIRE(stream[0].hasInlineEq());
+    REQUIRE(stream[1].getAttr() == Token::Type_E::Delimiter);
+    REQUIRE(stream[1].getName() == "=");
+    REQUIRE(stream[2].getAttr() == Token::Type_E::Integer);
+    REQUIRE(stream[3].getAttr() == Token::Type_E::ContinualName);
+    REQUIRE(stream[4].getAttr() == Token::Type_E::Variable);
+}
+
+TEST_CASE("lexer: tokens() 兼容外观行为不变", "[lexer]")
+{
+    auto toks = Lexer("--timeout=9 -abc hello").tokens();
+    REQUIRE(toks.size() == 3);
+    REQUIRE(toks.front() == "--timeout=9");
+}

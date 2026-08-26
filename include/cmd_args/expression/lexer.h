@@ -535,11 +535,83 @@ private:
 class Lexer
 {
 public:
+    /// @brief argv 字节流入口
     Lexer(int _Argc, char const *_Argv[], char *_Envp[] = nullptr)
     {
         __loadInput(_Argc, _Argv);
         __loadEnv(_Envp);
     }
+
+    /// @brief 整行入口（REPL）
+    explicit Lexer(std::string const &_Line)
+    {
+        if (!_Line.empty()) { srcInput__.emplace_back(_Line); }
+    }
+
+    /// @brief 归一化串列表入口（兼容 parse(Tokens_T const &) 转类型化）
+    explicit Lexer(Tokens_T const &_Strs)
+    {
+        for (auto const &s : _Strs) { srcInput__.emplace_back(s); }
+    }
+
+    // ===== 批量：一次吐出全部 Token =====
+
+    /// @brief 命令行模式批量分词（类型化输出）
+    auto scan() -> TokenStream_T
+    {
+        return Scanner(srcInput__).scan();
+    }
+
+    /// @brief 整行分词（类型化输出）
+    static auto scanLine(std::string const &_Line) -> TokenStream_T
+    {
+        if (_Line.empty()) return {};
+        Source_T src{ _Line };
+        return Scanner(src).scan();
+    }
+
+    /// @brief 归一化字符串列表重扫描（还原类型化信息）
+    static auto scanStrings(Tokens_T const &_Src) -> TokenStream_T
+    {
+        TokenStream_T result;
+        for (auto const &s : _Src) {
+            if (s.empty()) continue;
+            Source_T src{ s };
+            auto toks = Scanner(src).scan();
+            std::move(toks.begin(), toks.end(), std::back_inserter(result));
+        }
+        return result;
+    }
+
+    /// @brief Env 行模式批量分词
+    static auto scanEnvLine(std::string const &_Line) -> TokenStream_T
+    {
+        if (_Line.empty()) return {};
+        Source_T src{ _Line };
+        return Scanner(src, Scanner::LexMode_E::EnvLine).scan();
+    }
+
+    // ===== 增量：逐个吐出 =====
+
+    /// @brief 是否还有 Token 可 pop（内部缓存 peek）
+    bool hasNext()
+    {
+        if (!tPeeked__.has_value()) { tPeeked__ = __pumpToken(); }
+        return tPeeked__.has_value() && tPeeked__->operator bool();
+    }
+
+    /// @brief 吐出一个 Token；流空返回无效 Token（operator bool 为 false）
+    auto pop() -> Token
+    {
+        if (tPeeked__) {
+            auto t = std::move(*tPeeked__);
+            tPeeked__.reset();
+            return t;
+        }
+        return __pumpToken().value_or(Token{});
+    }
+
+    // ===== 兼容外观（基于类型化流归一化的字符串流）=====
 
     Scanner::Tokens_T run()
     {
@@ -557,26 +629,42 @@ public:
         return res;
     }
 
-    /*
-        归一化的命令行 token 列表（供 Compiler 消费）：
-        - 只有 argv 输入，不包含环境变量
-        - `--name=value` 合并为单个 token
-        - 跳过空/纯空白 token
-    */
-    Tokens_T tokens()
+    /// @brief 归一化字符串流（兼容旧接口）
+    auto tokens() -> Tokens_T
     {
         if (srcInput__.empty()) return {};
-        return __normalize(Scanner(srcInput__).scan());
+        return __normalize(scan());
     }
 
-    /*
-        REPL/loop 场景：对一整行输入分词（空白分隔，引号感知）
-    */
-    static Tokens_T tokensFromLine(std::string const &_Line)
+    /// @brief REPL/loop 场景：对一整行输入分词
+    static auto tokensFromLine(std::string const &_Line) -> Tokens_T
     {
         if (_Line.empty()) return {};
-        Source_T src{ _Line };
-        return __normalize(Scanner(src).scan());
+        return __normalize(scanLine(_Line));
+    }
+
+private:
+    /// @brief 内部增量泵：从当前行流中逐字符喂入 Scanner，产出一个完整 Token
+    auto __pumpToken() -> std::optional<Token>
+    {
+        while (idxLine__ < srcInput__.size()) {
+            if (!sc___.has_value()) {
+                sc___.emplace(srcInput__);
+                idxChar__ = 0;
+            }
+            auto const &line = srcInput__[idxLine__];
+            while (idxChar__ < line.size()) {
+                auto tok = sc___->step(line[idxChar__]);
+                ++idxChar__;
+                if (tok) return tok;
+            }
+            // 行尾：flush
+            auto tok = sc___->step('\0');
+            idxLine__++;
+            sc___.reset();
+            if (tok && tok->operator bool()) return tok;
+        }
+        return std::nullopt;
     }
 
 private:
@@ -662,6 +750,10 @@ private:
     /* data */
     Source_T srcInput__;  // 输入的源码
     Source_T srcEnvs__;   // 环境变量里的源码
+    size_t           idxLine__ = 0;    ///< 增量泵：当前行索引
+    size_t           idxChar__ = 0;    ///< 增量泵：当前行内字符偏移
+    std::optional<Scanner> sc___;      ///< 增量泵：当前行的 Scanner 实例
+    std::optional<Token>   tPeeked__;  ///< hasNext() 缓存
 };
 
 }  // namespace detail

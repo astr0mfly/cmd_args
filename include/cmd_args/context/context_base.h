@@ -18,9 +18,11 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
@@ -33,9 +35,12 @@
 #include "cmd_args/error/lexer_error.h"
 #include "cmd_args/error/parser_error.h"
 
+#include "cmd_args/expression/lexer.h"
+
+#include "cmd_args/context/subcommand.h"
+
 #include "builtin_options.h"
 #include "builder.h"
-#include "lexer.h"
 #include "model.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -343,6 +348,45 @@ public:
     virtual void once() = 0;
     virtual void loop() = 0;
 
+    /* ---------- 子命令 ---------- */
+
+    /// @brief 添加子命令（链式 API）
+    /// @param _Name 子命令名称
+    /// @param _Factory 创建子 Context 的工厂函数
+    ContextBase &addSubcommand(std::string _Name, SubcommandFactory _Factory)
+    {
+        _registerSubcommand(std::move(_Name), std::move(_Factory));
+        return *this;
+    }
+
+    /// @brief 添加子命令（模板版本，自动推导工厂类型）
+    template <typename ContextType, typename... Args>
+    ContextBase &addSubcommand(std::string _Name, Args &&..._Args)
+    {
+        _registerSubcommand(std::move(_Name), [args = std::make_tuple(std::forward<Args>(_Args)...)]() {
+            return std::apply([](auto &&...a) { return std::make_unique<ContextType>(std::forward<decltype(a)>(a)...); }, args);
+        });
+        return *this;
+    }
+
+    /// @brief 获取当前激活的子命令路径（如 ["commit"] 或 ["remote", "add"]）
+    auto getActiveSubcommandPath() const noexcept -> std::vector<std::string> const &
+    {
+        return activeSubcommandPath_;
+    }
+
+    /// @brief 获取当前激活的子 Context（可能为空）
+    ContextBase *getActiveSubcommand() const noexcept
+    {
+        return activeSubContext_.get();
+    }
+
+    /// @brief 是否有子命令注册
+    bool hasSubcommands() const noexcept
+    {
+        return !subcommandRegistry_.empty();
+    }
+
     using Errors::dump;
     using Errors::getLast;
     using Errors::getLastMsg;
@@ -364,6 +408,23 @@ protected:
     Model       instData_;           ///< 核心数据仓库
     bool        bParsed_   = false;  ///< 已完成一次解析
     int         nExitCode_ = 0;      ///< once() 退出码
+
+    /// 子命令注册表
+    SubcommandRegistry subcommandRegistry_;
+
+    /// 当前激活的子命令路径（如 ["commit"] 或 ["remote", "add"]）
+    std::vector<std::string> activeSubcommandPath_;
+
+    /// 当前激活的子 Context（解析后持有）
+    std::unique_ptr<ContextBase> activeSubContext_;
+
+    /// @brief 注册子命令（protected，由 addSubcommand 调用）
+    /// @param _Name 子命令名称
+    /// @param _Factory 子 Context 工厂函数
+    void _registerSubcommand(std::string _Name, SubcommandFactory _Factory)
+    {
+        subcommandRegistry_.registerSubcommand(std::move(_Name), std::move(_Factory));
+    }
 
 private:
     EnvData *__envsMut() const

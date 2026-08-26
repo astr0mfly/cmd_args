@@ -15,6 +15,7 @@
 #include "cmd_args/argument/argument_parser.h"
 #include "cmd_args/base/util.h"
 #include "cmd_args/config/config_store.h"
+#include "cmd_args/expression/expression_recognizer.h"
 #include "cmd_args/expression/lexer.h"
 #include "cmd_args/env/env_builder.h"
 #include "cmd_args/env/env_parser.h"
@@ -65,7 +66,7 @@ public:
     }
 
     // parse arguments（argv 完整，含 argv[0]；argv[0] 原样保留为程序名）
-    void parse(int argc, char const *argv[])
+    void parse(int argc, char const *argv[], char *envp[] = nullptr)
     {
         if (argc <= 0 || !argv || !argv[0]) {
             program_name.clear();
@@ -74,33 +75,20 @@ public:
             program_name = argv[0];
         }
 
-        Tokens_T real;
-        if (argc > 1) { real = Lexer(argc - 1, argv + 1, nullptr).tokens(); }
-        __parseTokens(real, {});
-    }
-
-    void parse(int argc, char const *argv[], char *envp[])
-    {
-        if (argc <= 0 || !argv || !argv[0]) {
-            program_name.clear();
-        }
-        else {
-            program_name = argv[0];
-        }
+        TokenStream_T real;
+        if (argc > 1) { real = Lexer(argc - 1, argv + 1).scan(); }
 
         std::vector<std::string> vecEnv;
-        for (int i = 0; envp && envp[i]; ++i) { vecEnv.emplace_back(envp[i]); }
+        if (envp) { for (int i = 0; envp[i]; ++i) { vecEnv.emplace_back(envp[i]); } }
 
-        Tokens_T real;
-        if (argc > 1) { real = Lexer(argc - 1, argv + 1, nullptr).tokens(); }
         __parseTokens(real, vecEnv);
     }
 
-    // token 流形式的纯解析（不含 finalize，不含 action 执行）
+    // token 流形式的纯解析（兼容旧接口：字符串流 → 旧管线）
     void parse(Tokens_T const &_Tokens, Envs_T const &_Env)
     {
         Tokens_T real = _Tokens;
-        __parseTokens(real, _Env);
+        __parseTokensLegacy(real, _Env);
     }
 
     [[nodiscard]] std::error_code tryParse(int argc, char const *argv[]) noexcept
@@ -186,15 +174,14 @@ private:
         }
     }
 
-    /// 纯解析流程（不含 finalize，不含 action 执行）
-    void __parseTokens(Tokens_T &_Tokens, std::vector<std::string> const &_Env)
+    /// 纯解析流程（旧管线：字符串 token 流，供 parse(Tokens_T,Envs_T) 兼容）
+    void __parseTokensLegacy(Tokens_T &_Tokens, std::vector<std::string> const &_Env)
     {
         try {
             pModel__->strProgramName = program_name;
             envParser__.parse(_Env);
             ensureBuiltins();
 
-            // 绑定关系图到 OptionParser
             optParser__.setGraph(&pModel__->optionGraph);
 
             bFired__ = optParser__.parse(_Tokens);
@@ -207,20 +194,86 @@ private:
             }
             else {
                 argParser__.parse(_Tokens);
-
-                // 根据关系图求值：条件边激活目标选项
                 pModel__->optionGraph.evaluate();
             }
 
             for (auto const &t : _Tokens) {
                 if (!util::starts_with(t, "-")) continue;
-                throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "unrecognized option or argument: " + t);
+                throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                    "unrecognized option or argument: " + t);
             }
         }
         catch (...) {
             pModel__->opts.clearParseOrder();
             pModel__->optionGraph.clear();
             throw;
+        }
+    }
+
+    /// 纯解析流程：ExpressionRecognizer 驱动管线（类型化 token 流）
+    void __parseTokens(TokenStream_T &_Tokens, std::vector<std::string> const &_Env)
+    {
+        try {
+            pModel__->strProgramName = program_name;
+            envParser__.parse(_Env);
+            ensureBuiltins();
+
+            optParser__.setGraph(&pModel__->optionGraph);
+
+            ExpressionRecognizer rec(&optParser__, &argParser__, &envParser__);
+            auto exprs = rec.recognizeAll(_Tokens);
+
+            bFired__ = false;
+            std::vector<std::string> vecPositional;
+
+            for (auto &e : exprs) {
+                __applyOne(e, vecPositional);
+                if (bFired__) return;
+            }
+
+            // 关系图求值
+            pModel__->optionGraph.evaluate();
+
+            // 方位参数提交
+            argParser__.assignPositional(vecPositional);
+
+            // 残留未识别 dash token → UNKNOWN_OPTION
+            for (auto const &tok : _Tokens) {
+                auto text = tok.toText();
+                if (!util::starts_with(text, "-")) continue;
+                throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                    "unrecognized option or argument: " + text);
+            }
+        }
+        catch (...) {
+            pModel__->opts.clearParseOrder();
+            pModel__->optionGraph.clear();
+            throw;
+        }
+    }
+
+    /// @brief 分派单条 Expression 到对应 Parser
+    void __applyOne(ClassifiedExpr &_E, std::vector<std::string> &_Pos)
+    {
+        switch (_E.kind) {
+        case ExpressionKind_E::Option: {
+            if (_E.bIsAction && !_E.name.empty()) {
+                if (optParser__.fireAction(_E.name)) { bFired__ = true; }
+                return;
+            }
+            optParser__.applyExpr(_E);
+            return;
+        }
+        case ExpressionKind_E::Conditional:
+        case ExpressionKind_E::Dependency:
+            optParser__.applyRelation(_E);
+            return;
+        case ExpressionKind_E::Argument:
+            argParser__.applyExpr(_E, _Pos);
+            return;
+        case ExpressionKind_E::Env:
+            envParser__.applyExpr(_E);
+            return;
         }
     }
 

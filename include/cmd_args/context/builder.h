@@ -25,6 +25,7 @@
 #include "cmd_args/argument/argument_builder.h"
 #include "cmd_args/option/option_builder.h"
 
+#include "declarations.h"
 #include "model.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -62,6 +63,52 @@ public:
     using OptionBuilder::addFlag;
     using OptionBuilder::addOption;
     using OptionBuilder::addShortCircuit;
+
+    /* ---------- 声明式批量注册 ---------- */
+
+    /**
+     * @brief 批量声明参数/选项/标志（声明式入口）
+     * @tparam Args_T 参数包：ArgumentNamed / ArgumentPosition / OptionDef<T> / FlagDef
+     * @param _Args 声明项（通过折叠表达式逐一分发）
+     * @return Builder& 支持链式调用
+     */
+    template <typename... Args_T>
+    Builder &declare(Args_T &&..._Args)
+    {
+        (_declareOne(std::forward<Args_T>(_Args)), ...);
+        return *this;
+    }
+
+private:
+    /// @brief 分发单个声明项到对应的 Builder 方法
+    template <typename T>
+    void _declareOne(T &&_Arg)
+    {
+        using Decay_T = std::remove_cvref_t<T>;
+        if constexpr (std::is_same_v<Decay_T, ArgumentNamed>) {
+            ArgumentBuilder::build(std::forward<T>(_Arg));
+        }
+        else if constexpr (std::is_same_v<Decay_T, ArgumentPosition>) {
+            ArgumentBuilder::build(std::forward<T>(_Arg));
+        }
+        else if constexpr (std::is_same_v<Decay_T, FlagDef>) {
+            OptionBuilder::addFlag(
+                _Arg.shortName, std::move(_Arg.longName), std::move(_Arg.help));
+        }
+        else {
+            static_assert(sizeof(Decay_T) == 0,
+                "declare() 不支持的类型。可用：ArgumentNamed / ArgumentPosition / OptionDef<T> / FlagDef");
+        }
+    }
+
+    /// @brief OptionDef<T> 特化：推导 T 并转发给 addOption<T>
+    template <typename T>
+    void _declareOne(OptionDef<T> &&_Def)
+    {
+        OptionBuilder::addOption<T>(
+            _Def.shortName, std::move(_Def.longName),
+            std::move(_Def.help), std::move(_Def.defaultValue));
+    }
 };
 
 /*

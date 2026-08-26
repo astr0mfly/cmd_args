@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -174,6 +175,52 @@ public:
     void appendHelp(std::ostringstream &_Out, std::size_t _Max) const
     {
         for (auto const &opt : vecValues__) {
+            _Out << "  ";
+            std::size_t printed_length = 0;
+            if (opt.cShortName) {
+                _Out << opt.cShortName << ", ";
+                printed_length = 4;
+            }
+            _Out << opt.strLongName;
+            printed_length += opt.strLongName.length();
+            _Out << std::string(_Max - printed_length, ' ');
+            if (opt.strType != "bool") { _Out << "(" << opt.strType << ") "; }
+            _Out << util::replace(opt.strHelp, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
+        }
+    }
+
+    /// @brief 追加指定成员的帮助文本（分组渲染用）
+    void appendHelpFiltered(std::ostringstream &_Out, std::size_t _Max,
+                            std::vector<Name_T> const &_Members) const
+    {
+        for (auto const &opt : vecValues__) {
+            bool found = false;
+            for (auto const &m : _Members) {
+                if (m == opt.strLongName) { found = true; break; }
+            }
+            if (!found) continue;
+
+            _Out << "  ";
+            std::size_t printed_length = 0;
+            if (opt.cShortName) {
+                _Out << opt.cShortName << ", ";
+                printed_length = 4;
+            }
+            _Out << opt.strLongName;
+            printed_length += opt.strLongName.length();
+            _Out << std::string(_Max - printed_length, ' ');
+            if (opt.strType != "bool") { _Out << "(" << opt.strType << ") "; }
+            _Out << util::replace(opt.strHelp, "\n", "\n" + std::string(_Max + 2, ' ')) << '\n';
+        }
+    }
+
+    /// @brief 追加不在排除集合中的选项帮助文本（未分组渲染用）
+    void appendHelpUnfiltered(std::ostringstream &_Out, std::size_t _Max,
+                              std::set<Name_T> const &_Excluded) const
+    {
+        for (auto const &opt : vecValues__) {
+            if (_Excluded.count(opt.strLongName)) continue;
+
             _Out << "  ";
             std::size_t printed_length = 0;
             if (opt.cShortName) {
@@ -345,6 +392,26 @@ struct OptionData
     {
         mgrActions.appendHelp(_Oss, _Max);
         mgrValues.appendHelp(_Oss, _Max);
+    }
+
+    /// @brief 追加指定成员的选项帮助文本（分组渲染用）
+    void appendHelpFiltered(std::ostringstream &_Oss, size_t _Max,
+                            std::vector<Name_T> const &_Members) const
+    {
+        mgrValues.appendHelpFiltered(_Oss, _Max, _Members);
+    }
+
+    /// @brief 追加不在排除集合中的选项帮助文本（未分组渲染用）
+    void appendHelpUnfiltered(std::ostringstream &_Oss, size_t _Max,
+                              std::set<Name_T> const &_Excluded) const
+    {
+        mgrValues.appendHelpUnfiltered(_Oss, _Max, _Excluded);
+    }
+
+    /// @brief 遍历值选项（只读）
+    void forEachValue(ValueOptMgr::FnValueVisitorC_T const &_Fn) const
+    {
+        mgrValues.forEachValue(_Fn);
     }
 
 private:

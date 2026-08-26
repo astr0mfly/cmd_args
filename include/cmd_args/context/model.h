@@ -29,6 +29,19 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
+/**
+ * @struct OptionGroup
+ * @brief 选项分组元数据（用于帮助文档分组展示）
+ *
+ * 记录一组选项的分组名称和所属选项长名列表。
+ * help 输出时按分组渲染，未分组选项单独展示。
+ */
+struct OptionGroup
+{
+    Name_T                  name;      ///< 分组名称
+    std::vector<NameLong_T> members;   ///< 属于该分组的选项长名
+};
+
 /*
     Context 的核心数据仓库：参数、选项、环境变量统一存放。
     解析产生的值在这里跨多次 parse 持久保留。
@@ -62,6 +75,9 @@ public:
     OptionData   opts;
     EnvData      envs;
     OptionGraph  optionGraph;  ///< Option 关系有向图（条件/依赖边）
+
+    /// @brief 选项分组元数据（用于帮助文档分组展示）
+    std::vector<OptionGroup> groups_;
 
     /* argv[0] 探测出的程序名，供内置帮助/环境展示使用 */
     std::string strProgramName;

@@ -71,7 +71,7 @@ public:
         return pData__->mgrValues.mutFind(_Long);
     }
 
-    /// @brief 构筑值选项（仅长名）
+    /// @brief 构筑值选项（仅长名，模板版本）
     /// @tparam T 值类型
     /// @param _Long 长名（不含 -- 前缀）
     /// @param _Help 帮助文本
@@ -82,6 +82,30 @@ public:
     {
         return addOption<T>('\0', std::move(_Long), std::move(_Help), _Default);
     }
+
+    /// @brief 构筑值选项（含短名，int 类型推导版本）
+    auto addOption(char _Short, NameLong_T _Long, Desc_T _Help, int _Default) -> OptionValue *
+    { return addOption<int>(_Short, std::move(_Long), std::move(_Help), _Default); }
+
+    /// @brief 构筑值选项（含短名，double 类型推导版本）
+    auto addOption(char _Short, NameLong_T _Long, Desc_T _Help, double _Default) -> OptionValue *
+    { return addOption<double>(_Short, std::move(_Long), std::move(_Help), _Default); }
+
+    /// @brief 构筑值选项（含短名，std::string 类型推导版本）
+    auto addOption(char _Short, NameLong_T _Long, Desc_T _Help, std::string const &_Default) -> OptionValue *
+    { return addOption<std::string>(_Short, std::move(_Long), std::move(_Help), _Default); }
+
+    /// @brief 构筑值选项（仅长名，int 类型推导版本）
+    auto addOption(NameLong_T _Long, Desc_T _Help, int _Default) -> OptionValue *
+    { return addOption<int>(std::move(_Long), std::move(_Help), _Default); }
+
+    /// @brief 构筑值选项（仅长名，double 类型推导版本）
+    auto addOption(NameLong_T _Long, Desc_T _Help, double _Default) -> OptionValue *
+    { return addOption<double>(std::move(_Long), std::move(_Help), _Default); }
+
+    /// @brief 构筑值选项（仅长名，std::string 类型推导版本）
+    auto addOption(NameLong_T _Long, Desc_T _Help, std::string const &_Default) -> OptionValue *
+    { return addOption<std::string>(std::move(_Long), std::move(_Help), _Default); }
 
     /// @brief 构筑 bool 标志选项：出现即 true，不需要默认值
     /// @param _Short 短名（'\0' 表示无短名）

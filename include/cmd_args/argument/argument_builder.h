@@ -87,6 +87,23 @@ public:
         pData__->mgrName.doPush(std::make_unique<ArgumentNamed>(_Arg));
     }
 
+    /// @brief 构筑位置参数（右值对象形态，自动分配序号）
+    /// @param _Arg 位置参数对象（资源被移动接管）
+    void build(ArgumentPosition &&_Arg)
+    {
+        _Arg.iSeq = pData__->mgrPos.doSize();
+        pData__->mgrPos.doPush(std::make_unique<ArgumentPosition>(std::move(_Arg)));
+    }
+
+    /// @brief 构筑位置参数（const 左值对象形态，拷贝，自动分配序号）
+    /// @param _Arg 位置参数对象（拷贝）
+    void build(ArgumentPosition const &_Arg)
+    {
+        auto copy = _Arg;
+        copy.iSeq = pData__->mgrPos.doSize();
+        pData__->mgrPos.doPush(std::make_unique<ArgumentPosition>(std::move(copy)));
+    }
+
     /// @brief 批量构筑参数
     /// @param _Builds 一组命名参数（逐条构筑）
     void build(Group<ArgumentNamed> &&_Builds)

@@ -340,6 +340,12 @@ struct ArgumentPosition : public Argument
 
     Seq_T iSeq = 0;  ///< 声明顺序索引（0 起）
 
+    /// @brief 便捷构造函数（仅名称和帮助，序号默认为 0，由 Builder 覆盖）
+    ArgumentPosition(std::string _Name, std::string _Help)
+        : Argument(std::move(_Name), std::move(_Help))
+        , iSeq(0)
+    {}
+
     /// @brief 可变参数模板构造函数
     template <typename... Args_T>
     ArgumentPosition(Seq_T _Seq, Args_T &&..._Args)

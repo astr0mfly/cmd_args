@@ -41,6 +41,7 @@
 
 #include "builtin_options.h"
 #include "builder.h"
+#include "declarations.h"
 #include "model.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -78,6 +79,62 @@ public:
 
     BuildHelper build() { return { &instData_ }; }
 
+    /* ---------- 声明式批量注册 ---------- */
+
+    /**
+     * @brief 批量声明参数/选项/标志（声明式入口）
+     * @tparam Args_T 参数包：ArgumentNamed / ArgumentPosition / OptionDef<T> / FlagDef
+     * @param _Args 声明项
+     * @return Self_T& 支持链式调用
+     */
+    template <typename... Args_T>
+    ContextBase &declare(Args_T &&..._Args)
+    {
+        Builder(&instData_).declare(std::forward<Args_T>(_Args)...);
+        return *this;
+    }
+
+    /* ---------- 分组声明 ---------- */
+
+    /**
+     * @brief 分组声明选项（带分组标签的批量注册）
+     * @tparam Args_T 参数包：OptionDef<T> / FlagDef
+     * @param _GroupName 分组名称（会出现在帮助文档中）
+     * @param _Args 分组内的选项声明
+     * @return Self_T& 支持链式调用
+     */
+    template <typename... Args_T>
+    ContextBase &group(Name_T _GroupName, Args_T &&..._Args)
+    {
+        // 1. 注册选项到 Model
+        Builder(&instData_).declare(std::forward<Args_T>(_Args)...);
+        // 2. 记录分组关系
+        OptionGroup grp;
+        grp.name = std::move(_GroupName);
+        _collectGroupMembers(grp, std::forward<Args_T>(_Args)...);
+        instData_.groups_.push_back(std::move(grp));
+        return *this;
+    }
+
+private:
+    /// @brief 递归提取每个声明项的长名到分组成员列表
+    template <typename T, typename... Rest_T>
+    void _collectGroupMembers(OptionGroup &_Grp, T &&_Arg, Rest_T &&..._Rest)
+    {
+        _Grp.members.push_back(_extractLongName(_Arg));
+        if constexpr (sizeof...(Rest_T) > 0) {
+            _collectGroupMembers(_Grp, std::forward<Rest_T>(_Rest)...);
+        }
+    }
+
+    /// @brief 从声明项提取长名（仅用于 group() 内部，支持 OptionDef<T> 和 FlagDef）
+    template <typename T>
+    NameLong_T const &_extractLongName(T const &_Arg) const
+    {
+        return _Arg.longName;
+    }
+
+public:
     template <typename T>
     ContextBase &addOption(char _Short, NameLong_T _Long, Desc_T _Help, T const &_Default = T{})
     {
@@ -91,6 +148,30 @@ public:
         Builder(&instData_).addOption<T>(_Long, _Help, _Default);
         return *this;
     }
+
+    /// @brief 构筑值选项（含短名，int 类型推导版本）
+    ContextBase &addOption(char _Short, NameLong_T _Long, Desc_T _Help, int _Default)
+    { Builder(&instData_).addOption<int>(_Short, _Long, _Help, _Default); return *this; }
+
+    /// @brief 构筑值选项（含短名，double 类型推导版本）
+    ContextBase &addOption(char _Short, NameLong_T _Long, Desc_T _Help, double _Default)
+    { Builder(&instData_).addOption<double>(_Short, _Long, _Help, _Default); return *this; }
+
+    /// @brief 构筑值选项（含短名，std::string 类型推导版本）
+    ContextBase &addOption(char _Short, NameLong_T _Long, Desc_T _Help, std::string const &_Default)
+    { Builder(&instData_).addOption<std::string>(_Short, _Long, _Help, _Default); return *this; }
+
+    /// @brief 构筑值选项（仅长名，int 类型推导版本）
+    ContextBase &addOption(NameLong_T _Long, Desc_T _Help, int _Default)
+    { Builder(&instData_).addOption<int>(_Long, _Help, _Default); return *this; }
+
+    /// @brief 构筑值选项（仅长名，double 类型推导版本）
+    ContextBase &addOption(NameLong_T _Long, Desc_T _Help, double _Default)
+    { Builder(&instData_).addOption<double>(_Long, _Help, _Default); return *this; }
+
+    /// @brief 构筑值选项（仅长名，std::string 类型推导版本）
+    ContextBase &addOption(NameLong_T _Long, Desc_T _Help, std::string const &_Default)
+    { Builder(&instData_).addOption<std::string>(_Long, _Help, _Default); return *this; }
 
     ContextBase &addFlag(char _Short, NameLong_T _Long, Desc_T _Help)
     {

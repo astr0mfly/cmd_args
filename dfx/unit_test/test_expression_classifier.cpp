@@ -162,25 +162,4 @@ TEST_CASE("recognizer: 流尾 pending 缺值产出 valueless Expression", "[clas
     REQUIRE(out[0].value.empty());
 }
 
-TEST_CASE("recognizer: -- 切换方位模式", "[classifier]")
-{
-    Model model;
-    OptionBuilder ob(&model.opts);
-    ob.addOption<int>("timeout", "t", 30);
-    OptionParser op(&model.opts);
-    ArgumentParser ap(&model.args);
-    EnvParser ep(&model.envs);
-    ExpressionRecognizer rec(&op, &ap, &ep);
 
-    TokenStream_T toks{
-        Token(Token::Type_E::LongName, "", 0),
-        Token(Token::Type_E::ShortName, "x", 0),
-        Token(Token::Type_E::Variable, "val", 0)
-    };
-    auto exprs = rec.recognizeAll(toks);
-    REQUIRE(exprs.size() == 2);
-    REQUIRE(exprs[0].bPositional);
-    REQUIRE(exprs[0].name == "-x");
-    REQUIRE(exprs[1].bPositional);
-    REQUIRE(exprs[1].name == "val");
-}

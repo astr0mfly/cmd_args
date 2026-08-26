@@ -169,8 +169,7 @@ private:
     {
         if (strPendingKey__.empty() || vecBuf__.empty()) return false;
 
-        auto const &tok = vecBuf__.front();
-        std::string text = tok.toText();
+        std::string text = vecBuf__.front().toText();
 
         ClassifiedExpr e;
         e.bExplicit = true;
@@ -225,10 +224,14 @@ private:
     {
         if (vecBuf__.empty()) return false;
 
-        auto const &tok = vecBuf__.front();
+        // 在 erase 前缓存必要信息（避免 tok 悬垂引用）
+        auto const tokAttr = vecBuf__[0].getAttr();
+        auto const tokName = vecBuf__[0].getName();
+        auto const tokText = vecBuf__[0].toText();
+        auto const tokInln = vecBuf__[0].hasInlineEq();
 
         // ── 1. '--' 切换纯方位模式 ──
-        if (tok.getAttr() == Token::Type_E::LongName && tok.getName().empty()) {
+        if (tokAttr == Token::Type_E::LongName && tokName.empty()) {
             bOptEnd__ = true;
             vecBuf__.erase(vecBuf__.begin());
             _Progress = true;
@@ -237,15 +240,15 @@ private:
 
         // ── 2. bOptEnd__：一律方位参数 ──
         if (bOptEnd__) {
-            _Out.push_back(__makePositional(tok));
+            _Out.push_back(__makePositional(vecBuf__[0]));
             vecBuf__.erase(vecBuf__.begin());
             _Progress = true;
             return true;
         }
 
         // ── 3. LongName{n}：选项/命名参数 ──
-        if (tok.getAttr() == Token::Type_E::LongName && !tok.getName().empty()) {
-            auto const &name = tok.getName();
+        if (tokAttr == Token::Type_E::LongName && !tokName.empty()) {
+            auto const &name = tokName;
 
             // 3a. 短回路 action
             if (pOptParser__ && pOptParser__->fireAction(name)) {
@@ -254,7 +257,7 @@ private:
                 e.name      = name;
                 e.bIsAction = true;
                 e.bExplicit = true;
-                e.strRaw    = tok.toText();
+                e.strRaw    = tokText;
                 _Out.push_back(std::move(e));
                 vecBuf__.erase(vecBuf__.begin());
                 _Progress = true;
@@ -269,7 +272,7 @@ private:
                     e.name      = name;
                     e.bIsBool   = true;
                     e.bExplicit = true;
-                    e.strRaw    = tok.toText();
+                    e.strRaw    = tokText;
                     _Out.push_back(std::move(e));
                     vecBuf__.erase(vecBuf__.begin());
                     _Progress = true;
@@ -277,14 +280,14 @@ private:
                 }
                 strPendingKey__    = name;
                 enPendingKind__    = PendingKind_E::LongOpt;
-                bPendingInlineEq__ = tok.hasInlineEq();
+                bPendingInlineEq__ = tokInln;
                 vecBuf__.erase(vecBuf__.begin());
                 _Progress = true;
                 return true;
             }
 
             // 3c. 命名参数
-            if (pArgParser__ && pArgParser__->recognizeToken(tok)) {
+            if (pArgParser__ && pArgParser__->recognizeToken(vecBuf__[0])) {
                 strPendingKey__ = name;
                 enPendingKind__ = PendingKind_E::NamedArg;
                 vecBuf__.erase(vecBuf__.begin());
@@ -293,7 +296,7 @@ private:
             }
 
             // 3d. 未识别 → dash-left
-            vecDashLeft__.push_back(tok.toText());
+            vecDashLeft__.push_back(tokText);
             vecBuf__.erase(vecBuf__.begin());
             _Progress = true;
             return true;
@@ -336,8 +339,8 @@ private:
         }
 
         if (enSeq__ == SeqKind_E::CondAwaitColon) {
-            if (tok.getAttr() == Token::Type_E::Variable) {
-                strSeqB__ = tok.getName();
+            if (tokAttr == Token::Type_E::Variable) {
+                strSeqB__ = tokName;
                 vecBuf__.erase(vecBuf__.begin());
                 if (!vecBuf__.empty() && vecBuf__[0].getAttr() == Token::Type_E::Delimiter
                     && vecBuf__[0].getName() == ":") {
@@ -369,12 +372,12 @@ private:
         }
 
         if (enSeq__ == SeqKind_E::CondAwaitElse) {
-            if (tok.getAttr() == Token::Type_E::Variable) {
+            if (tokAttr == Token::Type_E::Variable) {
                 ClassifiedExpr e;
                 e.kind          = ExpressionKind_E::Conditional;
                 e.strCondition  = strSeqHead__;
                 e.strThenBranch = strSeqB__;
-                e.strElseBranch = tok.getName();
+                e.strElseBranch = tokName;
                 e.bExplicit     = true;
                 _Out.push_back(std::move(e));
                 vecBuf__.erase(vecBuf__.begin());
@@ -395,22 +398,22 @@ private:
         }
 
         // ── 5. ContinualName：可能是 aggregate 或关系 head ──
-        if (tok.getAttr() == Token::Type_E::ContinualName && enSeq__ == SeqKind_E::None) {
+        if (tokAttr == Token::Type_E::ContinualName && enSeq__ == SeqKind_E::None) {
             if (vecBuf__.size() == 1) {
                 enSeq__      = SeqKind_E::HeadStash;
-                strSeqHead__ = tok.getName();
+                strSeqHead__ = tokName;
                 return false;  // 无进展，等下一次 feed
             }
         }
 
         // ── 6. 其他 Token ──
-        if (tok.getAttr() == Token::Type_E::Delimiter && tok.getName() == "=") {
+        if (tokAttr == Token::Type_E::Delimiter && tokName == "=") {
             vecBuf__.erase(vecBuf__.begin());
             _Progress = true;
             return true;
         }
 
-        _Out.push_back(__makePositional(tok));
+        _Out.push_back(__makePositional(vecBuf__[0]));
         vecBuf__.erase(vecBuf__.begin());
         _Progress = true;
         return true;

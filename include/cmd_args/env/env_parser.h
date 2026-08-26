@@ -27,6 +27,7 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/expression/classified_expr.h"
+#include "cmd_args/expression/token.h"
 #include "cmd_args/context/context_fwd.h"
 
 #include "cmd_args/env/env.h"
@@ -255,6 +256,61 @@ public:
             applied.emplace_back(e.strKey + "=" + e.strValue);
         });
         return applied;
+    }
+
+    // ===== Token 规则接口（编译前端） =====
+
+    /// @brief Env 表达式序列匹配结果
+    struct EnvMatch_T
+    {
+        ClassifiedExpr expr;
+        std::size_t    nConsumed;  ///< 消耗的 Token 数
+    };
+
+    /// @brief Env 行模式序列匹配：Variable(::Variable)* [Delimiter("=") String]
+    auto recognizeEnvAssign(TokenStream_T const &_Buf, std::size_t _Pos) const
+        -> std::optional<EnvMatch_T>
+    {
+        using TT = Token::Type_E;
+        if (_Pos >= _Buf.size()) return std::nullopt;
+        if (_Buf[_Pos].getAttr() != TT::Variable) return std::nullopt;
+
+        ClassifiedExpr expr;
+        expr.kind      = ExpressionKind_E::Env;
+        expr.bExplicit = true;
+        std::size_t pos = _Pos;
+
+        // 空间级联：Variable (:: Variable)*
+        while (pos + 2 < _Buf.size()
+            && _Buf[pos + 1].getAttr() == TT::ScopeSep
+            && _Buf[pos + 2].getAttr() == TT::Variable) {
+            expr.vecSpacePath.push_back(_Buf[pos].getName());
+            pos += 2;
+        }
+
+        // 叶子名 = 最后一个 Variable
+        expr.name = _Buf[pos].getName();
+        ++pos;
+
+        // 可选 '=' + 值
+        if (pos < _Buf.size() && _Buf[pos].getAttr() == TT::Delimiter && _Buf[pos].getName() == "=") {
+            ++pos;
+            if (pos < _Buf.size()) {
+                expr.value = _Buf[pos].getName();
+                ++pos;
+            }
+        }
+
+        expr.strRaw = expr.fullPath() + "=" + expr.value;
+        return EnvMatch_T{ std::move(expr), pos - _Pos };
+    }
+
+    /// @brief 应用 Env 表达式到 EnvData
+    void applyExpr(ClassifiedExpr const &_E)
+    {
+        if (_E.kind != ExpressionKind_E::Env) return;
+        auto key = _E.fullPath();
+        pData__->doPush(key, _E.value, false);
     }
 
 private:

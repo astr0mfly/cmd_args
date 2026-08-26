@@ -23,6 +23,7 @@
 #include "cmd_args/argument/argument.h"
 #include "cmd_args/argument/argument_data.h"
 #include "cmd_args/expression/classified_expr.h"
+#include "cmd_args/expression/token.h"
 #include "cmd_args/context/context_fwd.h"
 #include "cmd_args/error/parser_error.h"
 
@@ -323,6 +324,86 @@ public:
     {
         pData__->mgrName.doGetHelp(_Oss, _Max);
         pData__->mgrPos.doGetHelp(_Oss, _Max);
+    }
+
+    // ===== Token 规则接口（编译前端） =====
+
+    /// @brief 单 Token 语法分类：命名参数 或 方位候选
+    auto recognizeToken(Token const &_Tok) const -> std::optional<ClassifiedExpr>
+    {
+        using TT = Token::Type_E;
+
+        // --name=value / --name value：查注册表
+        if (_Tok.getAttr() == TT::LongName && !_Tok.getName().empty()) {
+            if (pData__ && pData__->mgrName.doGet(_Tok.getName())) {
+                ClassifiedExpr e;
+                e.kind      = ExpressionKind_E::Argument;
+                e.name      = _Tok.getName();
+                e.bExplicit = true;
+                e.strRaw    = _Tok.toText();
+                return e;
+            }
+        }
+
+        // 非 dash 开头 token → 方位参数候选
+        if (_Tok.getAttr() != TT::LongName && _Tok.getAttr() != TT::ShortName
+            && _Tok.getAttr() != TT::ContinualName) {
+            auto text = _Tok.toText();
+            if (!text.empty() && text[0] != '-') {
+                ClassifiedExpr e;
+                e.kind       = ExpressionKind_E::Argument;
+                e.name       = text;
+                e.value      = text;
+                e.bExplicit  = true;
+                e.bPositional = true;
+                e.strRaw     = text;
+                return e;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    /// @brief 应用命名参数到 ArgumentData；方位参数 push 到缓冲
+    void applyExpr(ClassifiedExpr const &_E, std::vector<std::string> &_Pos)
+    {
+        if (_E.bPositional) {
+            _Pos.emplace_back(_E.value);
+            return;
+        }
+        auto *p = pData__->mgrName.mutGet(_E.name);
+        if (!p) return;
+        if (_E.value.empty()) {
+            throw ErrorParse(ParseError_E::NEED_VALUE,
+                "named argument '--" + _E.name + "' need a value");
+        }
+        p->set(_E.value);
+    }
+
+    /// @brief 按声明顺序提交方位参数（数量校验 + 按序赋值）
+    void assignPositional(std::vector<std::string> const &_VecPos)
+    {
+        size_t total = pData__->mgrPos.doSize();
+        size_t need  = 0;
+        pData__->mgrPos.doConVisit([&](Argument const &a) {
+            if (!a.isExternal()) ++need;
+        });
+        if (_VecPos.size() < need || _VecPos.size() > total) {
+            std::ostringstream oss;
+            oss << "give " << _VecPos.size() << ", but need " << need << ".." << total << '\n';
+            oss << "uncaptured command line arguments:\n";
+            for (auto const &tok : _VecPos) { oss << tok << '\n'; }
+            throw ErrorParse(ParseError_E::UNKNWON_ARGS, oss.str());
+        }
+
+        bool   exact = (_VecPos.size() == need);
+        size_t vi    = 0;
+        for (size_t seq = 0; seq < total && vi < _VecPos.size(); ++seq) {
+            auto *p = pData__->mgrPos.mutGetBySeq(seq);
+            if (!p) continue;
+            if (exact && p->isExternal()) continue;
+            p->set(_VecPos[vi++]);
+        }
     }
 
 private:

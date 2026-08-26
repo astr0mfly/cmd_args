@@ -23,6 +23,7 @@
 #include <type_traits>
 
 #include "cmd_args/expression/classified_expr.h"
+#include "cmd_args/expression/token.h"
 #include "cmd_args/context/context_fwd.h"
 #include "cmd_args/error/parser_error.h"
 #include "cmd_args/option/option.h"
@@ -282,7 +283,7 @@ public:
 
     /// @brief 查询选项是否已注册（长名可带 -- 前缀，短名亦可用 char 查询）
     /// @param _Name 选项名
-    bool hasOption(std::string const &_Name) const noexcept
+    bool hasOption(Name_T const &_Name) const noexcept
     {
         auto key = _Name;
         if (util::starts_with(key, "--")) { key = key.substr(2); }
@@ -298,7 +299,7 @@ public:
     /// @return 解析后的 T 值
     /// @note 类型必须与注册时一致，否则抛 UNKNOWN_OPTION
     template <typename T>
-    auto getOption(std::string const &_Name) const -> T
+    auto getOption(Name_T const &_Name) const -> T
     {
         using namespace util;
         auto key = _Name;
@@ -326,34 +327,34 @@ public:
 
     // 一些 getOption 的类型便捷入口
     /// @brief 便捷判断 bool 型选项是否命中
-    bool hasOptionBool(std::string const &_Name) const { return getOption<bool>(_Name); }
+    bool hasOptionBool(Name_T const &_Name) const { return getOption<bool>(_Name); }
 
     /// @brief 便捷读取 bool 型选项
-    bool getOptionBool(std::string const &_Name) const { return getOption<bool>(_Name); }
+    bool getOptionBool(Name_T const &_Name) const { return getOption<bool>(_Name); }
 
     /// @brief 便捷读取 int 型选项
-    auto getOptionInt(std::string const &_Name) const -> int { return getOption<int>(_Name); }
+    auto getOptionInt(Name_T const &_Name) const -> int { return getOption<int>(_Name); }
 
     /// @brief 便捷读取 int64_t 型选项
-    auto getOptionInt64(std::string const &_Name) const -> int64_t
+    auto getOptionInt64(Name_T const &_Name) const -> int64_t
     {
         return getOption<int64_t>(_Name);
     }
 
     /// @brief 便捷读取 double 型选项
-    auto getOptionDouble(std::string const &_Name) const -> double
+    auto getOptionDouble(Name_T const &_Name) const -> double
     {
         return getOption<double>(_Name);
     }
 
     /// @brief 便捷读取 string 型选项
-    auto getOptionString(std::string const &_Name) const -> std::string
+    auto getOptionString(Name_T const &_Name) const -> OptionValue::Value_T
     {
-        return getOption<std::string>(_Name);
+        return getOption<OptionValue::Value_T>(_Name);
     }
 
     /// @brief 生成选项使用行片段（委托给 OptionData）
-    auto usageString() const -> std::string { return pData__->usageString(); }
+    auto usageString() const -> OptionValue::Value_T { return pData__->usageString(); }
 
     /// @brief 追加帮助文本到输出流
     void appendHelp(std::ostringstream &_Out) const
@@ -362,6 +363,164 @@ public:
         _Out << "\nOptions:\n";
         auto max = pData__->calcDescMaxLength();
         pData__->appendHelp(_Out, max);
+    }
+
+    // ===== Token 规则接口（编译前端） =====
+
+    /// @brief 单 Token 语法分类（只读查注册表，不赋值）
+    auto recognizeToken(Token const &_Tok) const -> std::optional<ClassifiedExpr>
+    {
+        using TT = Token::Type_E;
+        switch (_Tok.getAttr()) {
+        case TT::LongName: {
+            ClassifiedExpr e;
+            e.kind      = ExpressionKind_E::Option;
+            e.name      = _Tok.getName();
+            e.bExplicit = true;
+            e.strRaw    = _Tok.toText();
+            return e;
+        }
+        case TT::ShortName: {
+            ClassifiedExpr e;
+            e.kind       = ExpressionKind_E::Option;
+            e.cShortName = _Tok.getName().empty() ? '\0' : _Tok.getName()[0];
+            e.name       = _Tok.getName();
+            e.bIsBool    = true;
+            e.bExplicit  = true;
+            e.strRaw     = _Tok.toText();
+            return e;
+        }
+        case TT::ContinualName: {
+            ClassifiedExpr e;
+            e.kind       = ExpressionKind_E::Option;
+            e.cShortName = _Tok.getName().empty() ? '\0' : _Tok.getName()[0];
+            e.name       = _Tok.getName().empty() ? "" : std::string(1, _Tok.getName()[0]);
+            e.bIsBool    = true;
+            e.bExplicit  = true;
+            e.strRaw     = _Tok.toText();
+            return e;
+        }
+        default: return std::nullopt;
+        }
+    }
+
+    /// @brief 查询长名选项是否已注册（含短回路 action）
+    auto knowsLong(std::string const &_Name) const noexcept -> bool
+    {
+        return (pData__ && pData__->mgrValues.find(_Name))
+            || (pData__ && pData__->mgrActions.doGet(_Name));
+    }
+
+    /// @brief 查询短名选项是否已注册
+    auto knowsShort(char _C) const noexcept -> bool
+    {
+        return pData__ && pData__->mgrValues.mutFind(_C);
+    }
+
+    /// @brief 查询长名选项是否为 bool 类型
+    auto isBoolLong(std::string const &_Name) const noexcept -> bool
+    {
+        if (!pData__) return false;
+        auto const *p = pData__->mgrValues.find(_Name);
+        return p && p->strType == "bool";
+    }
+
+    /// @brief 查询短名选项是否为 bool 类型
+    auto isBoolShort(char _C) const noexcept -> bool
+    {
+        if (!pData__) return false;
+        auto const *p = pData__->mgrValues.mutFind(_C);
+        return p && p->strType == "bool";
+    }
+
+    /// @brief 聚合串探测结果
+    enum class ProbeAgg_E : char
+    {
+        AllBool,    ///< 所有字符均为已注册 bool 标志
+        NeedsValue, ///< 最后一个字符是已注册非 bool 选项（需要值）
+        UnknownChar ///< 包含未注册的字符
+    };
+
+    /// @brief 聚合串探测：返回聚合串解析结果
+    auto probeAggregate(std::string const &_Raw) const -> ProbeAgg_E
+    {
+        if (_Raw.size() <= 1) return ProbeAgg_E::UnknownChar;
+        bool lastIsNonBool = false;
+        for (size_t i = 1; i < _Raw.size(); ++i) {
+            char key = _Raw[i];
+            auto const *pAct = pData__ ? pData__->mgrActions.doGet(key) : nullptr;
+            if (pAct) continue;
+            auto const *pOpt = pData__ ? pData__->mgrValues.mutFind(key) : nullptr;
+            if (!pOpt) return ProbeAgg_E::UnknownChar;
+            if (pOpt->strType != "bool") {
+                if (i == _Raw.size() - 1) { lastIsNonBool = true; }
+                else { return ProbeAgg_E::UnknownChar; }
+            }
+        }
+        return lastIsNonBool ? ProbeAgg_E::NeedsValue : ProbeAgg_E::AllBool;
+    }
+
+    /// @brief 触发短回路 action（by long name）
+    auto fireAction(std::string const &_Name) -> bool
+    {
+        if (!pData__) return false;
+        auto const *pSc = pData__->mgrActions.doGet(_Name);
+        if (!pSc) return false;
+        bFired__ = true;
+        static_cast<OptionAction const *>(pSc)->fnCallback();
+        return true;
+    }
+
+    /// @brief 触发短回路 action（by short char）
+    auto fireActionShort(char _C) -> bool
+    {
+        if (!pData__) return false;
+        auto const *pSc = pData__->mgrActions.doGet(_C);
+        if (!pSc) return false;
+        bFired__ = true;
+        static_cast<OptionAction const *>(pSc)->fnCallback();
+        return true;
+    }
+
+    /// @brief Type-safe 应用：将 ClassifiedExpr 写入 OptionData
+    /// @return true = 已应用（registered option）；false = 未注册
+    auto applyExpr(ClassifiedExpr const &_E) -> bool
+    {
+        if (_E.bIsAction) return true;
+
+        // 长选项
+        if (!_E.strRaw.empty() && _E.strRaw[0] == '-' && _E.strRaw.size() >= 2 && _E.strRaw[1] == '-') {
+            auto *pOpt = pData__->mgrValues.mutFind(_E.name);
+            if (!pOpt) return false;
+
+            if (_E.value.empty() && pOpt->strType != "bool") {
+                throw ErrorParse(ParseError_E::NEED_VALUE,
+                    "option --" + _E.name + " need a value");
+            }
+            __assign(pOpt, _E.value, pOpt->strType == "bool");
+            return true;
+        }
+
+        // 短选项 / 聚合
+        if (!_E.strRaw.empty() && _E.strRaw.size() >= 2 && _E.strRaw[0] == '-') {
+            __consumeShortAggregate(_E.strRaw, _E.value);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// @brief 结构化关系入图
+    void applyRelation(ClassifiedExpr const &_E)
+    {
+        if (!pGraph__) return;
+        if (_E.kind == ExpressionKind_E::Conditional) {
+            pGraph__->addEdge(_E.strCondition, _E.strThenBranch,
+                OptionGraph::EdgeKind_E::Conditional, _E.strElseBranch);
+        }
+        else if (_E.kind == ExpressionKind_E::Dependency) {
+            pGraph__->addEdge(_E.strDepSource, _E.strDepTarget, OptionGraph::EdgeKind_E::Dependency);
+        }
     }
 
 private:
@@ -393,7 +552,7 @@ private:
     }
 
     /// @brief 选项赋值后的虚拟钩子（纯解析 = 空操作；子类 override 实现 action 执行）
-    virtual void onOptionAssigned(OptionValue *, std::string const &) {}
+    virtual void onOptionAssigned(OptionValue *, OptionValue::Value_T const &) {}
 
     /// @brief 长名短回路触发：命中即回调并移除 token
     bool __fireOnLong(
@@ -477,6 +636,44 @@ private:
             auto source = _Tok.substr(1, dPos - 1);
             auto target = _Tok.substr(dPos + 2);
             pGraph__->addEdge(source, target, OptionGraph::EdgeKind_E::Dependency);
+        }
+    }
+
+    /// @brief 聚合短选项消费（from strRaw + value）
+    void __consumeShortAggregate(std::string const &_Tok, std::string const &_Value)
+    {
+        if (_Tok.size() == 2) {
+            char key = _Tok[1];
+            if (fireActionShort(key)) return;
+            auto *pOpt = pData__->mgrValues.mutFind(key);
+            if (!pOpt) {
+                throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                    "unrecognized short option '" + std::string(1, key) + "' in " + _Tok);
+            }
+            __assign(pOpt, _Value, pOpt->strType == "bool");
+            return;
+        }
+        for (size_t i = 1; i < _Tok.size(); ++i) {
+            char key = _Tok[i];
+            if (fireActionShort(key)) return;
+            auto *pOpt = pData__->mgrValues.mutFind(key);
+            if (!pOpt) {
+                throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
+                    "unrecognized short option '" + std::string(1, key) + "' in " + _Tok);
+            }
+            if (pOpt->strType == "bool") {
+                __assign(pOpt, "", true);
+            } else {
+                std::string val = _Tok.substr(i + 1);
+                if (!val.empty() && val.front() == '=') { val = val.substr(1); }
+                if (val.empty() && !_Value.empty()) { val = _Value; }
+                if (val.empty()) {
+                    throw ErrorParse(ParseError_E::NEED_VALUE,
+                        "option -" + std::string(1, key) + " need a value");
+                }
+                __assign(pOpt, val, false);
+                return;
+            }
         }
     }
 

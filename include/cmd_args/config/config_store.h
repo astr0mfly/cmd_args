@@ -30,8 +30,8 @@
 
 #include "cmd_args/error/errors.h"
 
-#include "config/parameter.h"
-#include "config/yaml.h"
+#include "cmd_args/config/parameter.h"
+#include "cmd_args/config/yaml.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 

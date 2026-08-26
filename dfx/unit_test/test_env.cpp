@@ -227,3 +227,68 @@ TEST_CASE("context: env_string 头部与标记", "[env]")
     REQUIRE(s.find("0>+ : \"A\" = \"1\"") != std::string::npos);
     REQUIRE(s.find("1+ : \"B\" = \"2\"") != std::string::npos);
 }
+
+/* ==================== 环境空间（:: 级联） ==================== */
+
+TEST_CASE("env: recognizeEnvAssign 空间级联", "[envscope]")
+{
+    EnvData data;
+    EnvParser ep(&data);
+
+    TokenStream_T toks{
+        Token(Token::Type_E::Variable,   "A", 0),
+        Token(Token::Type_E::ScopeSep,   "::", 0),
+        Token(Token::Type_E::Variable,   "B", 0),
+        Token(Token::Type_E::ScopeSep,   "::", 0),
+        Token(Token::Type_E::Variable,   "C", 0),
+        Token(Token::Type_E::Delimiter,  "=", 0),
+        Token(Token::Type_E::String,     "D", 0),
+    };
+    auto result = ep.recognizeEnvAssign(toks, 0);
+    REQUIRE(result.has_value());
+    REQUIRE(result->expr.kind == ExpressionKind_E::Env);
+    REQUIRE(result->expr.name == "C");
+    REQUIRE(result->expr.vecSpacePath.size() == 2);
+    REQUIRE(result->expr.vecSpacePath[0] == "A");
+    REQUIRE(result->expr.vecSpacePath[1] == "B");
+    REQUIRE(result->expr.value == "D");
+    REQUIRE(result->expr.fullPath() == "A::B::C");
+    REQUIRE(result->nConsumed == 7);
+}
+
+TEST_CASE("env: recognizeEnvAssign 无空间平键", "[envscope]")
+{
+    EnvData data;
+    EnvParser ep(&data);
+
+    TokenStream_T toks{
+        Token(Token::Type_E::Variable,   "KEY", 0),
+        Token(Token::Type_E::Delimiter,  "=", 0),
+        Token(Token::Type_E::String,     "val", 0),
+    };
+    auto result = ep.recognizeEnvAssign(toks, 0);
+    REQUIRE(result.has_value());
+    REQUIRE(result->expr.vecSpacePath.empty());
+    REQUIRE(result->expr.name == "KEY");
+    REQUIRE(result->expr.fullPath() == "KEY");
+}
+
+TEST_CASE("env: expand 花括号内支持 :: 键", "[envscope]")
+{
+    EnvData data;
+    data.doPush("A::B::C", "scoped_val", false);
+    EnvParser ep(&data);
+
+    auto result = ep.expand("path=${A::B::C}/bin");
+    REQUIRE(result == "path=scoped_val/bin");
+}
+
+TEST_CASE("env: set_env + has_env 全路径键", "[envscope]")
+{
+    EnvData data;
+    data.doPush("A::B::C", "v1", true);
+    EnvParser ep(&data);
+
+    REQUIRE(ep.has("A::B::C"));
+    REQUIRE(ep.get("A::B::C") == "v1");
+}

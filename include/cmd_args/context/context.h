@@ -16,6 +16,10 @@
  */
 #pragma once
 
+#include <algorithm>
+#include <iostream>
+#include <sstream>
+
 #include "cmd_args/base/def.h"
 
 #include "cmd_args/context/builtin_options.h"
@@ -43,6 +47,30 @@ public:
         , executor__(&instData_)
         , interp__(&instData_)
     {}
+
+    /* ---------- 帮助文档 ---------- */
+
+    /// @brief 打印帮助信息（包含子命令列表）
+    void print_help() const
+    {
+        // 如果有激活的子命令，委托给子 Context
+        if (activeSubContext_) {
+            auto *sub = dynamic_cast<Context const *>(activeSubContext_.get());
+            if (sub) {
+                sub->print_help();
+                return;
+            }
+        }
+
+        // 打印子命令帮助
+        auto subHelp = _subcommandHelp();
+        if (!subHelp.empty()) {
+            std::cout << subHelp;
+        }
+
+        // 打印常规帮助
+        compiler__.print_help();
+    }
 
     /* ---------- 执行模式（兼容语义） ---------- */
 
@@ -97,6 +125,24 @@ protected:
     }
 
 private:
+    /// @brief 生成子命令帮助信息
+    std::string _subcommandHelp() const
+    {
+        if (!hasSubcommands()) {
+            return {};
+        }
+
+        auto names = subcommandRegistry_.names();
+        std::sort(names.begin(), names.end());
+
+        std::ostringstream oss;
+        oss << "\nAvailable subcommands:\n";
+        for (auto const &name : names) {
+            oss << "  " << name << "\n";
+        }
+        return oss.str();
+    }
+
     /// @brief 原有的管线逻辑（无子命令版本）
     void _doRunPipelineWithoutSubcommands(Tokens_T &_Toks, Envs_T const &_Envs)
     {

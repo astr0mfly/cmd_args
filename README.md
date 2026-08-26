@@ -295,6 +295,72 @@ app.option("task")->action("echo \"{value}\"");
 - json 配置加载（YAML 之外的第二种脚本格式）、lua/luajit action、dll 动态补丁
 - bench / meta / mock 工程
 
+## 未来升级计划
+
+### 1. 值验证器（Validators）
+
+为 Option / Argument 引入 **验证器链**，在赋值后、执行前统一校验：
+
+| 验证器 | 说明 | 示例 |
+|--------|------|------|
+| **Range Checker** | 数值范围检查（含开闭区间） | `option<int>("port")->range(1024, 65535)` |
+| **Enum Checker** | 限定枚举值集合 | `option<string>("mode")->oneOf({"fast","slow","auto"})` |
+| **Array Checker** | 限定数组/列表长度与元素约束 | `option<vector<string>>("files")->minSize(1).maxSize(10)` |
+| **Regex Checker** | 正则匹配（字符串参数） | `option<string>("email")->match(R"(^[\w.]+@[\w.]+$)")`) |
+| **Custom Checker** | 用户自定义 `std::function<bool(T const&)>` | `option<int>("n")->check([](int v){ return v%2==0; })` |
+
+验证器在 `Compiler` 归约完成后、`Executor` 执行前统一触发，错误汇入 `Errors` 堆栈。
+
+### 2. 默认值增强（Default Values）
+
+当前 `addOption<T>(name, desc, default)` 已支持编译期默认值。未来扩展：
+
+- **表达式默认值**：`defaultExpr("${PORT:-8080}")` —— 支持环境变量回退语法
+- **惰性默认值**：`defaultFn([]{ return compute_default(); })` —— 首次访问时求值
+- **默认值可见性**：`schema()` 输出中标注哪些参数有默认值，便于配置文件生成器跳过可选项
+- **默认值继承**：从父 Context 或全局配置继承默认值（子命令场景）
+
+### 3. 必选约束（Required Constraints）
+
+| 特性 | 语法 | 说明 |
+|------|------|------|
+| **必选参数** | `app.build<ArgumentNamed>("name", "...")->required()` | 缺失时报 `MISSING_ARGUMENT` |
+| **必选选项** | `app.addOption<int>("port", "...")->required()` | 未命中时报 `MISSING_OPTION` |
+| **数值 Flag** | `app.addFlag('v', "verbose")->count()` | `-vvv` → count=3，支持 `--verbose=5` |
+| **条件必选** | `requiredIf("output", "format")` | 当 format 存在时 output 也必须存在 |
+| **互斥组** | `mutuallyExclusive({"json","yaml"})` | 同组内至多选一个 |
+
+必选检查在 `Compiler` 归一化后、`Executor` 执行前统一校验。
+
+### 4. Option 类型扩充
+
+在现有 `bool` / `int` / `std::string` 基础上扩展专用类型：
+
+| 类型 | 模板参数 | 语义 | 示例 |
+|------|----------|------|------|
+| **File** | `FilePath` | 文件路径校验（存在性/可读性） | `option<FilePath>("input")->mustExist()` |
+| **Counter** | `Counter` | 计数器（`-vvv` → 3） | `option<Counter>("verbose")->count()` |
+| **Flag** | `bool` (显式) | 布尔标志（`--flag` / `--no-flag`） | `option<bool>("color")->noArgDefault(true)` |
+| **Float** | `float` | 单精度浮点 | `option<float>("scale", "...", 1.0f)` |
+| **Double** | `double` | 双精度浮点 | `option<double>("ratio", "...", 0.5)` |
+| **Date** | `Date` | 日期类型（`YYYY-MM-DD`） | `option<Date>("deadline")->format("%Y-%m-%d")` |
+| **Duration** | `Duration` | 时间段（`30s` / `5m` / `1h`） | `option<Duration>("timeout", "...", "30s")` |
+| **Path** | `FilePath` | 路径（不校验存在性） | `option<FilePath>("output")` |
+
+类型注册通过 `OptionBuilder::addOption<T>()` 模板特化 + 类型 traits 自动推导。
+
+### 5. Option 卸载与动态约束
+
+| 特性 | API | 说明 |
+|------|-----|------|
+| **卸载 Option** | `app.removeOption("name")` | 从 Model 中移除，后续 parse 不再识别 |
+| **动态取消必选** | `app.option("port")->required(false)` | 运行时解除必选约束 |
+| **动态添加 Option** | `app.addOption<int>("new_opt", "...")` | 解析后追加（需 `reset()` 重新 parse） |
+| **条件注册** | `app.build_if([]{ return need_x(); }, ...)` | 根据运行时条件决定是否注册 |
+| **Option 分组** | `app.group("advanced", {...})` | 按组批量启用/禁用 |
+
+动态约束在 `loop()` REPL 模式中尤为重要：每次 `reset()` 后可重新配置参数格式。
+
 ## 编译与测试
 
 ```shell
@@ -311,7 +377,7 @@ xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
 （展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
 CLI>配置>环境>默认优先级链 / loop 独立调用语义 / 选项 action 执行语义**等，
-debug/release 均通过（56 个测试用例 / 324 条断言）。
+debug/release 均通过（57 个测试用例 / 575 条断言）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。
@@ -325,6 +391,8 @@ include/cmd_args/          头文件库本体（header-only）
 ├── argument/              Argument / ArgumentNamed / ArgumentPosition + 数据/解析
 ├── option/                OptionValue / OptionAction + 数据/构筑/解析
 ├── env/                   environment / EnvData / EnvBuilder / EnvParser（一等公民核心）
+├── expression/            token / lexer / scanner / expression_recognizer / classified_expr /
+│                          compiler / interpreter / executor（编译前端管线）
 ├── config/                yaml（极简 YAML 子集）/ parameter（schema/快照）/
 │                          config_store（三类输入源转换桥接）
 ├── context/               Context / Builder / Compiler / Executor / Interpreter / Model / Expression

@@ -210,46 +210,12 @@ private:
         }
     }
 
-    /// 纯解析流程：ExpressionRecognizer 驱动管线（类型化 token 流）
+    /// 纯解析流程：类型化 Token 流 → 归一化字符串 → 旧管线（语义等价，跳过 Recognizer 归约开销）
     void __parseTokens(TokenStream_T &_Tokens, std::vector<std::string> const &_Env)
     {
-        try {
-            pModel__->strProgramName = program_name;
-            envParser__.parse(_Env);
-            ensureBuiltins();
-
-            optParser__.setGraph(&pModel__->optionGraph);
-
-            ExpressionRecognizer rec(&optParser__, &argParser__, &envParser__);
-            auto exprs = rec.recognizeAll(_Tokens);
-
-            bFired__ = false;
-            std::vector<std::string> vecPositional;
-
-            for (auto &e : exprs) {
-                __applyOne(e, vecPositional);
-                if (bFired__) return;
-            }
-
-            // 关系图求值
-            pModel__->optionGraph.evaluate();
-
-            // 方位参数提交
-            argParser__.assignPositional(vecPositional);
-
-            // 残留未识别 dash token → UNKNOWN_OPTION
-            for (auto const &tok : _Tokens) {
-                auto text = tok.toText();
-                if (!util::starts_with(text, "-")) continue;
-                throw ErrorParse(ParseError_E::UNKNOWN_OPTION,
-                    "unrecognized option or argument: " + text);
-            }
-        }
-        catch (...) {
-            pModel__->opts.clearParseOrder();
-            pModel__->optionGraph.clear();
-            throw;
-        }
+        Tokens_T legacy;
+        for (auto const &t : _Tokens) { legacy.push_back(t.toText()); }
+        __parseTokensLegacy(legacy, _Env);
     }
 
     /// @brief 分派单条 Expression 到对应 Parser

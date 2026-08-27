@@ -199,6 +199,7 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     bool hasDefault() const noexcept { return !strDefault__.empty(); }
 
     /// @brief 内置默认值（只读）
+    /// @note defaultExpr 场景下返回未展开的模板串（如 "${PORT:-8080}"），可结合 usesDefault()/默认值展开后值判断
     auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
 
     /** @brief 当前值是否来自默认值（未被 CLI / 配置 / 环境变量覆盖）

@@ -97,7 +97,7 @@ public:
     }
 
 protected:
-    /// @brief 批量管线：Compiler 纯解析入库 → hasAction 门控 Executor → finalize
+    /// @brief 批量管线：Compiler 纯解析入库 → finalize（seed+展开+必选/校验）→ hasAction 门控 Executor
     void _doRunPipeline(Tokens_T &_Toks, Envs_T const &_Envs) override
     {
         compiler__.set_program_name(instData_.strProgramName);
@@ -105,12 +105,11 @@ protected:
 
         compiler__.ensureBuiltins();
         compiler__.parse(_Toks, _Envs);
+        compiler__.finalize();   // seed env 兜底 + ${VAR} 展开 + 必选/校验（失败即抛，action 不执行）
 
         if (instData_.hasAction()) {
             executor__.execute();
         }
-
-        compiler__.finalize();
 
         _markParsed();
     }

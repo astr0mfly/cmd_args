@@ -131,14 +131,14 @@ inline Result checkValues(Model const &_M)
     });
     if (msg.empty()) {
         _M.args.mgrPos.doConVisit([&](Argument const &a) {
-            if (!a.hasValidators() || !a.hasValue()) return;
+            if (!msg.empty() || !a.hasValidators() || !a.hasValue()) return;
             auto vmsg = a.validate(a.getValue());
             if (!vmsg.empty()) { msg = "argument " + a.getName() + ": " + vmsg; }
         });
     }
     if (msg.empty()) {
         _M.opts.mgrValues.forEachValue([&](OptionValue const &o) {
-            if (o.strValue.empty() || !o.hasValidators()) return;
+            if (!msg.empty() || o.strValue.empty() || !o.hasValidators()) return;
             auto vmsg = o.validate(o.strValue);
             if (!vmsg.empty()) { msg = "option --" + o.strLongName + ": " + vmsg; }
         });

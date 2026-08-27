@@ -317,6 +317,7 @@ public:
     bool hasDefault() const noexcept { return !strDefault__.empty(); }
 
     /// @brief 内置默认值（只读）
+    /// @note defaultExpr 场景下返回未展开的模板串（如 "${HOST:-localhost}"），可结合 usesDefault()/默认值展开后值判断
     auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
 
     /**

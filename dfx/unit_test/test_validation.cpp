@@ -392,9 +392,9 @@ TEST_CASE("validation: 流式 loop 行末校验 action 即时执行保持", "[va
     app.addOption<int>("port", "p", 0);
     app.option("port")->range(1024, 65535);
 
-    // 第一行: port=80 越界 → 行末校验 VALIDATION_FAILED → 输出 (parse error)
+    // 第一行: port=80 越界（host 已满足必选）→ 行末校验 VALIDATION_FAILED → 输出 (parse error)
     // 第二行: 全部合法 → 无错误；行间 reset 保证 port 恢复默认
-    std::istringstream in("--port 80\n--port 8080 --host ok\nexit\n");
+    std::istringstream in("--port 80 --host ok\n--port 8080 --host ok\nexit\n");
     std::ostringstream out;
     std::streambuf *oldIn  = std::cin.rdbuf(in.rdbuf());
     std::streambuf *oldOut = std::cout.rdbuf(out.rdbuf());

@@ -119,6 +119,7 @@ app.option("port")->defaultExpr("${CMD_PORT:-8080}");  // 表达式默认（含�
 app.option("port")->usesDefault();   // 当前值是否来自默认值
 app.option("port")->hasDefault();    // 是否声明默认值
 app.option("port")->defaultValue();  // 内置默认值
+// usesDefault(): 参数=值比较近似、选项=来源标记（defaultExpr 下以选项语义为准）——见 schema uses_default 字段
 ```
 
 ## 环境变量一等公民
@@ -291,7 +292,9 @@ app.option("task")->action("echo \"{value}\"");
   `std::error_code`，可用 `ec.message()` 转可读文本
 - 第四类错误域 `ValidationError_E`（`MISSING_ARGUMENT` / `MISSING_OPTION` /
   `MISSING_ENV` / `VALIDATION_FAILED`），赋值完成后、action 执行前统一校验，
-  同样支持异常与 `std::error_code` 双通道
+  同样支持异常与 `std::error_code` 双通道；批量管线中 `save-config` 随
+  `finalize()` 在用户 action 执行之前写出——配置快照为 action 执行前的状态
+  （validation 失败时不写出）
 - `Errors` 堆栈：`dump()` / `getLast()` 保留最近一次错误详情
 
 ## 执行模式

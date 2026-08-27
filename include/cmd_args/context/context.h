@@ -154,12 +154,12 @@ private:
 
         compiler__.ensureBuiltins();
         compiler__.parse(_Toks, _Envs);
+        compiler__.finalize();   // seed env 兜底 + ${VAR} 展开 + 必选校验（失败即抛，action 不执行）
 
         if (instData_.hasAction()) {
             executor__.execute();
         }
 
-        compiler__.finalize();
         _markParsed();
     }
 

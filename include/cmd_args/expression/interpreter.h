@@ -34,6 +34,8 @@
 #include "cmd_args/error/interpreter_error.h"
 #include "cmd_args/error/lexer_error.h"
 #include "cmd_args/error/parser_error.h"
+#include "cmd_args/error/validation_error.h"
+#include "cmd_args/expression/validation.h"
 #include "cmd_args/option/option_parser.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -112,6 +114,7 @@ public:
         }
         catch (ErrorParse const &e) { _Errors.setLast(e.code()); return e.code(); }
         catch (ErrorLexer const &e) { _Errors.setLast(e.code()); return e.code(); }
+        catch (ErrorValidation const &e) { _Errors.setLast(e.code()); return e.code(); }
         catch (std::exception const &ex) {
             _Errors.setMsg(ex.what());
             return make_error_code(ParseError_E::UNKNWON_ARGS);
@@ -511,6 +514,11 @@ private:
     {
         __seedEnvDefaults();
         __expandEnvValues();
+
+        auto vr = validate_detail::validate(*pModel__);
+        if (!vr.ok()) {
+            throw ErrorValidation(static_cast<ValidationError_E>(vr.ec.value()), std::move(vr.msg));
+        }
 
         if (!pModel__->strSaveConfigPath.empty()) {
             auto text = config::to_yaml(*pModel__);

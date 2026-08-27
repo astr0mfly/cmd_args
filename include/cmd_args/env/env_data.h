@@ -72,9 +72,15 @@ public:
     /// @brief 插入环境条目（移动形态）
     void doPush(environment &&_Env) { mapEnvs__.emplace(_Env.strKey, std::move(_Env)); }
 
-    /// @brief 以键/值/新建标记构造并插入（键已存在则保持原条目）
+    /// @brief 以键/值/新建标记构造并插入（键已存在则改值并标记 modified）
     void doPush(Key_T const &_Key, Value_T _Value, bool _New)
     {
+        auto it = mapEnvs__.find(_Key);
+        if (it != mapEnvs__.end()) {
+            it->second.strValue    = std::move(_Value);
+            it->second.bModified__ = true;
+            return;
+        }
         mapEnvs__.emplace(_Key, environment(_Key, std::move(_Value), _New));
     }
 

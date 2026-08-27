@@ -2,6 +2,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <sstream>
 #include <string>
 
 #include "cmd_args/cmd_args.hpp"
@@ -321,4 +323,88 @@ TEST_CASE("validation: ErrorValidation 携带描述且 what() 可读", "[validat
 
     ErrorValidation ev2(ValidationError_E::VALIDATION_FAILED, std::string("value out of range"));
     REQUIRE(std::string(ev2.what()) == "value out of range");
+}
+
+TEST_CASE("validation: 批量管线 required/校验失败进入错误码 Errors 根", "[validation]")
+{
+    Context app("ut_val_e2e");
+    app.addOption<std::string>("host", "host", "");
+    app.option("host")->required();
+    app.addOption<int>("port", "port", 0);
+    app.option("port")->range(1024, 65535);
+    app.build<ArgumentNamed>("name", "n");
+    app.argument("name")->required();
+
+    std::error_code ec;
+    app.parse(ec, Tokens_T{ "--host", "h1", "--port", "80", "--name", "ok" }, Envs_T{});
+    REQUIRE(ec.value() == static_cast<int>(ValidationError_E::VALIDATION_FAILED));
+    REQUIRE(app.getLastVal() == static_cast<int>(ValidationError_E::VALIDATION_FAILED));
+
+    // 全部合法 → 通过
+    app.reset();
+    app.parse(ec, Tokens_T{ "--host", "h1", "--port", "8080", "--name", "ok" }, Envs_T{});
+    REQUIRE(!ec);
+
+    // 缺必选 → MISSING_OPTION（首个缺失决定错误码）
+    Context app2("ut_val_e2e2");
+    app2.addOption<std::string>("host", "h", "");
+    app2.option("host")->required();
+    app2.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(ec.value() == static_cast<int>(ValidationError_E::MISSING_OPTION));
+
+    // 缺必选参数 → MISSING_ARGUMENT
+    Context app3("ut_val_e2e3");
+    app3.build<ArgumentNamed>("name", "n");
+    app3.argument("name")->required();
+    app3.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(ec.value() == static_cast<int>(ValidationError_E::MISSING_ARGUMENT));
+
+    // 抛异常通道
+    REQUIRE_THROWS_AS(app3.parse(Tokens_T{}, Envs_T{}), ErrorValidation);
+}
+
+TEST_CASE("validation: 环境 spec 缺省补全为 MISSING_ENV", "[validation][env]")
+{
+    Context app("ut_env_spec_e2e");
+    app.requireEnv("DB_HOST", "host")->semantic("hostname");
+    app.requireEnv("DB_PORT", "port")->range(1, 65535).defaultEnv("5432");
+
+    std::error_code ec;
+    app.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(ec.value() == static_cast<int>(ValidationError_E::MISSING_ENV));
+
+    app.reset();
+    app.parse(ec, Tokens_T{}, Envs_T{ "DB_HOST=localhost" });
+    REQUIRE(!ec);
+    REQUIRE(app.get_env("DB_PORT") == "5432");    // 缺省补全写入会话
+
+    // 无效值 → VALIDATION_FAILED
+    app.reset();
+    app.parse(ec, Tokens_T{}, Envs_T{ "DB_HOST=bad..host" });
+    REQUIRE(ec.value() == static_cast<int>(ValidationError_E::VALIDATION_FAILED));
+}
+
+TEST_CASE("validation: 流式 loop 行末校验 action 即时执行保持", "[validation][interpreter]")
+{
+    Context app("ut_val_stream");
+    app.addOption<std::string>("host", "h", "");
+    app.option("host")->required();
+    app.addOption<int>("port", "p", 0);
+    app.option("port")->range(1024, 65535);
+
+    // 第一行: port=80 越界 → 行末校验 VALIDATION_FAILED → 输出 (parse error)
+    // 第二行: 全部合法 → 无错误；行间 reset 保证 port 恢复默认
+    std::istringstream in("--port 80\n--port 8080 --host ok\nexit\n");
+    std::ostringstream out;
+    std::streambuf *oldIn  = std::cin.rdbuf(in.rdbuf());
+    std::streambuf *oldOut = std::cout.rdbuf(out.rdbuf());
+
+    app.loop();
+
+    std::cin.rdbuf(oldIn);
+    std::cout.rdbuf(oldOut);
+
+    REQUIRE(out.str().find("(parse error)") != std::string::npos);
+    REQUIRE(app.getOption<std::string>("host") == "ok");
+    REQUIRE(app.getOption<int>("port") == 8080);
 }

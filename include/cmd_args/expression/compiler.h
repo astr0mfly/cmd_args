@@ -26,6 +26,8 @@
 #include "cmd_args/context/describe.h"
 #include "cmd_args/context/model.h"
 #include "cmd_args/context/context_fwd.h"
+#include "cmd_args/error/validation_error.h"
+#include "cmd_args/expression/validation.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -142,11 +144,16 @@ public:
         builtin_detail::registerBuiltinOptions(pModel__);
     }
 
-    /// 解析后置：seed 环境兜底 + ${VAR} 展开 + save-config 写出
+    /// 解析后置：seed 环境兜底 + ${VAR} 展开 + 必选校验 + save-config 写出
     void finalize()
     {
         __seedEnvDefaults();
         __expandEnvValues();
+
+        auto vr = validate_detail::validate(*pModel__);
+        if (!vr.ok()) {
+            throw ErrorValidation(static_cast<ValidationError_E>(vr.ec.value()), std::move(vr.msg));
+        }
 
         if (!pModel__->strSaveConfigPath.empty()) {
             auto text = config::to_yaml(*pModel__);
@@ -167,6 +174,9 @@ private:
             return e.code();
         }
         catch (ErrorLexer const &e) {
+            return e.code();
+        }
+        catch (ErrorValidation const &e) {
             return e.code();
         }
         catch (std::exception const &) {

@@ -26,6 +26,7 @@
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
 #include "cmd_args/expression/expression.h"
+#include "cmd_args/base/validator.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -69,7 +70,7 @@ struct Option : public Expression
  * FIXME 对于 bool 选项，不需要默认值，有对应的命令行参数就是 TRUE；
  *       其他类型添加时需要默认值。
  */
-struct OptionValue : Option
+struct OptionValue : Option, public ValidatorMixin<OptionValue>
 {
     using Self_T      = OptionValue;
     using Type_T      = std::string;
@@ -87,6 +88,7 @@ struct OptionValue : Option
     NameEnv_T       strEnvName__;         ///< 绑定的环境变量名：命令行未显式给出时用该变量的值兜底
     bool            bExternal__ = false;  ///< 值来自外部配置（YAML），env 兜底跳过
     bool            bBuiltin__   = false;  ///< 懒注册的内置交互选项（--env-set 等）：不参与参数格式导出/配置序列化
+    mutable bool    bEnvHit__   = false;   ///< 环境变量兜底命中标志（seed 时置位；reset 清除）
 
     // ===== 构造期默认与钩子 =====
     Value_T     strDefault__;      ///< 构造时的内置默认值（loop reset 还原用）
@@ -169,16 +171,35 @@ struct OptionValue : Option
         return *this;
     }
 
-    /// @brief 还原为内置默认值、清除显式/外部标记（loop 每次调用前执行）
+    /// @brief 还原为内置默认值、清除显式/外部/env标记（loop 每次调用前执行）
     /// @return OptionValue& 支持链式调用
-    /// @note 还原 strValue 为 strDefault__，清除 bExplicit__ / bExternal__ 标记
+    /// @note 还原 strValue 为 strDefault__，清除 bExplicit__ / bExternal__ / bEnvHit__ 标记
     auto reset() noexcept -> Self_T &
     {
         strValue    = strDefault__;
         bExplicit__ = false;
         bExternal__ = false;
+        bEnvHit__    = false;
         return *this;
     }
+
+    /** @brief 新值是否满足必选（显式命中 / 外部赋值 / env 兜底命中 / 值已偏离默认值）
+     *  @note 默认值本身不算命中；空值视为未提供 */
+    bool isSatisfied() const noexcept
+    {
+        return bExplicit__ || bExternal__ || bEnvHit__
+               || (!strValue.empty() && strValue != strDefault__);
+    }
+
+    /// @brief 是否声明了非空默认值
+    bool hasDefault() const noexcept { return !strDefault__.empty(); }
+
+    /// @brief 内置默认值（只读）
+    auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
+
+    /** @brief 当前值是否来自默认值（未被 CLI / 配置 / 环境变量覆盖）
+     *  @note 判定依据：三类输入源均未命中 */
+    bool usesDefault() const noexcept { return !bExplicit__ && !bExternal__ && !bEnvHit__; }
 };
 
 /**

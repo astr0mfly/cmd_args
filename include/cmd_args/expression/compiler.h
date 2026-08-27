@@ -255,7 +255,10 @@ private:
         });
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;
-            if (envParser__.has(o.strEnvName__)) { o.strValue = envParser__.get(o.strEnvName__); }
+            if (envParser__.has(o.strEnvName__)) {
+                o.strValue  = envParser__.get(o.strEnvName__);
+                o.bEnvHit__ = true;
+            }
         });
     }
 

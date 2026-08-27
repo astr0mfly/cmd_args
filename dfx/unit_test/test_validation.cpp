@@ -162,3 +162,61 @@ TEST_CASE("validator: ValidatorMixin 链式 API 与 validate 语义", "[validato
     REQUIRE(d2.validate("ab") == "");
     REQUIRE(d2.validate("abc") != "");
 }
+
+TEST_CASE("option: required 命中判定（显式/环境兜底/默认值）与 usesDefault", "[required][option]")
+{
+    Context app("ut_req_opt");
+    app.addOption<std::string>("host", "host", "");
+    app.option("host")->required();
+    app.option("host")->env("UT_REQ_HOST");
+    app.addOption<std::string>("port", "port", "8080");
+
+    // 注意：本用例在 T7 之后仍会随全量回归运行，因此每次 parse 都必须满足 host 的
+    // required（T7 之校验引擎会把它变成真正错误）。port 为非 required，仅测默认值口径。
+    std::error_code ec;
+    app.parse(ec, Tokens_T{}, Envs_T{ "UT_REQ_HOST=env-h" });   // host 用 env 兜底命中
+    REQUIRE(!ec);
+    REQUIRE(app.option("host")->isSatisfied() == true);          // env 兜底命中
+    REQUIRE(app.option("host")->bEnvHit__ == true);
+    REQUIRE(app.option("port")->isSatisfied() == false);         // 默认值不算命中
+    REQUIRE(app.option("port")->hasDefault() == true);
+    REQUIRE(app.option("port")->usesDefault() == true);
+
+    app.reset();
+    app.parse(ec, Tokens_T{ "--host", "h1" }, Envs_T{});         // 显式命中
+    REQUIRE(!ec);
+    REQUIRE(app.option("host")->isSatisfied() == true);
+    REQUIRE(app.option("host")->usesDefault() == false);
+
+    app.reset();
+    app.parse(ec, Tokens_T{}, Envs_T{ "UT_REQ_HOST=env-h" });    // env 兜底命中（再次）
+    REQUIRE(!ec);
+    REQUIRE(app.option("host")->isSatisfied() == true);
+    REQUIRE(app.option("host")->usesDefault() == false);
+
+    app.reset();
+    REQUIRE(app.option("host")->isSatisfied() == false);         // reset 清 bEnvHit__/bExplicit__
+}
+
+TEST_CASE("option: 校验器挂载（range/oneOf/match/semantic）", "[validator][option]")
+{
+    Context app("ut_val_opt");
+    app.addOption<std::string>("mode", "mode", "");
+    app.option("mode")->oneOf({ "fast", "slow" });
+    app.addOption<int>("port", "port", 0);
+    app.option("port")->range(1024, 65535);
+    app.addOption<std::string>("host", "host", "");
+    app.option("host")->semantic("ipv4");
+    app.addOption<std::string>("mail", "mail", "");
+    app.option("mail")->match(R"(^[\w.]+@[\w.]+$)");
+
+    REQUIRE(app.option("mode")->validate("fast") == "");
+    REQUIRE(app.option("mode")->validate("mid") != "");
+    REQUIRE(app.option("port")->validate("8080") == "");
+    REQUIRE(app.option("port")->validate("80") != "");
+    REQUIRE(app.option("host")->validate("192.168.0.1") == "");
+    REQUIRE(app.option("host")->validate("192.168.0.999") != "");
+    REQUIRE(app.option("mail")->validate("a@b.c") == "");
+    REQUIRE(app.option("mail")->validate("nope") != "");
+    REQUIRE(app.option("mode")->isRequired() == false);
+}

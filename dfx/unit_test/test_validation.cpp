@@ -106,3 +106,59 @@ TEST_CASE("validator: is_hostname / is_uuid / is_path / 存在性", "[validator]
     std::filesystem::remove(f);
     REQUIRE(validator_detail::is_existing_file(f) == false);
 }
+
+namespace {
+/* 本地测试类型：只需继承 mixin 即可驱动链式 API */
+struct Dummy : validator_detail::ValidatorMixin<Dummy> {};
+}
+
+TEST_CASE("validator: Validator 结构与工厂函数", "[validator]")
+{
+    REQUIRE(validator_detail::between(1.0, 10.0).validate("5") == "");
+    REQUIRE(validator_detail::between(1.0, 10.0).validate("11") != "");       // 越上限
+    REQUIRE(validator_detail::between(1.0, 10.0, false, false).validate("1") != "");   // 开下端
+    REQUIRE(validator_detail::between(1.0, 10.0, false, false).validate("10") != "");  // 开上端
+    REQUIRE(validator_detail::between(1.0, 10.0, false, false).validate("2") == "");
+
+    REQUIRE(validator_detail::one_of({ "fast", "slow" }).validate("fast") == "");
+    REQUIRE(validator_detail::one_of({ "fast", "slow" }).validate("mid") != "");
+
+    REQUIRE(validator_detail::matches(R"(^[\w.]+@[\w.]+$)").validate("a@b.c") == "");
+    REQUIRE(validator_detail::matches(R"(^[\w.]+@[\w.]+$)").validate("nope") != "");
+
+    REQUIRE(validator_detail::semantic_validator("ipv4").validate("127.0.0.1") == "");
+    REQUIRE(validator_detail::semantic_validator("ipv4").validate("999.0.0.1") != "");
+    REQUIRE(validator_detail::semantic_validator("port").validate("8080") == "");
+
+    // 未知语义名 = 用户构建错误
+    REQUIRE_THROWS_AS(validator_detail::semantic_validator("nope"), ErrorArgument);
+}
+
+TEST_CASE("validator: ValidatorMixin 链式 API 与 validate 语义", "[validator]")
+{
+    Dummy d;
+    d.required();
+    REQUIRE(d.isRequired() == true);
+    d.required(false);
+    REQUIRE(d.isRequired() == false);
+
+    d.range(1024, 65535);
+    d.semantic("port");
+    d.oneOf({ "8888", "9999" });
+    REQUIRE(d.hasValidators() == true);
+    REQUIRE(d.validators().size() == 3);
+    REQUIRE(d.validate("8888") == "");                     // range ✓ port ✓ oneOf ✓
+    REQUIRE(d.validate("80") != "");                       // range 失败在前
+    REQUIRE(d.validate("2048") != "");                     // oneOf 失败
+
+    // 语义重复绑定 = 替换而非追加
+    d.semantic("port");
+    REQUIRE(d.validators().size() == 3);
+
+    // custom 校验器
+    Dummy d2;
+    d2.check(validator_detail::custom(
+        [](std::string const &v) { return v.size() == 2; }, "len2"));
+    REQUIRE(d2.validate("ab") == "");
+    REQUIRE(d2.validate("abc") != "");
+}

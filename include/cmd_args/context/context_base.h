@@ -287,6 +287,19 @@ public:
         return *this;
     }
 
+    /** @brief 注册必需环境变量（声明式条目；缺失报 MISSING_ENV）
+     *  @return EnvSpec* 命中句柄（链式 .semantic()/.range()/.defaultEnv() 等） */
+    auto requireEnv(Name_T const &_Key, Desc_T _Help = {}) -> EnvSpec *
+    {
+        return EnvBuilder(&instData_.envs).requireEnv(_Key, std::move(_Help));
+    }
+
+    /// @brief 查询声明式环境条目句柄（未注册返回 nullptr）
+    auto envSpec(Name_T const &_Key) noexcept -> EnvSpec *
+    {
+        return EnvBuilder(&instData_.envs).envSpec(_Key);
+    }
+
     size_t apply_env()
     {
         return EnvParser(&instData_.envs).apply().size();

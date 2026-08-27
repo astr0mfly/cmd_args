@@ -81,6 +81,28 @@ public:
     /// @brief 按键删除，返回原先是否存在
     bool doErase(Key_T const &_Key) { return mapEnvs__.erase(_Key) != 0; }
 
+    /* ---------- 声明式条目（EnvSpec）---------- */
+
+    /// @brief 注册声明式环境条目（键已存在则保持原条目）
+    void pushSpec(EnvSpec const &_Spec) { mapSpecs__.emplace(_Spec.strKey, _Spec); }
+
+    /// @brief 注册声明式环境条目（移动形态）
+    void pushSpec(EnvSpec &&_Spec) { mapSpecs__.emplace(_Spec.strKey, std::move(_Spec)); }
+
+    /// @brief 查询声明式条目（可变，未找到返回 nullptr；map 节点稳定不失效）
+    auto mutSpec(Key_T const &_Key) noexcept -> EnvSpec *
+    {
+        auto it = mapSpecs__.find(_Key);
+        if (it == mapSpecs__.end()) return nullptr;
+        return std::addressof(it->second);
+    }
+
+    /// @brief 只读遍历声明式条目（校验引擎用）
+    void forEachSpec(std::function<void(EnvSpec const &)> const &_Fn) const
+    {
+        for (auto const &kv : mapSpecs__) { _Fn(kv.second); }
+    }
+
     /// @brief 只读遍历
     void doVisit(std::function<void(environment const &)> const &_Fn) const
     {
@@ -96,6 +118,9 @@ public:
 private:
     using EnvMap_T = std::map<Key_T, environment>;  ///< 容器类型（按键排序去重）
     EnvMap_T mapEnvs__;                              ///< 环境条目容器
+
+    using SpecsMap_T = std::map<Key_T, EnvSpec>;  ///< 声明式条目容器（按键排序去重）
+    SpecsMap_T mapSpecs__;                         ///< 声明式环境条目（EnvSpec）
 };
 
 }  // namespace env_detail

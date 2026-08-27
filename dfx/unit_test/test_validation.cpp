@@ -272,3 +272,31 @@ TEST_CASE("argument: 校验器挂载（check/semantic）", "[validator][argument
     REQUIRE(app.argument("len")->validate("abc") == "");
     REQUIRE(app.argument("len")->validate("abcd") != "");
 }
+
+TEST_CASE("env: requireEnv 声明式条目与句柄稳定性（重复注册不覆盖）", "[required][env]")
+{
+    Context app("ut_env_spec");
+    auto *p = app.requireEnv("DB_HOST", "database host");
+    REQUIRE(p != nullptr);
+    REQUIRE(p->isRequired() == true);
+    p->semantic("hostname");
+    p->defaultEnv("localhost");
+
+    auto *q = app.requireEnv("DB_PORT", "database port");
+    q->range(1, 65535);
+
+    auto *r = app.requireEnv("DB_HOST", "another help");   // 重复注册：返回既有句柄
+    REQUIRE(r == p);
+    REQUIRE(r->isRequired() == true);
+    REQUIRE(r->strHelp == "database host");                // 未被覆盖
+
+    REQUIRE(app.envSpec("DB_HOST") == p);
+    REQUIRE(app.envSpec("NOPE") == nullptr);
+
+    // 校验器与默认值经句柄生效（`isEnvHit` 之类似是 Argument 的方法，此处用 mixin 查询）
+    REQUIRE(p->hasValidators() == true);
+    REQUIRE(p->validators().size() == 1);
+    REQUIRE(p->validate("localhost") == "");
+    REQUIRE(p->validate("bad host!") != "");
+    REQUIRE(p->strDefault__ == "localhost");
+}

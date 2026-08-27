@@ -22,6 +22,7 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
+#include "cmd_args/base/validator.h"
 #include "cmd_args/expression/expression.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -62,6 +63,44 @@ struct environment : public Expression
     auto getName() const noexcept -> Name_T const & override { return strKey; }
 
     bool operator<(environment const &_Rhs) const noexcept { return strKey < _Rhs.strKey; }
+};
+
+/**
+ * @struct EnvSpec
+ * @brief 声明式环境条目：程序对某个环境变量的"期望"（必选 / 校验器 / 默认值）。
+ *
+ * 与 environment（运行时条目）不同：EnvSpec 是构建期声明，解析完成后由校验引擎统一处理——
+ * - isRequired()：缺失（进程环境与会话均无或为空）报 MISSING_ENV
+ * - validate()   ：存在时依次校验
+ * - defaultEnv()：缺失时以该值补全会话（标记新建，env 导出可见） */
+struct EnvSpec : public ValidatorMixin<EnvSpec>
+{
+    using Self_T = EnvSpec;
+
+    std::string strKey;       ///< 环境变量键
+    std::string strHelp;      ///< 帮助说明
+    std::string strDefault__; ///< 缺失补全值（非空时缺失即补全会话，标 new）
+
+    EnvSpec() = default;
+
+    EnvSpec(std::string _Key, std::string _Help = {})
+        : strKey(std::move(_Key))
+        , strHelp(std::move(_Help))
+    {}
+
+    /// @brief 设置缺失补全值（左值链式）
+    auto defaultEnv(std::string _Value) & -> Self_T &
+    {
+        strDefault__ = std::move(_Value);
+        return *this;
+    }
+
+    /// @brief 设置缺失补全值（右值链式）
+    auto defaultEnv(std::string _Value) && -> Self_T
+    {
+        strDefault__ = std::move(_Value);
+        return std::move(*this);
+    }
 };
 
 using envs_t = std::set<environment>;

@@ -54,6 +54,27 @@ public:
     /// @param _Key 键
     bool unsetEnv(EnvData::Key_T const &_Key) { return pData__->doErase(_Key); }
 
+    /** @brief 注册必选环境变量（声明式条目；缺失报 MISSING_ENV）
+     *  @param _Key 环境变量键
+     *  @param _Help 帮助说明
+     *  @return EnvSpec* 命中句柄（可再链式配置校验器/默认值；
+     *          重复注册返回旧句柄，不覆盖）
+     */
+    auto requireEnv(EnvData::Key_T const &_Key, EnvData::Value_T const &_Help = {}) -> EnvSpec *
+    {
+        if (auto *p = pData__->mutSpec(_Key)) return p;
+        EnvSpec sp(_Key, _Help);
+        sp.required();
+        pData__->pushSpec(std::move(sp));
+        return pData__->mutSpec(_Key);
+    }
+
+    /// @brief 查询声明式环境条目（未注册返回 nullptr）
+    auto envSpec(EnvData::Key_T const &_Key) noexcept -> EnvSpec *
+    {
+        return pData__->mutSpec(_Key);
+    }
+
 private:
     EnvData *pData__ = nullptr;  ///< 底层环境数据仓库指针
 };

@@ -247,11 +247,11 @@ private:
     {
         pModel__->args.mgrName.doMutVisit([&](Argument &a) {
             if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
-            if (envParser__.has(a.getEnvName())) { a.set(envParser__.get(a.getEnvName())); }
+            if (envParser__.has(a.getEnvName())) { a.set(envParser__.get(a.getEnvName())); a.markEnvHit(); }
         });
         pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
             if (a.getEnvName().empty() || a.hasValue() || a.isExternal()) return;
-            if (envParser__.has(a.getEnvName())) { a.set(envParser__.get(a.getEnvName())); }
+            if (envParser__.has(a.getEnvName())) { a.set(envParser__.get(a.getEnvName())); a.markEnvHit(); }
         });
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;

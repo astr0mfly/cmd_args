@@ -25,6 +25,7 @@
 #include <string>
 
 #include "cmd_args/base/util.h"
+#include "cmd_args/base/validator.h"
 #include "cmd_args/expression/expression.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
@@ -41,7 +42,7 @@ CMD_ARGS_NAMESPACE_BEGIN
 */
 namespace argument_detail {
 
-class Argument : public Expression
+class Argument : public Expression, public ValidatorMixin<Argument>
 {
 public:
     // ===== 类型别名 =====
@@ -81,22 +82,26 @@ public:
     explicit
     Argument(Argument &&_Other) noexcept
         : Expression(std::move(_Other))
+        , ValidatorMixin<Argument>(std::move(_Other))
         , strType__(std::move(_Other.strType__))
         , strDefault__(std::move(_Other.strDefault__))
         , strValue__(std::move(_Other.strValue__))
         , strEnvName__(std::move(_Other.strEnvName__))
         , bExternal__(_Other.bExternal__)
+        , bEnvHit__(_Other.bEnvHit__)
     {}
 
     /// @brief 拷贝构造函数
     /// @param _Other 被拷贝的对象（深拷贝）
     Argument(Argument const &_Other) noexcept
         : Expression(_Other)
+        , ValidatorMixin<Argument>(_Other)
         , strType__(_Other.strType__)
         , strDefault__(_Other.strDefault__)
         , strValue__(_Other.strValue__)
         , strEnvName__(_Other.strEnvName__)
         , bExternal__(_Other.bExternal__)
+        , bEnvHit__(_Other.bEnvHit__)
     {}
 
     auto operator=(Argument &&_Rhs) noexcept -> Self_T &
@@ -104,11 +109,13 @@ public:
         if (this == &_Rhs) return *this;
 
         Expression::operator=(std::move(_Rhs));
+        ValidatorMixin<Argument>::operator=(std::move(static_cast<ValidatorMixin<Argument> &>(_Rhs)));
         strType__    = std::move(_Rhs.strType__);
         strDefault__ = std::move(_Rhs.strDefault__);
         strValue__   = std::move(_Rhs.strValue__);
         strEnvName__ = std::move(_Rhs.strEnvName__);
         bExternal__    = _Rhs.bExternal__;
+        bEnvHit__      = _Rhs.bEnvHit__;
 
         return *this;
     }
@@ -118,11 +125,13 @@ public:
         if (this == &_Rhs) return *this;
 
         Expression::operator=(_Rhs);
+        ValidatorMixin<Argument>::operator=(static_cast<ValidatorMixin<Argument> const &>(_Rhs));
         strType__    = _Rhs.strType__;
         strDefault__ = _Rhs.strDefault__;
         strValue__   = _Rhs.strValue__;
         strEnvName__ = _Rhs.strEnvName__;
         bExternal__    = _Rhs.bExternal__;
+        bEnvHit__      = _Rhs.bEnvHit__;
 
         return *this;
     }
@@ -229,6 +238,7 @@ public:
     {
         strValue__ = strDefault__;
         bExternal__  = false;
+        bEnvHit__    = false;
         return *this;
     }
 
@@ -289,6 +299,32 @@ public:
     /// @brief 获取当前参数值（只读）
     auto getValue() const noexcept -> Value_T const & { return strValue__; }
 
+    /** @brief 新值是否满足必选（外部赋值 / env 兜底命中 / 持有非空值）
+     *  @note 空值视为未提供；默认值非空时 hasValue 恒真（声明 required + 非空默认是自相矛盾的用法） */
+    bool isSatisfied() const noexcept { return bExternal__ || bEnvHit__ || hasValue(); }
+
+    /// @brief 是否声明了非空默认值
+    bool hasDefault() const noexcept { return !strDefault__.empty(); }
+
+    /// @brief 内置默认值（只读）
+    auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
+
+    /** @brief 当前值是否来自默认值（无外部 / env 命中且值等于内置默认）
+     *  @note 与 OptionValue 的 usesDefault 语义对齐（本类以值比较近似） */
+    bool usesDefault() const noexcept
+    {
+        return !bExternal__ && !bEnvHit__ && strValue__ == strDefault__;
+    }
+
+    /** @brief 标记环境变量兜底命中（seed 钩子写入） */
+    auto markEnvHit() noexcept -> Self_T & { bEnvHit__ = true; return *this; }
+
+    /** @brief 清除环境变量兜底命中标记（reset 内部使用；也供测试直接调用） */
+    auto clearEnvHit() noexcept -> Self_T & { bEnvHit__ = false; return *this; }
+
+    /// @brief 环境变量兜底是否命中
+    bool isEnvHit() const noexcept { return bEnvHit__; }
+
 private:
     // ===== 运行时状态（名称/帮助已移至 Expression 基类） =====
     Type_T  strType__;            ///< 类型标识（空 = 未定型）
@@ -298,6 +334,8 @@ private:
 
     // ===== 标志位 =====
     mutable bool bExternal__ = false; ///< 值来自外部配置（YAML），env 兜底跳过
+    /** 环境变量兜底命中标记（seed 时经 markEnvHit 置位；reset 清除） */
+    mutable bool bEnvHit__ = false;
 };
 
 /*

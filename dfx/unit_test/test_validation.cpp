@@ -220,3 +220,55 @@ TEST_CASE("option: 校验器挂载（range/oneOf/match/semantic）", "[validator
     REQUIRE(app.option("mail")->validate("nope") != "");
     REQUIRE(app.option("mode")->isRequired() == false);
 }
+
+TEST_CASE("argument: required 命中判定与默认值语义（命名+方位+env 兜底）", "[required][argument]")
+{
+    Context app("ut_req_arg");
+    app.build<ArgumentNamed>("name", "n");
+    app.argument("name")->required();
+    app.argument("name")->env("UT_REQ_NAME");
+    app.build<ArgumentPosition>("dest", "d");
+    app.argument("dest")->required();
+
+    // T7 之后全量回归下，每次 parse 都必须满足全部 required。
+    std::error_code ec;
+    app.parse(ec, Tokens_T{ "--name", "x", "out" }, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app.argument("name")->isSatisfied() == true);
+    REQUIRE(app.argument("dest")->isSatisfied() == true);
+    REQUIRE(app.argument("name")->usesDefault() == false);
+
+    app.reset();
+    app.parse(ec, Tokens_T{ "out" }, Envs_T{ "UT_REQ_NAME=from-env" });  // name 走 env 兜底
+    REQUIRE(!ec);
+    REQUIRE(app.argument("name")->isSatisfied() == true);
+    REQUIRE(app.argument("name")->isEnvHit() == true);
+    REQUIRE(app.argument("dest")->isSatisfied() == true);
+
+    app.reset();
+    app.parse(ec, Tokens_T{ "--name", "x", "out" }, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app.argument("name")->isSatisfied() == true);
+
+    app.reset();
+    REQUIRE(app.argument("name")->isEnvHit() == false);       // reset 清标记
+    REQUIRE(app.argument("name")->isSatisfied() == false);
+}
+
+TEST_CASE("argument: 校验器挂载（check/semantic）", "[validator][argument]")
+{
+    Context app("ut_val_arg");
+    app.build<ArgumentNamed>("port", "p");
+    app.argument("port")->range(1024, 65535);
+    app.build<ArgumentNamed>("host", "h");
+    app.argument("host")->semantic("ipv4");
+    app.build<ArgumentNamed>("len", "l");
+    app.argument("len")->check([](std::string const &v) { return v.size() <= 3; }, "len3");
+
+    REQUIRE(app.argument("port")->validate("8080") == "");
+    REQUIRE(app.argument("port")->validate("80") != "");
+    REQUIRE(app.argument("host")->validate("10.0.0.1") == "");
+    REQUIRE(app.argument("host")->validate("10.0.0.999") != "");
+    REQUIRE(app.argument("len")->validate("abc") == "");
+    REQUIRE(app.argument("len")->validate("abcd") != "");
+}

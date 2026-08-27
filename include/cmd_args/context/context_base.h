@@ -192,11 +192,15 @@ public:
 
     Argument *argument(Name_T const &_Name)
     {
-        return instData_.args.mgrName.mutGet(_Name);
+        auto *p = instData_.args.mgrName.mutGet(_Name);
+        if (!p) { p = instData_.args.mgrPos.mutGet(_Name); }
+        return p;
     }
     Argument const *argument(Name_T const &_Name) const
     {
-        return instData_.args.mgrName.doGet(_Name);
+        auto *p = instData_.args.mgrName.doGet(_Name);
+        if (!p) { p = instData_.args.mgrPos.doGet(_Name); }
+        return p;
     }
 
     OptionValue *option(NameLong_T const &_Name)

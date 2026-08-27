@@ -104,6 +104,19 @@ app.snapshot();                   // 当前取值快照
 std::string y = app.to_yaml();    // 参数 + 环境 → YAML 文本
 app.save_config("my_tool.yaml");  // 存为配置文件，供下一次调用
 app.load_config("my_tool.yaml");  // 下次调用：YAML → 环境变量反哺 + 参数赋值
+
+// 必选 + 校验器 + 默认值判段（链式挂在句柄上）
+app.option("host")->required().semantic("ipv4");       // 取值非法即 VALIDATION_FAILED
+app.option("timeout")->range(1, 3600);                 // 数值区间
+app.option("mode")->oneOf({"fast","slow"})->match(R"(^\w+$)");   // 枚举 + 正则
+app.argument("name")->required();                      // 必选参数
+app.requireEnv("DB_HOST")->semantic("hostname")->defaultEnv("localhost");
+
+// 默认值判段：来源标记
+app.option("port")->defaultExpr("${CMD_PORT:-8080}");  // 表达式默认（含回退）
+app.option("port")->usesDefault();   // 当前值是否来自默认值
+app.option("port")->hasDefault();    // 是否声明默认值
+app.option("port")->defaultValue();  // 内置默认值
 ```
 
 ## 环境变量一等公民
@@ -266,6 +279,7 @@ app.option("task")->action("echo \"{value}\"");
 - `-x value` / `-xvalue` —— 短选项；`-abc` —— 聚合短选项（bool）
 - 值 token 保留原始字符：`out.txt`、`a=b`、`C:\path`、`${A}` 均原样传递
 - 重复注册参数/选项名 → 构筑期抛 `ErrorArgument`（`DUPLICATE_NAME`）
+- `->required()` / `->range(a,b)` / `->oneOf({..})` / `->match(re)` / `->semantic("ipv4"|"ipv6"|"port"|"file"|"path"|"date"|"duration"|"hostname"|"uuid"|"float"|"double")` —— 句柄链式约束
 
 ## 错误处理
 
@@ -273,6 +287,9 @@ app.option("task")->action("echo \"{value}\"");
   `std::error_code`（`parse(ec, ...)`，不抛异常）
 - 三类错误码：`ParseError_E` / `LexError_E` / `InterpError_E`，均已注册进
   `std::error_code`，可用 `ec.message()` 转可读文本
+- 第四类错误域 `ValidationError_E`（`MISSING_ARGUMENT` / `MISSING_OPTION` /
+  `MISSING_ENV` / `VALIDATION_FAILED`），赋值完成后、action 执行前统一校验，
+  同样支持异常与 `std::error_code` 双通道
 - `Errors` 堆栈：`dump()` / `getLast()` 保留最近一次错误详情
 
 ## 执行模式
@@ -290,7 +307,15 @@ app.option("task")->action("echo \"{value}\"");
 **Expression 表达式类层次（kind() 自动分类 / Model::expressions() 统一视图 / app.model()）**、
 参数格式 schema / 快照 snapshot、once/loop 模式、错误分类、异常捕获（airbag）。
 
+- **值验证器**（range/oneOf/match/check + semantic 语义校验：ipv4/ipv6/port/file/path/date/duration/hostname/uuid/float/double）
+- **必选约束**（`required()` / `required(false)` + `requireEnv`）
+- **默认值增强**（`defaultExpr` 含 `${VAR:-fallback}`、`defaultFn` 每次 reset 重算、`hasDefault`/`usesDefault`/`defaultValue`）
+- **schema 标注** `[required]` / `[default]` / `[validators]`
+
 仍在展望（本期未做，见计划约束）：
+- `counter` 计数选项（`-vvv` → 3，涉及解析层聚合改造）
+- `requiredIf` / `mutuallyExclusive` 条件必选
+- `removeOption` 卸载、Array Checker（`minSize`/`maxSize`，依赖容器语义）、默认值继承（子命令场景）
 - `&&` / `||` 命令串联、`|` 管道、`...` 可重复项
 - json 配置加载（YAML 之外的第二种脚本格式）、lua/luajit action、dll 动态补丁
 - bench / meta / mock 工程
@@ -367,6 +392,7 @@ app.option("task")->action("echo \"{value}\"");
 xmake                  # 全量配置（示例/单测为 set_default(false)，需显式构建）
 xmake build once
 xmake build config_demo
+xmake build validation
 xmake build unit_test
 xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 # config_demo 直接运行（xmake run 在 PowerShell 下传参受限时用可执行文件路径）：
@@ -377,7 +403,7 @@ xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
 （展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
 CLI>配置>环境>默认优先级链 / loop 独立调用语义 / 选项 action 执行语义**等，
-debug/release 均通过（57 个测试用例 / 575 条断言）。
+debug/release 均通过（166 个测试用例 / 824 条断言，其中 3 个既有基线失败）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。
@@ -399,6 +425,7 @@ include/cmd_args/          头文件库本体（header-only）
 └── extern/                vendored：airbag（崩溃兜底）、magic_enum
 example/once/              once 模式示例
 example/config/            YAML 配置往返示例（config_demo）
+example/validate/          必选/校验器/默认值/环境声明示例（validation）
 dfx/unit_test/             Catch2 单元测试
 scripts/                   构建运行脚本（build.bat / clean.bat 等）
 ```

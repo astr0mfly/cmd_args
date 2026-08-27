@@ -52,6 +52,7 @@ public:
     using Type_T  = std::string;                 ///< 参数类型标识符
     using Value_T = std::string;                 ///< 参数值类型
     using Desc_T  = std::string;                 ///< 帮助描述类型
+    using FnDefault_T = std::function<std::string()>;  ///< 惰性默认值求值函数
 
     /// @brief 默认构造函数（参数名和帮助为空，kind=Argument）
     Argument()
@@ -87,6 +88,8 @@ public:
         , strDefault__(std::move(_Other.strDefault__))
         , strValue__(std::move(_Other.strValue__))
         , strEnvName__(std::move(_Other.strEnvName__))
+        , fnDefault__(std::move(_Other.fnDefault__))
+        , bDefaultExpr__(_Other.bDefaultExpr__)
         , bExternal__(_Other.bExternal__)
         , bEnvHit__(_Other.bEnvHit__)
     {}
@@ -100,6 +103,8 @@ public:
         , strDefault__(_Other.strDefault__)
         , strValue__(_Other.strValue__)
         , strEnvName__(_Other.strEnvName__)
+        , fnDefault__(_Other.fnDefault__)
+        , bDefaultExpr__(_Other.bDefaultExpr__)
         , bExternal__(_Other.bExternal__)
         , bEnvHit__(_Other.bEnvHit__)
     {}
@@ -114,6 +119,8 @@ public:
         strDefault__ = std::move(_Rhs.strDefault__);
         strValue__   = std::move(_Rhs.strValue__);
         strEnvName__ = std::move(_Rhs.strEnvName__);
+        fnDefault__  = std::move(_Rhs.fnDefault__);
+        bDefaultExpr__ = _Rhs.bDefaultExpr__;
         bExternal__    = _Rhs.bExternal__;
         bEnvHit__      = _Rhs.bEnvHit__;
 
@@ -130,6 +137,8 @@ public:
         strDefault__ = _Rhs.strDefault__;
         strValue__   = _Rhs.strValue__;
         strEnvName__ = _Rhs.strEnvName__;
+        fnDefault__  = _Rhs.fnDefault__;
+        bDefaultExpr__ = _Rhs.bDefaultExpr__;
         bExternal__    = _Rhs.bExternal__;
         bEnvHit__      = _Rhs.bEnvHit__;
 
@@ -230,13 +239,14 @@ public:
     /**
      * @brief 还原为内置默认值
      * @return Self_T& 支持链式调用
-     * @note 还原 strValue__ 为 strDefault__，清除 bExternal__ 标记
+     * @note 若 fnDefault__ 存在则重算 strDefault__；还原 strValue__ 为 strDefault__，清除 bExternal__ / bEnvHit__ 标记
      * @note 名称/说明/类型/env 绑定保持不变
      * @note 每次循环调用前执行，等价一次 once 输入
      */
     auto reset() noexcept -> Self_T &
     {
-        strValue__ = strDefault__;
+        if (fnDefault__) { strDefault__ = fnDefault__(); }  // 惰性默认值重算
+        strValue__   = strDefault__;
         bExternal__  = false;
         bEnvHit__    = false;
         return *this;
@@ -309,6 +319,36 @@ public:
     /// @brief 内置默认值（只读）
     auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
 
+    /**
+     * @brief 表达式默认值：形如 "${HOST:-localhost}"，经 ${VAR:-fallback} 展开取最终值
+     * @param _Expr 表达式字符串（覆盖旧默认值）
+     * @return Self_T& 支持链式调用
+     * @note 覆盖既有默认值；展开发生在解析后置（seed + expand 阶段）
+     */
+    auto defaultExpr(Value_T const &_Expr) -> Self_T &
+    {
+        strDefault__   = _Expr;
+        strValue__     = _Expr;
+        bDefaultExpr__ = true;
+        fnDefault__    = {};
+        return *this;
+    }
+
+    /**
+     * @brief 惰性默认值：reset() 时重新求值（loop 每行前调用一次）
+     * @param _Fn 求值函数（返回字符串；不应抛异常）
+     * @return Self_T& 支持链式调用
+     */
+    auto defaultFn(FnDefault_T _Fn) -> Self_T &
+    {
+        fnDefault__ = std::move(_Fn);
+        if (fnDefault__) {
+            strDefault__ = fnDefault__();
+            strValue__   = strDefault__;
+        }
+        return *this;
+    }
+
     /** @brief 当前值是否来自默认值（无外部 / env 命中且值等于内置默认）
      *  @note 与 OptionValue 的 usesDefault 语义对齐（本类以值比较近似） */
     bool usesDefault() const noexcept
@@ -331,6 +371,8 @@ private:
     Value_T strDefault__;         ///< 构造时的默认值（reset 还原用）
     mutable Value_T strValue__;   ///< 当前值（mutable：允许 const 方法内部修改）
     Name_T  strEnvName__;         ///< 绑定的环境变量名
+    FnDefault_T fnDefault__;      ///< 惰性默认值：reset() 时重算（循环每行一次）
+    bool        bDefaultExpr__ = false;  ///< 默认值来自表达式（schema 展示用）
 
     // ===== 标志位 =====
     mutable bool bExternal__ = false; ///< 值来自外部配置（YAML），env 兜底跳过

@@ -78,6 +78,7 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     using NameEnv_T   = std::string;
     using FnOnSet_T   = std::function<void(Value_T const &)>;
     using ActionCmd_T = std::string;
+    using FnDefault_T = std::function<std::string()>;  ///< 惰性默认值求值函数
 
     // ===== 公开取值 =====
     Type_T          strType;   ///< 类型标识（"bool" / "int" / "double" / "std::string"）
@@ -94,6 +95,8 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     Value_T     strDefault__;      ///< 构造时的内置默认值（loop reset 还原用）
     mutable FnOnSet_T fnOnSet__;  ///< 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
     ActionCmd_T strActionTemplate__;  ///< 绑定的系统调用命令模板（action）：解析时该选项被显式命中后立即执行，模板中的 {value} 占位符替换为该选项本次命中的值；空串表示未绑定
+    FnDefault_T fnDefault__;          ///< 惰性默认值：reset() 时重算（循环每行一次）
+    bool        bDefaultExpr__ = false;  ///< 默认值来自表达式（schema 展示用）
 
     /// @brief 构造值选项（含短名）
     /// @param _SName 短名（'\0' 表示无短名）
@@ -173,13 +176,14 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
 
     /// @brief 还原为内置默认值、清除显式/外部/env标记（loop 每次调用前执行）
     /// @return OptionValue& 支持链式调用
-    /// @note 还原 strValue 为 strDefault__，清除 bExplicit__ / bExternal__ / bEnvHit__ 标记
+    /// @note 还原 strValue 为 strDefault__；若 fnDefault__ 存在则重算 strDefault__；清除 bExplicit__ / bExternal__ / bEnvHit__ 标记
     auto reset() noexcept -> Self_T &
     {
+        if (fnDefault__) { strDefault__ = fnDefault__(); }  // 惰性默认值重算
         strValue    = strDefault__;
         bExplicit__ = false;
         bExternal__ = false;
-        bEnvHit__    = false;
+        bEnvHit__   = false;
         return *this;
     }
 
@@ -200,6 +204,36 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     /** @brief 当前值是否来自默认值（未被 CLI / 配置 / 环境变量覆盖）
      *  @note 判定依据：三类输入源均未命中 */
     bool usesDefault() const noexcept { return !bExplicit__ && !bExternal__ && !bEnvHit__; }
+
+    /**
+     * @brief 表达式默认值：形如 "${PORT:-8080}"，经 ${VAR:-fallback} 展开取最终值
+     * @param _Expr 表达式字符串（覆盖旧默认值）
+     * @return Self_T& 支持链式调用
+     * @note 覆盖既有默认值；展开发生在解析后置（seed + expand 阶段）
+     */
+    auto defaultExpr(Value_T const &_Expr) -> Self_T &
+    {
+        strDefault__   = _Expr;
+        strValue       = _Expr;
+        bDefaultExpr__ = true;
+        fnDefault__    = {};
+        return *this;
+    }
+
+    /**
+     * @brief 惰性默认值：reset() 时重新求值（loop 每行前调用一次）
+     * @param _Fn 求值函数（返回字符串；不应抛异常）
+     * @return Self_T& 支持链式调用
+     */
+    auto defaultFn(FnDefault_T _Fn) -> Self_T &
+    {
+        fnDefault__ = std::move(_Fn);
+        if (fnDefault__) {
+            strDefault__ = fnDefault__();
+            strValue     = strDefault__;
+        }
+        return *this;
+    }
 };
 
 /**

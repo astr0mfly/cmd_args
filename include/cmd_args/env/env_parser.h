@@ -172,6 +172,7 @@ public:
     auto expand(EnvData::Value_T const &_Text) const -> std::string
     {
         std::string ret;
+        std::string strFallback;
         ret.reserve(_Text.size());
 
         for (std::size_t i = 0; i < _Text.size();) {
@@ -183,7 +184,15 @@ public:
                 if (i + 1 < _Text.size() && _Text[i + 1] == '{') {
                     endPos = _Text.find('}', i + 2);
                     if (endPos != std::string::npos) {
-                        name  = _Text.substr(i + 2, endPos - i - 2);
+                        std::string inner = _Text.substr(i + 2, endPos - i - 2);
+                        auto        sep   = inner.find(":-");
+                        if (sep != std::string::npos) {
+                            name        = inner.substr(0, sep);
+                            strFallback = inner.substr(sep + 2);
+                        }
+                        else {
+                            name = inner;
+                        }
                         brace = true;
                     }
                 }
@@ -206,6 +215,13 @@ public:
                         p->bReferenced__ = true;
                         ret += p->strValue;
                         i = brace ? endPos + 1 : endPos;
+                        strFallback.clear();
+                        continue;
+                    }
+                    if (!strFallback.empty()) {
+                        ret += strFallback;
+                        i = brace ? endPos + 1 : endPos;
+                        strFallback.clear();
                         continue;
                     }
                 }

@@ -408,3 +408,59 @@ TEST_CASE("validation: 流式 loop 行末校验 action 即时执行保持", "[va
     REQUIRE(app.getOption<std::string>("host") == "ok");
     REQUIRE(app.getOption<int>("port") == 8080);
 }
+
+TEST_CASE("defaults: defaultExpr 支持 ${VAR:-fallback} 回退与优先级", "[defaults]")
+{
+    Context app("ut_def_expr");
+    app.addOption<int>("port", "port", 0);
+    app.option("port")->defaultExpr("${CMD_DEF_PORT:-8080}");
+
+    std::error_code ec;
+    app.parse(ec, Tokens_T{}, Envs_T{ "CMD_DEF_PORT=9090" });
+    REQUIRE(!ec);
+    REQUIRE(app.getOption<int>("port") == 9090);          // 环境变量命中
+
+    app.reset();
+    app.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app.getOption<int>("port") == 8080);          // 回退值
+    // 显式 CLI 覆盖表达式
+    app.parse(ec, Tokens_T{ "--port", "7000" }, Envs_T{ "CMD_DEF_PORT=9090" });
+    REQUIRE(!ec);
+    REQUIRE(app.getOption<int>("port") == 7000);
+}
+
+TEST_CASE("defaults: defaultFn 每次 reset 重算（loop 单行语义）", "[defaults]")
+{
+    Context app("ut_def_fn");
+    int tick = 0;
+    app.addOption<int>("n", "n", 0);
+    app.option("n")->defaultFn([&] { return std::to_string(++tick); });
+
+    std::error_code ec;
+    app.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app.getOption<int>("n") == 1);
+
+    app.reset();
+    app.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app.getOption<int>("n") == 2);
+}
+
+TEST_CASE("defaults: Argument defaultExpr 同样生效", "[defaults]")
+{
+    Context app("ut_def_expr_arg");
+    app.build<ArgumentNamed>("host", "h");
+    app.argument("host")->defaultExpr("${CMD_DEF_HOST:-localhost}");
+
+    std::error_code ec;
+    app.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app.getArgument<std::string>("host") == "localhost");
+
+    app.reset();
+    app.parse(ec, Tokens_T{}, Envs_T{ "CMD_DEF_HOST=my.host" });
+    REQUIRE(!ec);
+    REQUIRE(app.getArgument<std::string>("host") == "my.host");
+}

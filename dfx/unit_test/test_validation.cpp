@@ -300,3 +300,25 @@ TEST_CASE("env: requireEnv 声明式条目与句柄稳定性（重复注册不�
     REQUIRE(p->validate("bad host!") != "");
     REQUIRE(p->strDefault__ == "localhost");
 }
+
+TEST_CASE("validation: ValidationError 错误域注册与异常", "[validation]")
+{
+    auto ec = make_error_code(ValidationError_E::MISSING_OPTION);
+    REQUIRE(ec.value() == static_cast<int>(ValidationError_E::MISSING_OPTION));
+    REQUIRE(ec.message() == "missing required option");
+
+    REQUIRE(make_error_code(ValidationError_E::OK).value() == 0);
+    REQUIRE(make_error_code(ValidationError_E::MISSING_ARGUMENT).message() == "missing required argument");
+    REQUIRE(make_error_code(ValidationError_E::MISSING_ENV).message() == "missing required environment");
+    REQUIRE(make_error_code(ValidationError_E::VALIDATION_FAILED).message() == "value validation failed");
+}
+
+TEST_CASE("validation: ErrorValidation 携带描述且 what() 可读", "[validation]")
+{
+    ErrorValidation ev(ValidationError_E::MISSING_ARGUMENT, std::string("argument 'name'"));
+    REQUIRE(ev.code() == make_error_code(ValidationError_E::MISSING_ARGUMENT));
+    REQUIRE(std::string(ev.what()) == "argument 'name'");
+
+    ErrorValidation ev2(ValidationError_E::VALIDATION_FAILED, std::string("value out of range"));
+    REQUIRE(std::string(ev2.what()) == "value out of range");
+}

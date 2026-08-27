@@ -34,6 +34,7 @@
 #include "cmd_args/error/interpreter_error.h"
 #include "cmd_args/error/lexer_error.h"
 #include "cmd_args/error/parser_error.h"
+#include "cmd_args/error/validation_error.h"
 
 #include "cmd_args/expression/lexer.h"
 
@@ -397,6 +398,7 @@ public:
         }
         catch (ErrorParse const &e) { setLast(e.code()); throw; }
         catch (ErrorLexer const &e) { setLast(e.code()); throw; }
+        catch (ErrorValidation const &e) { setLast(e.code()); throw; }
         return *this;
     }
 
@@ -411,6 +413,7 @@ public:
         }
         catch (ErrorParse const &e) { _Ec = e.code(); setLast(e.code()); }
         catch (ErrorLexer const &e) { _Ec = e.code(); setLast(e.code()); }
+        catch (ErrorValidation const &e) { _Ec = e.code(); setLast(e.code()); }
         catch (std::exception const &ex) { setMsg(ex.what()); _Ec = make_error_code(ParseError_E::UNKNWON_ARGS); }
         return *this;
     }
@@ -424,6 +427,7 @@ public:
         }
         catch (ErrorParse const &e) { setLast(e.code()); throw; }
         catch (ErrorLexer const &e) { setLast(e.code()); throw; }
+        catch (ErrorValidation const &e) { setLast(e.code()); throw; }
         return *this;
     }
 
@@ -437,6 +441,7 @@ public:
         }
         catch (ErrorParse const &e) { _Ec = e.code(); setLast(e.code()); }
         catch (ErrorLexer const &e) { _Ec = e.code(); setLast(e.code()); }
+        catch (ErrorValidation const &e) { _Ec = e.code(); setLast(e.code()); }
         catch (std::exception const &ex) { setMsg(ex.what()); _Ec = make_error_code(ParseError_E::UNKNWON_ARGS); }
         return *this;
     }

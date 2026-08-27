@@ -33,7 +33,7 @@ CMD_ARGS_NAMESPACE_BEGIN
 namespace validator_detail {
 
 /* 辅助：全部为 ASCII 数字 */
-inline bool __allDigits(std::string const &_S) noexcept
+inline bool allDigits(std::string const &_S) noexcept
 {
     if (_S.empty()) return false;
     for (char c : _S) {
@@ -45,7 +45,7 @@ inline bool __allDigits(std::string const &_S) noexcept
 /// @brief 端口：1..65535 十进制整数
 inline bool is_port(std::string const &_S) noexcept
 {
-    if (_S.empty() || _S.size() > 5 || !__allDigits(_S)) return false;
+    if (_S.empty() || _S.size() > 5 || !allDigits(_S)) return false;
     unsigned long v = std::strtoul(_S.c_str(), nullptr, 10);
     return v >= 1 && v <= 65535;
 }
@@ -57,7 +57,7 @@ inline bool is_ipv4(std::string const &_S) noexcept
     auto parts = util::split(_S, '.');
     if (parts.size() != 4) return false;
     for (auto const &p : parts) {
-        if (p.empty() || p.size() > 3 || !__allDigits(p)) return false;
+        if (p.empty() || p.size() > 3 || !allDigits(p)) return false;
         if (std::strtoul(p.c_str(), nullptr, 10) > 255) return false;
     }
     return true;

@@ -471,3 +471,38 @@ TEST_CASE("defaults: Argument defaultExpr 同样生效", "[defaults]")
     REQUIRE(!ec);
     REQUIRE(app.getArgument<std::string>("host") == "my.host");
 }
+
+TEST_CASE("schema: required/default/validators 进入参数格式与文本", "[schema]")
+{
+    Context app("ut_schema_val");
+    app.addOption<int>("port", "port", 8080);
+    app.option("port")->required().range(1, 65535);
+    app.build<ArgumentNamed>("name", "n");
+    app.argument("name")->required();
+    app.addOption<std::string>("host", "host", "");
+    app.option("host")->semantic("ipv4");
+
+    // T7 之后 parse 会真正校验，因此必须显式给足全部 required（port / name）
+    std::error_code ec;
+    app.parse(ec, Tokens_T{ "--host", "10.0.0.1", "--port", "8080", "--name", "n" }, Envs_T{});
+    REQUIRE(!ec);
+
+    auto sch = app.schema();
+    auto const *pe = sch.find("port");
+    REQUIRE(pe != nullptr);
+    REQUIRE(pe->required == true);
+    REQUIRE(pe->default_set == true);
+    REQUIRE(pe->uses_default == false);        // 本疆显式给出 --port 8080
+    REQUIRE(pe->validators.size() == 1);
+    REQUIRE(pe->validators[0].find("range") != std::string::npos);
+
+    auto const *ne = sch.find("name");
+    REQUIRE(ne != nullptr);
+    REQUIRE(ne->required == true);
+    REQUIRE(ne->default_set == false);
+
+    auto const &txt = app.schema_string();
+    REQUIRE(txt.find("[required]") != std::string::npos);
+    REQUIRE(txt.find("[default]") != std::string::npos);
+    REQUIRE(txt.find("[validators:") != std::string::npos);
+}

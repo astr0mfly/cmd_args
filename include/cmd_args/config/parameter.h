@@ -45,6 +45,10 @@ struct parameter_entry
     std::string env;              // 绑定的环境变量名（未绑定为空）
     bool        explicit_set{false};  // 本会话被 CLI 显式赋值
     bool        external_set{false};  // 本会话被配置(YAML) 外部赋值
+    bool        required{false};                  ///< 声明为必选（未满足将报 MISSING_*）
+    bool        default_set{false};               ///< 声明了非空默认值
+    bool        uses_default{false};              ///< 当前值来自默认值
+    std::vector<std::string> validators;          // 校验器名称列表（schema 展示）
 };
 
 struct parameter_schema

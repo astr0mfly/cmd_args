@@ -340,6 +340,13 @@ public:
             oss << "  [" << e.kind << "] " << e.name;
             if (!e.type.empty()) { oss << " <" << e.type << ">"; }
             if (!e.value.empty()) { oss << " = \"" << e.value << "\""; }
+            if (e.required) { oss << " [required]"; }
+            if (e.default_set) { oss << " [default]"; }
+            if (!e.validators.empty()) {
+                oss << " [validators:";
+                for (auto const &v : e.validators) { oss << " " << v; }
+                oss << "]";
+            }
             if (!e.env.empty()) { oss << "  env: " << e.env; }
             oss << "\n";
         }

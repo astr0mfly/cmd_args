@@ -66,6 +66,10 @@ inline parameter_schema schema_of(Model const &_M)
         e.value        = a.getValue();
         e.env          = a.getEnvName();
         e.external_set = a.isExternal();
+        e.required     = a.isRequired();
+        e.default_set  = a.hasDefault();
+        e.uses_default = a.usesDefault();
+        for (auto const &v : a.validators()) { e.validators.push_back(v.strName); }
         sch.entries.emplace_back(std::move(e));
     });
 
@@ -77,6 +81,10 @@ inline parameter_schema schema_of(Model const &_M)
         e.value        = a.getValue();
         e.env          = a.getEnvName();
         e.external_set = a.isExternal();
+        e.required     = a.isRequired();
+        e.default_set  = a.hasDefault();
+        e.uses_default = a.usesDefault();
+        for (auto const &v : a.validators()) { e.validators.push_back(v.strName); }
         sch.entries.emplace_back(std::move(e));
     });
 
@@ -90,6 +98,10 @@ inline parameter_schema schema_of(Model const &_M)
         e.env          = o.strEnvName__;
         e.explicit_set = o.bExplicit__;
         e.external_set = o.bExternal__;
+        e.required     = o.isRequired();
+        e.default_set  = o.hasDefault();
+        e.uses_default = o.usesDefault();
+        for (auto const &v : o.validators()) { e.validators.push_back(v.strName); }
         sch.entries.emplace_back(std::move(e));
     });
 

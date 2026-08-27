@@ -98,7 +98,6 @@ inline void resetModelData(Model *_M)
     _M->args.mgrName.doMutVisit([](Argument &a) { a.reset(); });
     _M->args.mgrPos.doMutVisit([](Argument &a) { a.reset(); });
     _M->opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
-    _M->envs.doClear();  ///< 清空会话环境条目（EnvSpec 保留）
 }
 
 }  // namespace builtin_detail

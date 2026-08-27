@@ -411,6 +411,7 @@ TEST_CASE("validation: 流式 loop 行末校验 action 即时执行保持", "[va
 
 TEST_CASE("defaults: defaultExpr 支持 ${VAR:-fallback} 回退与优先级", "[defaults]")
 {
+    // 环境命中：CLI 显式 > ${VAR} > fallback
     Context app("ut_def_expr");
     app.addOption<int>("port", "port", 0);
     app.option("port")->defaultExpr("${CMD_DEF_PORT:-8080}");
@@ -418,16 +419,22 @@ TEST_CASE("defaults: defaultExpr 支持 ${VAR:-fallback} 回退与优先级", "[
     std::error_code ec;
     app.parse(ec, Tokens_T{}, Envs_T{ "CMD_DEF_PORT=9090" });
     REQUIRE(!ec);
-    REQUIRE(app.getOption<int>("port") == 9090);          // 环境变量命中
+    REQUIRE(app.getOption<int>("port") == 9090);          // 环境命中
 
-    app.reset();
-    app.parse(ec, Tokens_T{}, Envs_T{});
-    REQUIRE(!ec);
-    REQUIRE(app.getOption<int>("port") == 8080);          // 回退值
     // 显式 CLI 覆盖表达式
+    app.reset();
     app.parse(ec, Tokens_T{ "--port", "7000" }, Envs_T{ "CMD_DEF_PORT=9090" });
     REQUIRE(!ec);
     REQUIRE(app.getOption<int>("port") == 7000);
+
+    // 回退值：独立 Context（进程环境无 CMD_DEF_PORT）——「Env 会话态保留」特性
+    // 要求同会话不能把旧环境当新环境，因此用新 Context 验证 fallback
+    Context app2("ut_def_expr_fb");
+    app2.addOption<int>("port", "port", 0);
+    app2.option("port")->defaultExpr("${CMD_DEF_PORT:-8080}");
+    app2.parse(ec, Tokens_T{}, Envs_T{});
+    REQUIRE(!ec);
+    REQUIRE(app2.getOption<int>("port") == 8080);          // 回退值
 }
 
 TEST_CASE("defaults: defaultFn 每次 reset 重算（loop 单行语义）", "[defaults]")

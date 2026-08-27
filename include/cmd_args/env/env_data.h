@@ -44,9 +44,6 @@ public:
     /// @brief 环境条目个数
     auto doSize() const noexcept -> std::size_t { return mapEnvs__.size(); }
 
-    /// @brief 清空所有环境条目（保留声明式条目 mapSpecs__）
-    void doClear() noexcept { mapEnvs__.clear(); }
-
     /// @brief 按键查询是否存在
     bool doFind(Key_T const &_Key) const noexcept
     {

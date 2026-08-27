@@ -169,6 +169,7 @@ public:
 
     /// @brief 环境变量展开：${NAME} / %NAME% / $NAME（命中标记“被引用”）
     /// @param _Text 待展开文本（未命中保持原样）
+    /// @note 支持 ${NAME:-fallback} 回退语法：变量缺失时替换为 fallback（仅 ${} 形式）
     auto expand(EnvData::Value_T const &_Text) const -> std::string
     {
         std::string ret;

@@ -107,6 +107,8 @@ app.load_config("my_tool.yaml");  // 下次调用：YAML → 环境变量反哺 
 
 // 必选 + 校验器 + 默认值判段（链式挂在句柄上）
 app.option("host")->required().semantic("ipv4");       // 取值非法即 VALIDATION_FAILED
+// 注意：argv 路径下含 '.' 的数值（如 127.0.0.1）会被 Scanner 拆分为多 token（既有词法缺陷）；
+// ipv4/ipv6 语义校验仍可用（单元测试覆盖），示例中演示用 hostname/整数。
 app.option("timeout")->range(1, 3600);                 // 数值区间
 app.option("mode")->oneOf({"fast","slow"}).match(R"(^\w+$)");   // 枚举 + 正则
 app.argument("name")->required();                      // 必选参数
@@ -316,6 +318,7 @@ app.option("task")->action("echo \"{value}\"");
 - `counter` 计数选项（`-vvv` → 3，涉及解析层聚合改造）
 - `requiredIf` / `mutuallyExclusive` 条件必选
 - `removeOption` 卸载、Array Checker（`minSize`/`maxSize`，依赖容器语义）、默认值继承（子命令场景）
+- argv 词法层对含 '.' 数值值的拆分缺陷（影响 127.0.0.1 等选项值；词法重构 WIP）
 - `&&` / `||` 命令串联、`|` 管道、`...` 可重复项
 - json 配置加载（YAML 之外的第二种脚本格式）、lua/luajit action、dll 动态补丁
 - bench / meta / mock 工程

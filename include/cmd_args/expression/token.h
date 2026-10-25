@@ -58,7 +58,7 @@ public:
         String,         ///< 带引号的字符串 / Env 值
         EnvName,        ///< 环境变量名（兼容保留）
         Delimiter,      ///< 单字符分隔符（? : = > < & | 等）
-        ScopeSep,       ///< :: 环境空间级联分隔符
+        ScopeSep,       ///< 环境空间级联分隔符（CMD_ARGS_ENV_SCOPE_SEP，默认 "::"）
         Keyword         ///< 关键字（env / file / plugin）
     };
 
@@ -116,7 +116,7 @@ public:
 
     /**
      * @brief 归一化为命令行文本
-     * @note LongName → "--name"；ShortName/ContinualName → "-x"；ScopeSep → "::"；其余保持原样
+     * @note LongName → "--name"；ShortName/ContinualName → "-x"；ScopeSep → 编译期分隔符（默认 "::"）；其余保持原样
      */
     auto toText() const -> std::string
     {
@@ -124,7 +124,7 @@ public:
         case Type_E::LongName:     return "--" + strName__;
         case Type_E::ShortName:
         case Type_E::ContinualName: return "-" + strName__;
-        case Type_E::ScopeSep:     return "::";
+        case Type_E::ScopeSep:     return ENV_SCOPE_SEP;
         default:                   return strName__;
         }
     }

@@ -12,6 +12,8 @@
 - `env_builder.h`：`class EnvBuilder` 构造 (`EnvData *`)；`setEnv(Key_T, Value_T)`（存在 → 改值 + `bModified__ = true`；不存在 → `doPush(..., true)` 标新建）；`unsetEnv(Key_T const&) -> bool`（返回原先是否存在）；`requireEnv(Key_T const&, Value_T const& = {}) -> EnvSpec *`（已注册返回旧句柄、不覆盖；否则 `EnvSpec` + `required()` + `pushSpec`）；`envSpec(Key_T const&) -> EnvSpec *`。
 - `env_parser.h`：`class EnvParser` 构造 (`EnvData *`)；`recognize(std::string const&) -> std::optional<ClassifiedExpr>`（无 `'='` 返回 nullopt）、`apply(ClassifiedExpr const&)`、`parse(Envs_T const&)`（无 `'='` 的行忽略，`doPush(..., false)`）；查询 `has`/`find`/`get`/`getOr`/`touch`；统计 `size`/`empty`/`referencedCount`/`changedCount`；遍历 `forEach`；展示 `envString(program)`；`expand(text)`；`apply() -> std::vector<std::string>`；Token 规则 `recognizeEnvAssign(TokenStream_T const&, std::size_t) -> std::optional<EnvMatch_T>`（`EnvMatch_T{ ClassifiedExpr expr; std::size_t nConsumed; }`）与 `applyExpr(ClassifiedExpr const&)`（以 `fullPath()` 为键）。
 
+环境空间级联：EnvLine 模式把 `A::B::C=V` 切成 `Variable(::Variable)* '=' String`，`recognizeEnvAssign`（`env_parser.h:288`）把前缀压入 `vecSpacePath`、叶子进 `name`，`applyExpr`（`env_parser.h:326`）以 `fullPath()` 为键写入 `EnvData`。分隔符由 `base/def.h` 的 `CMD_ARGS_ENV_SCOPE_SEP` 宏唯一决定（默认 `"::"`），`ENV_SCOPE_SEP`/`ENV_SCOPE_SEP_LEN` 暴露实际值；在 include 之前 `#define CMD_ARGS_ENV_SCOPE_SEP "-"` 即切成 `A-B-C`。两种写法都不能直接 `export`（POSIX 变量名只允许 `[A-Za-z_][A-Za-z0-9_]*`），注入方式为 `env 'A::B=1' ./app`；Windows 用 `set "A::B=1"`。
+
 三标记语义：`bReferenced__` 被程序引用（`get`/`getOr`/`touch` 与 `expand` 命中时置位）、`bModified__` 本会话被改、`bNew__` 本会话新建。`envString` 的标记顺序为 `'*'`（modified）→ `'>'`（referenced）→ `'+'`（new），格式为 `environments: <program>` / `No. : "key" = "value"`。
 
 展开：`${NAME}`（支持 `${NAME:-fallback}`）、`%NAME%`、`$NAME` 三种写法；命中则置 `bReferenced__ = true` 并替换为值；未命中保持原样（逐字符回退 `ret += ch`、`++i`），`${NAME:-fallback}` 在缺失时输出 fallback（仅 `${}` 分支实现）。
@@ -38,6 +40,7 @@ loop 跨行保留：`resetModelData` 只还原参数/选项值（`context/builti
 - fallback 仅支持 `${NAME:-fallback}`；不得扩展 `%NAME%`/`$NAME` 的回退语法（README 只承诺三种写法）。
 - YAML 映射与优先级由 `config/` 负责；本目录不得直接读写文件。
 - `envs_t` 为兼容别名，新代码使用 `EnvData`；`extern/` 下 vendored 代码不修改。
+- 空间分隔符只能经 `CMD_ARGS_ENV_SCOPE_SEP` 配置：`token.h` 的 `toText()`、`classified_expr.h` 的 `fullPath()`、`scanner.h` 的 `IN_SCOPE_SEP` 都引用 `ENV_SCOPE_SEP`/`ENV_SCOPE_SEP_LEN`，不得再硬编码字面量。
 
 ## 索引
 
@@ -59,6 +62,7 @@ grep 锚点（2026-10-25 核对）：`grep -n "struct environment" include/cmd_a
 - 回写只改本进程环境（`_putenv_s`/`setenv`），不写系统级注册表或用户环境；代价是只对当前进程及其子进程生效。
 - 展开统一放在 finalize 而非读取时：保证 env seed 先于展开；代价是命令行显式含 `${VAR}` 的值也会被展开（README「值展开」）。
 - `get/getOr` 在 const 方法内通过非 const 成员指针 `pData__` 修改标记：保持调用方接口 const 的同时记录引用；代价是「只读」方法带副作用。
+- 分隔符默认保留 `"::"`、`"-"` 走宏覆盖：键名不能随平台漂移（YAML/CI/既有测试写的是 `A::B::C`），且 `-` 在 shell 里同样不可 export，切换只换来键名差异；代价是两种写法都需非 shell 注入。
 
 ## 教训
 
@@ -69,3 +73,4 @@ grep 锚点（2026-10-25 核对）：`grep -n "struct environment" include/cmd_a
 - 空值环境变量等同缺失：`validate_detail::checkEnvSpecs` 以 `p && !p->strValue.empty()` 判定 present（`expression/validation.h`），`KEY=`（空值）会触发缺省补全或 `MISSING_ENV`。
 - `get/getOr/touch` 会置 `bReferenced__`（`env_parser.h:98-121`）：只读探测请用 `find()`/`has()`，否则 `--env`/`-!` 展示会多出 `'>'` 标记。
 - `apply()` 回写后清 modified/new 但保留 `bReferenced__`；同一会话再次 `apply()` 返回空列表。
+- 生产管线不走 EnvLine：`ContextBase::parse` 经 `Compiler::__parseTokensLegacy` 调 `EnvParser::parse(envp)`，键在首个 `'='` 处 `substr`（`env_parser.h:79-86`），`A::B=V` 在真实环境里不会被拆成空间路径；空间级联只在 `scanEnvLine`/`recognizeEnvAssign`（目前仅单测使用）生效。

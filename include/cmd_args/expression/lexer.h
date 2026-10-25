@@ -39,7 +39,7 @@ step() 增量逐字符喂入（复用同一状态分派表，供流式 Interpret
 
 */
 
-namespace detail {
+namespace expression_detail {
 
 class Lexer
 {
@@ -265,8 +265,8 @@ private:
     std::optional<Token>   tPeeked__;  ///< hasNext() 缓存
 };
 
-}  // namespace detail
+}  // namespace expression_detail
 
-using detail::Lexer;
+using expression_detail::Lexer;
 
 CMD_ARGS_NAMESPACE_END

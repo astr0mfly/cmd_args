@@ -30,7 +30,7 @@
 
 CMD_ARGS_NAMESPACE_BEGIN
 
-namespace detail {
+namespace expression_detail {
 
 using Token = ::cmd_args::Token;
 
@@ -47,7 +47,7 @@ public:
     enum class LexMode_E : char
     {
         CommandLine,  ///< 命令行模式（argv 输入）
-        EnvLine       ///< 环境行模式（envp 输入：支持 :: 级联与 = 断句）
+        EnvLine       ///< 环境行模式（envp 输入：支持空间级联分隔符与 = 断句）
     };
 
     enum class Phrase_E
@@ -64,7 +64,7 @@ public:
         IN_VARIABLE,          // 专有名词，用作子模块或者其他参数
         IN_SINGLE_DELIMITER,  // 其他分隔符
         IN_DOUBLE_DELIMITER,  // 其他分隔符
-        IN_SCOPE_COLON,       // EnvLine：已吞入一个 ':'，等待判定 '::' 或单 ':'
+        IN_SCOPE_SEP,         // EnvLine：空间分隔符匹配中（已吞入前缀，等待后续字符）
         IN_ENV_VALUE,         // EnvLine：'=' 之后的值吸收态
         END                   // 解析结束
     };
@@ -151,8 +151,8 @@ private:
               std::bind(&Scanner::__processSingleDelimiter, this, sp::_1, sp::_2) },
             { Phrase_E::IN_DOUBLE_DELIMITER,
               std::bind(&Scanner::__processDoubleDelimiter, this, sp::_1, sp::_2) },
-            { Phrase_E::IN_SCOPE_COLON,
-              std::bind(&Scanner::__processScopeColon, this, sp::_1, sp::_2) },
+            { Phrase_E::IN_SCOPE_SEP,
+              std::bind(&Scanner::__processScopeSep, this, sp::_1, sp::_2) },
             { Phrase_E::IN_ENV_VALUE,
               std::bind(&Scanner::__processEnvValue, this, sp::_1, sp::_2) },
             { Phrase_E::END, std::bind(&Scanner::__processEnd, this, sp::_1, sp::_2) }
@@ -177,7 +177,10 @@ private:
         case Phrase_E::IN_CONTINUAL_NAME: _T.setAttr(Token::Type_E::ContinualName); break;
         case Phrase_E::IN_LONG_NAME: _T.setAttr(Token::Type_E::LongName); break;
         case Phrase_E::IN_VARIABLE: _T.setAttr(Token::Type_E::Variable); break;
-        case Phrase_E::IN_SCOPE_COLON: _T.setAttr(Token::Type_E::ScopeSep); break;
+        case Phrase_E::IN_SCOPE_SEP:
+            _T.setAttr(nScopeMatched__ >= ENV_SCOPE_SEP_LEN ? Token::Type_E::ScopeSep
+                                                            : Token::Type_E::Delimiter);
+            break;
         case Phrase_E::IN_ENV_VALUE:   _T.setAttr(Token::Type_E::String);   break;
         default: _T.setAttr(Token::Type_E::Unknown); break;
         }
@@ -195,6 +198,18 @@ private:
             __setState(Phrase_E::IN_ENV_VALUE);
             _T.pick(_Cur);
             __nextChar();
+            return;
+        }
+        if (enMode__ == LexMode_E::EnvLine && _Cur == ENV_SCOPE_SEP[0]) {
+            _T.pick(_Cur);
+            nScopeMatched__ = 1;
+            __nextChar();
+            if (ENV_SCOPE_SEP_LEN <= 1) {
+                _T.setAttr(Token::Type_E::ScopeSep);
+                __setState(Phrase_E::END);
+                return;
+            }
+            __setState(Phrase_E::IN_SCOPE_SEP);
             return;
         }
         if (std::isdigit(static_cast<unsigned char>(_Cur)) || _Cur == '-' || _Cur == '+') {
@@ -348,7 +363,7 @@ private:
     void __processVariable(char const _Cur, Token &_T)
     {
         if (enMode__ == LexMode_E::EnvLine
-            && (_Cur == ':' || _Cur == '=')) {
+            && (_Cur == ':' || _Cur == '=' || _Cur == ENV_SCOPE_SEP[0])) {
             _T.setAttr(Token::Type_E::Variable);
             __setState(Phrase_E::END);
             return;
@@ -380,8 +395,16 @@ private:
 
     void __processSingleDelimiter(char const _Cur, Token &_T)
     {
-        if (enMode__ == LexMode_E::EnvLine && _Cur == ':') {
-            __setState(Phrase_E::IN_SCOPE_COLON);
+        if (enMode__ == LexMode_E::EnvLine && _Cur == ENV_SCOPE_SEP[0]) {
+            _T.pick(_Cur);
+            nScopeMatched__ = 1;
+            __nextChar();
+            if (ENV_SCOPE_SEP_LEN <= 1) {
+                _T.setAttr(Token::Type_E::ScopeSep);
+                __setState(Phrase_E::END);
+                return;
+            }
+            __setState(Phrase_E::IN_SCOPE_SEP);
             return;
         }
 
@@ -426,18 +449,21 @@ private:
         __setState(Phrase_E::BEGIN);
     }
 
-    void __processScopeColon(char const _Cur, Token &_T)
+    void __processScopeSep(char const _Cur, Token &_T)
     {
-        if (_Cur == ':') {
+        if (nScopeMatched__ < ENV_SCOPE_SEP_LEN && _Cur == ENV_SCOPE_SEP[nScopeMatched__]) {
             _T.pick(_Cur);
-            _T.setAttr(Token::Type_E::ScopeSep);
+            ++nScopeMatched__;
             __nextChar();
-            __setState(Phrase_E::END);
+            if (nScopeMatched__ >= ENV_SCOPE_SEP_LEN) {
+                _T.setAttr(Token::Type_E::ScopeSep);
+                __setState(Phrase_E::END);
+            }
             return;
         }
+        // 未匹配：已吞入的前缀退化为普通分隔符，当前字符留给 BEGIN 重新处理
         _T.setAttr(Token::Type_E::Delimiter);
-        __nextChar();
-        __processEnd('\0', _T);
+        __setState(Phrase_E::END);
     }
 
     void __processEnvValue(char const _Cur, Token &_T)
@@ -480,8 +506,9 @@ private:
     ScanTbl_T             tblScanInput__;
     LexMode_E             enMode__       = LexMode_E::CommandLine;
     bool                  bEnvValuePos__ = false;
+    std::size_t           nScopeMatched__ = 0;  ///< EnvLine：空间分隔符已匹配字符数
 };
 
-}  // namespace detail
+}  // namespace expression_detail
 
 CMD_ARGS_NAMESPACE_END

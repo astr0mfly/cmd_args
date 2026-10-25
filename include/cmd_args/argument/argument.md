@@ -1,16 +1,17 @@
 # argument — 命名参数与方位参数的数据、构筑与解析层
 
 > **摘要**：argument 目录承担命令行「参数」一侧：`Argument` 值模型及 `ArgumentNamed` / `ArgumentPosition` 两个子类、命名/方位管理器、`ArgumentBuilder` 注册校验，以及 `ArgumentParser` 的 token 解析与类型化取值。它让 `--name value` 与裸 token（方位参数）拥有确定语义，并把「配置已赋值后 CLI 可省略、也可覆盖」落成数量区间校验。
-> **联系**：上级索引 [cmd_args.md](../cmd_args.md)；同级选项面 [option.md](../option/option.md)；依赖 [expression.h](../expression/expression.h)、[context_fwd.h](../context/context_fwd.h)、[validator.h](../base/validator.h)、[util.h](../base/util.h)、[parser_error.h](../error/parser_error.h)、[builder_error.h](../error/builder_error.h)；编排方 [compiler.h](../expression/compiler.h)、[context_step.h](../context/context_step.h)、[interpreter.h](../expression/interpreter.h)；使用方 [once/main.cpp](../../../example/once/main.cpp)、[deduce/main.cpp](../../../example/deduce/main.cpp)；单测 [test_parser.cpp](../../../dfx/unit_test/test_parser.cpp)、[test_builder.cpp](../../../dfx/unit_test/test_builder.cpp)；README 见 [位置参数语义](../../../README_zh.md#位置参数语义) 与 [目录结构](../../../README_zh.md#目录结构)。
+> **联系**：上级索引 [cmd_args.md](../cmd_args.md)；同级选项面 [option.md](../option/option.md)；依赖 [expression.h](../expression/expression.h)、[context_fwd.h](../context/context_fwd.h)、[validator.h](../base/validator.h)、[util.h](../base/util.h)、[parser_error.h](../error/parser_error.h)、[builder_error.h](../error/builder_error.h)；编排方 [compiler.h](../expression/compiler.h)、[context_step.h](../context/context_step.h)、[interpreter.h](../expression/interpreter.h)；使用方 [once/main.cpp](../../../example/once/main.cpp)、[deduce/main.cpp](../../../example/deduce/main.cpp)；属性载体 [property.h](../property/property.h)；单测 [test_parser.cpp](../../../dfx/unit_test/test_parser.cpp)、[test_property.cpp](../../../dfx/unit_test/test_property.cpp)、[test_builder.cpp](../../../dfx/unit_test/test_builder.cpp)；README 见 [位置参数语义](../../../README_zh.md#位置参数语义) 与 [目录结构](../../../README_zh.md#目录结构)。
 
 ## truth
 
 **类层次**：`Argument` 同时继承 `Expression` 与 `ValidatorMixin<Argument>`（argument.h:45）；三个构造函数都向 `Expression` 传 `ExpressionKind_E::Argument`（argument.h:58-79），因此 `kind()` 恒为 `Argument`，名字与帮助由基类存储，`Argument` 自身不复写 `getName()` / `getHelp()`。`ArgumentNamed` 只补构造与 `using` 声明；`ArgumentPosition` 另带 `Seq_T iSeq`、`No(Seq_T)`（设置序号并返回自身）、`getSeq()`、`operator<`（argument.h:418-449）。
 
 **状态与不变量**：
-- 值、默认值、类型、环境变量名与状态标记分别存于 `strValue__`、`strDefault__`、`strType__`、`strEnvName__`、`bExternal__`、`bEnvHit__`；值为 mutable，状态标记亦为 mutable。
-- `set` 只写值，不清 `bExternal__`；`setExternal` 写值并置 `bExternal__ = true`；`env` 只绑定变量名，读取环境变量由 seed 阶段完成；`reset` 先重算惰性默认值（若 `fnDefault__` 存在），再令 `strValue__ = strDefault__`，随后清 `bExternal__` / `bEnvHit__`；`defaultExpr` 记录 `${...}` 模板并置 `bDefaultExpr__`。
-- 谓词：`hasValue()` / `operator bool` 看值是否非空；`isSatisfied() = bExternal__ || bEnvHit__ || hasValue()`；`usesDefault()` 以值比较判定（`!bExternal__ && !bEnvHit__ && strValue__ == strDefault__`）；`hasDefault()` 只看默认串非空；`getType` / `getValue` / `getEnvName` 只读。
+- 值、默认值与读写钩子收在一个私有属性 `Property<Value_T> propValue__` 里（argument.h:384）；类型、环境变量名与状态标记仍是独立成员：`strType__`、`strEnvName__`、`bDefaultExpr__`、`bExternal__`、`bEnvHit__`（后两者 mutable）。属性契约见 [property.md](../property/property.md)。
+- `set` 经属性写钩子赋值（`__setChecked`，argument.h:373-379）：钩子拒绝时抛 `ErrorValidation(ValidationError_E::VALIDATION_FAILED, "argument <name>: <msg>")`，值保持不变；`setExternal` 走 `propValue__.setRaw` 旁路并置 `bExternal__ = true`；`env` 只绑定变量名，读取环境变量由 seed 阶段完成；`reset` 委托 `propValue__.reset()`（惰性默认值重算 + 还原 + 清属性错误与 `bSet__`），随后清 `bExternal__` / `bEnvHit__`；`defaultExpr` = `clearDefaultFn` + `defaultValue(_Expr)` + `reset()` 并置 `bDefaultExpr__`。
+- 谓词：`hasValue()` / `operator bool` 看 `propValue__.raw()` 是否非空；`isSatisfied() = bExternal__ || bEnvHit__ || hasValue()`；`usesDefault()` 以值比较判定（`!bExternal__ && !bEnvHit__ && propValue__.raw() == propValue__.defaultValue()`）；`hasDefault()` 只看默认串非空；`getType` / `getEnvName` 只读，`getValue()` 按值返回并经过读钩子（argument.h:308），`property()` 暴露属性载体（argument.h:311-314）。
+- 数据源接线（compiler.h:256-290）：env seed 走 `set`，因此会被写钩子拦截；`${VAR}` 展开走 `property().setRaw`，属派生值旁路。
 
 **管理器契约**（argument_data.h:32-59）：`ArgumentMgrItf` 声明 8 个纯虚接口 `doGetUsage` / `doFind` / `doEmpty` / `doSize` / `doVisit` / `doGetHelp` / `doGet` / `doPush`，没有虚析构。`NamedArgumentMgr` 用 `std::map<Name_T, Argument::ptr>`，`doPush` 以 `emplace` 写入，同一名字第二次写入被静默丢弃；另提供 `doMutVisit` / `doConVisit` / `mutGet`。`PositionArgumentMgr` 用 `std::map<size_t, Argument::ptr>`，键取自 `dynamic_cast<ArgumentPosition *>(_Arg.get())->getSeq()`（未判空），另提供 `mutGetBySeq`，其 `doGet(name)` 线性扫描值域。两实现的 `doVisit` 都用 try/catch 包裹访问器，捕获后打印到 stderr 并吞掉异常。`ArgumentData` 仅是 `mgrName + mgrPos` 的组合（argument_data.h:282-288），由 `Model` 的 `args` 成员持有。
 
@@ -31,12 +32,13 @@
 - 方位参数必须按 `iSeq` 递增注册（Builder 用 `mgrPos.doSize()` 分配），手写 `ArgumentPosition` 时须显式给序号。
 - 方位数量规则只允许 `[未外部赋值数, 总数]`，四个实现必须同步修改，不得单独改动某一入口。
 - `ArgumentNamed` 必须有非空 name 与 help（Builder 校验）；`ArgumentPosition` 的名字不参与注册表查找，仅用于帮助与 `getArgument` 的线性查找。
+- 值只能经 `Property` 访问：业务写入走 `set`（可能被写钩子拒绝并抛 `ErrorValidation`），只有配置/快照与 `${VAR}` 展开才允许 `setExternal` / `property().setRaw`；禁止重新引入公有值字段或绕过属性的写入口。
 
 ## 索引
 
 | 文件 | 关键符号 | 职责 |
 | --- | --- | --- |
-| `argument.h` | `Argument` / `ArgumentNamed` / `ArgumentPosition` / `setExternal` / `reset` / `isSatisfied` / `usesDefault` / `defaultExpr` | 参数值模型：类型、默认值、值、环境变量绑定与外部/命中标记 |
+| `argument.h` | `Argument` / `ArgumentNamed` / `ArgumentPosition` / `set` / `getValue` / `property` / `setExternal` / `reset` / `isSatisfied` / `usesDefault` / `defaultExpr` / `defaultFn` | 参数值模型：类型、`Property<Value_T>` 属性值（默认值 + 读写钩子）、环境变量绑定与外部/命中标记 |
 | `argument_data.h` | `ArgumentMgrItf` / `NamedArgumentMgr` / `PositionArgumentMgr` / `ArgumentData` | 管理器接口与实现、参数仓库（命名字典 + 方位序号表） |
 | `argument_builder.h` | `ArgumentBuilder` / `build` / `check` / `__checkDuplicate` | 注册入口：空名/空帮助/重名校验，方位序号分配 |
 | `argument_parser.h` | `ArgumentParser` / `parse` / `parseNamedOnly` / `parsePositionalOnly` / `getArgument` / `isParsed` | token 解析、数量区间校验、类型化取值 |
@@ -56,7 +58,9 @@ grep 锚点（2026-10-25 核对）：`grep -n "class Argument " include/cmd_args
 - 重复注册静默丢参：`NamedArgumentMgr::doPush` 用 `emplace`（argument_data.h:69），绕过 Builder 直接注册时第二次写入无任何提示地丢失；规避方式是统一走 `ArgumentBuilder`。
 - 位置管理器的空指针解引用：`PositionArgumentMgr::doPush` 对 `dynamic_cast` 结果不判空即调用 `getSeq()`（argument_data.h:167-171），传入 `ArgumentNamed` 会崩溃；规避方式是只经 Builder 或显式传 `ArgumentPosition`。
 - `doVisit` 吞异常：访问器内抛出的校验错误被 try/catch 打印到 stderr 后吞掉（argument_data.h:92-104、200-212）；规避方式是把校验放在 Builder/parse 阶段，不依赖遍历传播错误。
-- `usesDefault` 是值比较（argument.h:355-357）：CLI 显式给出与默认值相同的值时也会被判为「用了默认值」；规避方式是需要区分显式性时查 `bExternal__` / 赋值路径，而不依赖该谓词。
+- `usesDefault` 是值比较（argument.h:355-357，比较 `propValue__.raw()` 与 `propValue__.defaultValue()`）：CLI 显式给出与默认值相同的值时也会被判为「用了默认值」；规避方式是需要区分显式性时查 `bExternal__` / `property().isSet()`，而不依赖该谓词。
+- 写钩子拒绝会立刻抛 `ErrorValidation`：`Argument::set` 不再是 `noexcept`，env seed 也会抛；`ContextBase::parse` 四个重载会转成 `ec = VALIDATION_FAILED`，但自定义调用链在 `loop` 之外直接 `set` 时必须自行捕获（argument.h:373-379、context_step.h:82-93）。
+- `getValue()` 按值返回且经过读钩子（argument.h:308）：返回非空不代表「有值」（读钩子可造出 `(anonymous)`），`hasValue` / `isSatisfied` 仍看 `raw()`；用 `auto const &` 绑定会立刻悬垂，必须按值接。
 - 必选参数与默认值冲突：`isSatisfied` 以 `hasValue()` 判定，非空默认值使 required 永不触发；规避方式是 required 参数不要给非空默认值（validator.h 的 required 语义）。
 - `isParsed` 只查命名集合（argument_parser.h:284-288）：位置参数永远返回 false；规避方式是位置参数改用 `getArgument` 或 `hasValue` 判断。
 - `argument_data.h` 依赖传递包含：该头自身没有 `<map>` / `<sstream>` / `<algorithm>` 等包含，单独包含可能编译失败，需先包含 argument.h 或走 cmd_args.hpp 聚合头。

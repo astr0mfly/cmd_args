@@ -26,7 +26,9 @@
 
 #include "cmd_args/base/util.h"
 #include "cmd_args/base/validator.h"
+#include "cmd_args/error/validation_error.h"
 #include "cmd_args/expression/expression.h"
+#include "cmd_args/property/property.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -34,8 +36,8 @@ CMD_ARGS_NAMESPACE_BEGIN
     Argument 基类：一条"参数"的载体（命名参数 / 方位参数共用）。
     - 名字 + 帮助 —— 构筑期填写，一经确定不再变化（存储于 Expression 基类）
     - 类型 + 默认值 —— type<T>() 定类型（空 = 未定型），构造时缓存默认值
-    - 值（strValue__）—— 解析期被 CLI 赋值，或经 env() 绑定环境变量兜底，
-      或经 setExternal() 被配置文件（YAML）外部赋值
+    - 值（propValue__ 属性）—— 解析期被 CLI 赋值，或经 env() 绑定环境变量兜底，
+      或经 setExternal() 被配置文件（YAML）外部赋值；读写均可被属性钩子拦截
     - 标记：bExternal__（值来自配置，env 兜底跳过）；
       hasValue() 即"当前已持有非空值"
     - reset() 还原默认值并清外部标记（loop 每行调用前执行，等价一次 once 输入）
@@ -74,8 +76,7 @@ public:
     Argument(Name_T _Name, Desc_T _Help, Type_T _Type, Value_T _Default = "")
         : Expression(ExpressionKind_E::Argument, std::move(_Name), std::move(_Help))
         , strType__(std::move(_Type))
-        , strDefault__(_Default)
-        , strValue__(std::move(_Default))
+        , propValue__(std::move(_Default))
     {}
 
     /// @brief 移动构造函数
@@ -85,10 +86,8 @@ public:
         : Expression(std::move(_Other))
         , ValidatorMixin<Argument>(std::move(_Other))
         , strType__(std::move(_Other.strType__))
-        , strDefault__(std::move(_Other.strDefault__))
-        , strValue__(std::move(_Other.strValue__))
         , strEnvName__(std::move(_Other.strEnvName__))
-        , fnDefault__(std::move(_Other.fnDefault__))
+        , propValue__(std::move(_Other.propValue__))
         , bDefaultExpr__(_Other.bDefaultExpr__)
         , bExternal__(_Other.bExternal__)
         , bEnvHit__(_Other.bEnvHit__)
@@ -100,10 +99,8 @@ public:
         : Expression(_Other)
         , ValidatorMixin<Argument>(_Other)
         , strType__(_Other.strType__)
-        , strDefault__(_Other.strDefault__)
-        , strValue__(_Other.strValue__)
         , strEnvName__(_Other.strEnvName__)
-        , fnDefault__(_Other.fnDefault__)
+        , propValue__(_Other.propValue__)
         , bDefaultExpr__(_Other.bDefaultExpr__)
         , bExternal__(_Other.bExternal__)
         , bEnvHit__(_Other.bEnvHit__)
@@ -116,10 +113,8 @@ public:
         Expression::operator=(std::move(_Rhs));
         ValidatorMixin<Argument>::operator=(std::move(static_cast<ValidatorMixin<Argument> &>(_Rhs)));
         strType__    = std::move(_Rhs.strType__);
-        strDefault__ = std::move(_Rhs.strDefault__);
-        strValue__   = std::move(_Rhs.strValue__);
         strEnvName__ = std::move(_Rhs.strEnvName__);
-        fnDefault__  = std::move(_Rhs.fnDefault__);
+        propValue__  = std::move(_Rhs.propValue__);
         bDefaultExpr__ = _Rhs.bDefaultExpr__;
         bExternal__    = _Rhs.bExternal__;
         bEnvHit__      = _Rhs.bEnvHit__;
@@ -134,10 +129,8 @@ public:
         Expression::operator=(_Rhs);
         ValidatorMixin<Argument>::operator=(static_cast<ValidatorMixin<Argument> const &>(_Rhs));
         strType__    = _Rhs.strType__;
-        strDefault__ = _Rhs.strDefault__;
-        strValue__   = _Rhs.strValue__;
         strEnvName__ = _Rhs.strEnvName__;
-        fnDefault__  = _Rhs.fnDefault__;
+        propValue__  = _Rhs.propValue__;
         bDefaultExpr__ = _Rhs.bDefaultExpr__;
         bExternal__    = _Rhs.bExternal__;
         bEnvHit__      = _Rhs.bEnvHit__;
@@ -145,7 +138,7 @@ public:
         return *this;
     }
 
-    operator bool() const noexcept { return !strValue__.empty(); }  ///< 隐式转换：有非空值时为 true
+    operator bool() const noexcept { return !propValue__.raw().empty(); }  ///< 隐式转换：有非空值时为 true
     
     virtual ~Argument() = default;
 
@@ -194,17 +187,23 @@ public:
         return *this;
     }
 
-    /// @brief 设置参数值（右值版本，移动语义）
-    auto set(Value_T &&_V) noexcept -> Self_T &
+    /// @brief 设置参数值（右值版本，移动语义；经属性写钩子准入）
+    /// @param _V 候选值（写钩子可原地规范化）
+    /// @return Self_T& 支持链式调用
+    /// @throw ErrorValidation(VALIDATION_FAILED) 写钩子拒绝时抛出，值保持不变
+    auto set(Value_T &&_V) -> Self_T &
     {
-        strValue__ = std::move(_V);
+        __setChecked(std::move(_V));
         return *this;
     }
 
-    /// @brief 设置参数值（左值版本）
+    /// @brief 设置参数值（左值版本；经属性写钩子准入）
+    /// @param _V 候选值
+    /// @return Self_T& 支持链式调用
+    /// @throw ErrorValidation(VALIDATION_FAILED) 写钩子拒绝时抛出，值保持不变
     auto set(Value_T const &_V) -> Self_T &
     {
-        strValue__ = _V;
+        __setChecked(_V);
         return *this;
     }
 
@@ -215,10 +214,10 @@ public:
      * @note 优先级：CLI显式值 > 配置文件 > 环境变量 > 默认值
      * @note 标记 bExternal__ 为 true，使 env 兜底跳过本参数
      */
-    auto setExternal(Value_T &&_V) noexcept -> Self_T &
+    auto setExternal(Value_T &&_V) -> Self_T &
     {
-        strValue__  = std::move(_V);
-        bExternal__   = true;
+        propValue__.setRaw(std::move(_V));
+        bExternal__ = true;
         return *this;
     }
 
@@ -229,8 +228,8 @@ public:
      */
     auto setExternal(Value_T const &_V) -> Self_T &
     {
-        strValue__ = _V;
-        bExternal__  = true;
+        propValue__.setRaw(_V);
+        bExternal__ = true;
         return *this;
     }
 
@@ -239,16 +238,15 @@ public:
     /**
      * @brief 还原为内置默认值
      * @return Self_T& 支持链式调用
-     * @note 若 fnDefault__ 存在则重算 strDefault__；还原 strValue__ 为 strDefault__，清除 bExternal__ / bEnvHit__ 标记
+     * @note 若属性挂有默认值函数则重算默认值；还原当前值为默认值，清除 bExternal__ / bEnvHit__ 标记
      * @note 名称/说明/类型/env 绑定保持不变
      * @note 每次循环调用前执行，等价一次 once 输入
      */
-    auto reset() noexcept -> Self_T &
+    auto reset() -> Self_T &
     {
-        if (fnDefault__) { strDefault__ = fnDefault__(); }  // 惰性默认值重算
-        strValue__   = strDefault__;
-        bExternal__  = false;
-        bEnvHit__    = false;
+        propValue__.reset();  // 惰性默认值重算 + 还原值 + 清属性错误/标记
+        bExternal__ = false;
+        bEnvHit__   = false;
         return *this;
     }
 
@@ -306,19 +304,25 @@ public:
     /// @brief 获取绑定的环境变量名（只读）
     auto getEnvName() const noexcept -> Name_T const & { return strEnvName__; }
 
-    /// @brief 获取当前参数值（只读）
-    auto getValue() const noexcept -> Value_T const & { return strValue__; }
+    /// @brief 获取当前参数值（经属性读钩子；按值返回）
+    auto getValue() const -> Value_T { return propValue__.get(); }
+
+    /// @brief 属性载体（值/默认值/读写拦截钩子）
+    auto property() noexcept -> Property<Value_T> & { return propValue__; }
+
+    /// @brief 属性载体（只读）
+    auto property() const noexcept -> Property<Value_T> const & { return propValue__; }
 
     /** @brief 新值是否满足必选（外部赋值 / env 兜底命中 / 持有非空值）
      *  @note 空值视为未提供；默认值非空时 hasValue 恒真（声明 required + 非空默认是自相矛盾的用法） */
     bool isSatisfied() const noexcept { return bExternal__ || bEnvHit__ || hasValue(); }
 
     /// @brief 是否声明了非空默认值
-    bool hasDefault() const noexcept { return !strDefault__.empty(); }
+    bool hasDefault() const noexcept { return !propValue__.defaultValue().empty(); }
 
     /// @brief 内置默认值（只读）
     /// @note defaultExpr 场景下返回未展开的模板串（如 "${HOST:-localhost}"），可结合 usesDefault()/默认值展开后值判断
-    auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
+    auto defaultValue() const noexcept -> Value_T const & { return propValue__.defaultValue(); }
 
     /**
      * @brief 表达式默认值：形如 "${HOST:-localhost}"，经 ${VAR:-fallback} 展开取最终值
@@ -328,10 +332,10 @@ public:
      */
     auto defaultExpr(Value_T const &_Expr) -> Self_T &
     {
-        strDefault__   = _Expr;
-        strValue__     = _Expr;
+        propValue__.clearDefaultFn();
+        propValue__.defaultValue(_Expr);
+        propValue__.reset();
         bDefaultExpr__ = true;
-        fnDefault__    = {};
         return *this;
     }
 
@@ -342,11 +346,7 @@ public:
      */
     auto defaultFn(FnDefault_T _Fn) -> Self_T &
     {
-        fnDefault__ = std::move(_Fn);
-        if (fnDefault__) {
-            strDefault__ = fnDefault__();
-            strValue__   = strDefault__;
-        }
+        propValue__.defaultFn(std::move(_Fn));
         return *this;
     }
 
@@ -354,7 +354,7 @@ public:
      *  @note 与 OptionValue 的 usesDefault 语义对齐（本类以值比较近似） */
     bool usesDefault() const noexcept
     {
-        return !bExternal__ && !bEnvHit__ && strValue__ == strDefault__;
+        return !bExternal__ && !bEnvHit__ && propValue__.raw() == propValue__.defaultValue();
     }
 
     /** @brief 标记环境变量兜底命中（seed 钩子写入） */
@@ -367,13 +367,22 @@ public:
     bool isEnvHit() const noexcept { return bEnvHit__; }
 
 private:
+    /// @brief 经属性写钩子赋值
+    /// @param _V 候选值（写钩子可原地规范化）
+    /// @throw ErrorValidation(VALIDATION_FAILED) 写钩子拒绝时抛出
+    void __setChecked(Value_T _V)
+    {
+        if (!propValue__.set(std::move(_V))) {
+            throw ErrorValidation(ValidationError_E::VALIDATION_FAILED,
+                                  "argument " + getName() + ": " + propValue__.lastError());
+        }
+    }
+
     // ===== 运行时状态（名称/帮助已移至 Expression 基类） =====
-    Type_T  strType__;            ///< 类型标识（空 = 未定型）
-    Value_T strDefault__;         ///< 构造时的默认值（reset 还原用）
-    mutable Value_T strValue__;   ///< 当前值（mutable：允许 const 方法内部修改）
-    Name_T  strEnvName__;         ///< 绑定的环境变量名
-    FnDefault_T fnDefault__;      ///< 惰性默认值：reset() 时重算（循环每行一次）
-    bool        bDefaultExpr__ = false;  ///< 默认值来自表达式（schema 展示用）
+    Type_T            strType__;            ///< 类型标识（空 = 未定型）
+    Name_T            strEnvName__;         ///< 绑定的环境变量名
+    Property<Value_T> propValue__;          ///< 值 + 默认值 + 读写拦截钩子
+    bool              bDefaultExpr__ = false;  ///< 默认值来自表达式（schema 展示用）
 
     // ===== 标志位 =====
     mutable bool bExternal__ = false; ///< 值来自外部配置（YAML），env 兜底跳过

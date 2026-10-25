@@ -26,6 +26,7 @@
 #include "cmd_args/error/interpreter_error.h"
 #include "cmd_args/error/lexer_error.h"
 #include "cmd_args/error/parser_error.h"
+#include "cmd_args/error/validation_error.h"
 
 #include "builtin_options.h"
 #include "context_base.h"
@@ -89,6 +90,10 @@ public:
             catch (ErrorLexer const &e) {
                 _errors().setLast(e.code());
                 std::cout << "(parse error) " << e.code().message() << "\n" << _errors().dump();
+            }
+            catch (ErrorValidation const &e) {
+                _errors().setLast(e.code());
+                std::cout << "(validation error) " << e.code().message() << "\n" << _errors().dump();
             }
 
             std::cout << "cmd_args> " << std::flush;

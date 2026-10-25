@@ -56,11 +56,11 @@ public:
             if (!pOpt) continue;
 
             // 自定义赋值回调（--env-set 等内置交互选项）
-            if (pOpt->fnOnSet__) { pOpt->fnOnSet__(pOpt->strValue); }
+            if (pOpt->fnOnSet__) { pOpt->fnOnSet__(pOpt->getValue()); }
 
             // action 模板 → std::system 子进程命令
             if (!pOpt->strActionTemplate__.empty()) {
-                auto cmd = util::replace(pOpt->strActionTemplate__, "{value}", pOpt->strValue);
+                auto cmd = util::replace(pOpt->strActionTemplate__, "{value}", pOpt->getValue());
                 if (!cmd.empty()) {
                     int ret = std::system(cmd.c_str());
                     if (ret != 0) {

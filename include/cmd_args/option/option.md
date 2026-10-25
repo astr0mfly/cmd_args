@@ -1,7 +1,7 @@
 # option — 值选项、标志、短回路与选项关系的注册、解析与执行时序
 
 > **摘要**：option 目录定义选项模型（`OptionValue` 值选项、bool 标志、`OptionAction` 短回路）、注册校验与解析规则，并用 `OptionGraph` 记录条件（`-a?b:c`）与依赖（`-a->b`）边。对外核心约定是三条执行时序：内置交互选项解析期即时、用户 action 在批量路径由 Executor 后置执行、流式 Interpreter 逐 token 即时执行。
-> **联系**：上级索引 [cmd_args.md](../cmd_args.md)；同级参数面 [argument.md](../argument/argument.md)；依赖 [expression.h](../expression/expression.h)、[context_fwd.h](../context/context_fwd.h)、[validator.h](../base/validator.h)、[util.h](../base/util.h)、[parser_error.h](../error/parser_error.h)、[builder_error.h](../error/builder_error.h)；执行与编排 [compiler.h](../expression/compiler.h)、[executor.h](../expression/executor.h)、[interpreter.h](../expression/interpreter.h)、[model.h](../context/model.h)、[builtin_options.h](../context/builtin_options.h)、[context_step.h](../context/context_step.h)；使用方 [chain/main.cpp](../../../example/chain/main.cpp)、[once/main.cpp](../../../example/once/main.cpp)、[group/main.cpp](../../../example/group/main.cpp)；单测 [test_option.cpp](../../../dfx/unit_test/test_option.cpp)、[test_option_graph.cpp](../../../dfx/unit_test/test_option_graph.cpp)、[test_builder.cpp](../../../dfx/unit_test/test_builder.cpp)；README 见 [内置选项](../../../README_zh.md#内置选项)、[选项 action 小节](../../../README_zh.md) 与 [优先级](../../../README_zh.md#优先级)。
+> **联系**：上级索引 [cmd_args.md](../cmd_args.md)；同级参数面 [argument.md](../argument/argument.md)；依赖 [expression.h](../expression/expression.h)、[context_fwd.h](../context/context_fwd.h)、[validator.h](../base/validator.h)、[util.h](../base/util.h)、[parser_error.h](../error/parser_error.h)、[builder_error.h](../error/builder_error.h)；执行与编排 [compiler.h](../expression/compiler.h)、[executor.h](../expression/executor.h)、[interpreter.h](../expression/interpreter.h)、[model.h](../context/model.h)、[builtin_options.h](../context/builtin_options.h)、[context_step.h](../context/context_step.h)；使用方 [chain/main.cpp](../../../example/chain/main.cpp)、[once/main.cpp](../../../example/once/main.cpp)、[group/main.cpp](../../../example/group/main.cpp)；属性载体 [property.h](../property/property.h)；单测 [test_option.cpp](../../../dfx/unit_test/test_option.cpp)、[test_option_graph.cpp](../../../dfx/unit_test/test_option_graph.cpp)、[test_property.cpp](../../../dfx/unit_test/test_property.cpp)、[test_builder.cpp](../../../dfx/unit_test/test_builder.cpp)；README 见 [内置选项](../../../README_zh.md#内置选项)、[选项 action 小节](../../../README_zh.md) 与 [优先级](../../../README_zh.md#优先级)。
 
 ## truth
 
@@ -9,7 +9,8 @@
 
 | 成员 | 含义 |
 | --- | --- |
-| `strType` / `strValue` / `strDefault__` | 类型串（`bool` / `int` / `double` / `std::string`）、当前值、构造默认值 |
+| `propValue__` | 私有 `Property<Value_T>`：值 + 默认值 + 写/读/变更钩子 + 修订号（option.h:254），契约见 [property.md](../property/property.md) |
+| `strType` | 类型串（`bool` / `int` / `double` / `std::string`） |
 | `bExplicit__` | 被 CLI 显式赋值过 |
 | `bExternal__` | 值来自外部配置（YAML），env 兜底跳过 |
 | `bBuiltin__` | 懒注册的内置交互选项，不参与 schema/配置序列化 |
@@ -17,9 +18,9 @@
 | `strEnvName__` | 绑定的环境变量名 |
 | `fnOnSet__` | 赋值回调钩子 |
 | `strActionTemplate__` | system_call 命令模板，`{value}` 替换为本次值 |
-| `fnDefault__` / `bDefaultExpr__` | 惰性默认值函数 / 默认值来自表达式 |
+| `bDefaultExpr__` | 默认值来自表达式（默认值本身已并入 `propValue__`） |
 
-链式接口包括 `env` / `onSet` / `action` / `setExternal` / `reset` / `defaultExpr` / `defaultFn`；谓词包括 `isSatisfied`（`bExplicit__ || bExternal__ || bEnvHit__`，或值非空且偏离默认值）、`hasDefault`、`defaultValue`、`usesDefault`（`!bExplicit__ && !bExternal__ && !bEnvHit__`）。`OptionAction` 同样继承 `Option`，携带 `OptionAction::FnCallback_T`（`std::function<void(void)>`）与 `fnCallback`，一旦命中即短路整条解析（option.h:244-268）。
+链式接口包括 `env` / `onSet` / `action` / `setExternal` / `reset` / `defaultExpr` / `defaultFn` / `setValue`；值访问为 `getValue()`（按值、经过读钩子，option.h:232）与 `property()`（option.h:248-251）。`setValue` 经属性写钩子准入，拒绝时抛 `ErrorValidation(ValidationError_E::VALIDATION_FAILED, "option --<longName>: <msg>")`（option.h:238-245）。谓词包括 `isSatisfied`（`bExplicit__ || bExternal__ || bEnvHit__`，或 `propValue__.raw()` 非空且偏离默认值）、`hasDefault`、`defaultValue`、`usesDefault`（`!bExplicit__ && !bExternal__ && !bEnvHit__`）。`OptionAction` 同样继承 `Option`，携带 `OptionAction::FnCallback_T`（`std::function<void(void)>`）与 `fnCallback`，一旦命中即短路整条解析（option.h:244-268）。
 
 **管理器与仓库**：`ValueOptMgr` 与 `ActionOptMgr` 各自私有继承 `OptMgrItf`，分别持有 `std::vector` 容器；前者提供 `push` / `find` / `mutFind` / `forEachValue` / `calcDescMaxLength` / `appendHelp*`，后者提供 `push` / `forEachAction` / `calcDescMaxLength` / `appendHelp`。`OptionData` 组合 `mgrActions` 与 `mgrValues`，外加预留的 `mapShortNameIndex`（无读写点）、`recordParseOrder`（线性去重后追加长名）、`actionOrder()`、`clearParseOrder()`、`empty()`、`usageString()`、`calcDescMaxLength()`、`appendHelp*`、`forEachValue`（option_data.h:334-425）。
 
@@ -29,7 +30,7 @@
 - 长选项 `--name[=value]`：先查短回路并触发；未注册的长名留给参数解析（`++it`）；非 bool 选项若内联值为空，取下一个 token 作值，下一个以 `-` 开头或不存在则抛 `NEED_VALUE`；bool 选项空值归一为 `1`。
 - 短选项 `-x` / `-xVALUE` / `-x=VALUE`：先查短回路；单字符时取余串或下一 token（下一 token 不检查是否以 `-` 开头，与长选项不对称）；多字符聚合 `-abc` 逐字符处理，bool 字符各自赋值，遇到首个非 bool 字符则以剩余串为值，空则吞下一 token，未知字符抛 `UNKNOWN_OPTION`。
 - 关系语法 `-a?b:c` / `-a->b`：识别后由 `__parseRelation` 写入 `OptionGraph`，并从 token 流擦除。
-`__assign` 是唯一的赋值核心（option_parser.h:528-552）：bool 归一为 `1`/`0`、置 `bExplicit__`；若 `bBuiltin__ && fnOnSet__` 立即调用回调且不记 `actionOrder`；否则只要 `fnOnSet__` 或 `strActionTemplate__` 非空就 `recordParseOrder(长名)`；末尾调用空钩子 `onOptionAssigned`。取值侧 `isParsed(短名/长名)`、`hasOption`、`getOption<T>`（去掉可选 `--` 前缀，单字符回退短名查找；bool 选项只能取 `bool`；类型串不匹配抛 `UNKNOWN_OPTION`）以及便捷 `getOptionBool/Int/Int64/Double/String`。
+`__assign` 是唯一的赋值核心（option_parser.h:528-552）：先 `setValue`（bool 归一为 `1`/`0`，经属性写钩子，可抛 `ErrorValidation`），成功后才置 `bExplicit__`；若 `bBuiltin__ && fnOnSet__` 立即调用回调且不记 `actionOrder`；否则只要 `fnOnSet__` 或 `strActionTemplate__` 非空就 `recordParseOrder(长名)`；末尾调用空钩子 `onOptionAssigned`。取值侧 `isParsed(短名/长名)`、`hasOption`、`getOption<T>`（去掉可选 `--` 前缀，单字符回退短名查找；bool 选项只能取 `bool`；类型串不匹配抛 `UNKNOWN_OPTION`）以及便捷 `getOptionBool/Int/Int64/Double/String`。
 
 **OptionGraph**（option_graph.h:40-192）：`EdgeKind_E{Conditional, Dependency}`；`Node{strName, bEnabled}`；`Edge{strFrom, strTo, enKind, strFallback}`（`_` 表示无 else 分支）。`addEdge` 会自动建节点（fallback 非空且非 `_` 时也建）；`setNodeState` / `isNodeEnabled` 读写节点；`evaluate()` 只处理 `Conditional` 边，条件为真激活 `strTo`、为假激活 `strFallback`，返回本次激活名单（不去重）；`topologicalSort()` 以 `map` 字典序初始化入度为零的队列做 BFS，环上节点静默缺失；`edges` / `nodes` / `empty` / `clear` 为查询与清理。
 
@@ -52,12 +53,14 @@
 - `OptionGraph` 当前只记录关系：Executor 不消费节点状态或拓扑序，任何「依赖/条件会改变执行顺序」的假设都不成立（compiler.h:207、executor.h:52-73）。
 - 命名规则：长名非空、不得以 `-` 开头；短名 `'\0'` 表示无短名；短名与长名在两个管理器中都必须唯一。
 - `bBuiltin__` 的选项不参与 schema / 配置序列化（config_store.h:92 跳过），注册内置选项时必须设置该标记。
+- 值只能经 `Property` 访问：业务写入用 `setValue`（可被写钩子拒绝），配置/`${VAR}` 路径才允许 `setExternal` / `property().setRaw`；`strValue` 公有字段已删除，禁止恢复。
+- `getValue()` 按值返回且经过读钩子，不能在热路径上假定零拷贝；需要原始值用 `property().raw()`。
 
 ## 索引
 
 | 文件 | 关键符号 | 职责 |
 | --- | --- | --- |
-| `option.h` | `Option` / `OptionValue` / `OptionAction` / `env` / `onSet` / `action` / `setExternal` / `reset` / `isSatisfied` / `usesDefault` | 选项值模型：短/长名、类型、默认值、标记、回调与 action 模板 |
+| `option.h` | `Option` / `OptionValue` / `OptionAction` / `env` / `onSet` / `action` / `getValue` / `setValue` / `property` / `setExternal` / `reset` / `isSatisfied` / `usesDefault` | 选项值模型：短/长名、类型、`Property<Value_T>` 属性值（默认值 + 读写钩子）、标记、回调与 action 模板 |
 | `option_data.h` | `OptMgrItf` / `ValueOptMgr` / `ActionOptMgr` / `OptionData` / `recordParseOrder` / `actionOrder` / `clearParseOrder` / `usageString` | 值选项与短回路容器、action 执行顺序、帮助与用法串 |
 | `option_builder.h` | `OptionBuilder` / `addOption` / `addFlag` / `addShortCircuit` / `checkAddOptionSname` / `checkAddOptionLname` | 注册入口与重名/前缀/类型校验 |
 | `option_graph.h` | `OptionGraph` / `EdgeKind_E` / `Node` / `Edge` / `addEdge` / `setNodeState` / `isNodeEnabled` / `evaluate` / `topologicalSort` | 选项关系有向图：条件/依赖边的记录与求值 |
@@ -87,3 +90,5 @@ grep 锚点（2026-10-25 核对）：`grep -n "void __assign" include/cmd_args/o
 - 内置选项只设 action 模板不会即时执行：即时分支要求 `bBuiltin__ && fnOnSet__`，只有模板时仍会记入 `actionOrder` 交给 Executor（option_parser.h:538-548）；规避方式是同时设置 `bBuiltin__` 与 `onSet` 回调，并在测试中断言时序。
 - `getOption<T>` 类型必须精确匹配：bool 选项只能取 `bool`，其它类型串不匹配抛 `UNKNOWN_OPTION`（option_parser.h:314-323）；规避方式是使用 `getOptionInt` 等便捷入口或注册时保持类型一致。
 - `OptionData::mapShortNameIndex` 是预留字段（option_data.h:340）：全仓没有读写点，短名查找实际走 `mgrValues.find(char)`；不要依赖该索引做短名到长名的映射。
+- 跨 `parse()` 持有 `OptionValue*` 会悬垂：`ValueOptMgr::push` 往 `std::vector` 里 `emplace_back`（option_data.h:85），内置选项懒注册会触发扩容；`property()` 返回的引用同样失效。规避方式是在 `build`/`addOption` 之后、`parse` 之前完成钩子注册（单测曾因此触发 bad allocation）。
+- `strValue` 公有字段已删除（2026-10-25）：旧测试直接 `mutFind(...)->strValue = ...`，迁移后必须改用 `setValue` / `getValue()`；源码级使用方属破坏性升级。

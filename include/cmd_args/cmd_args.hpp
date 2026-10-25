@@ -20,7 +20,7 @@
 /*
     cmd_args 唯一入口头文件：
     只需包含本文件即可使用全部能力
-    （Context / Builder / Lexer / Compiler / 环境变量一等公民 / YAML 配置 / 选项 action）。
+    （Context / Builder / Lexer / Compiler / 环境变量一等公民 / YAML 配置 / 选项 action / 属性读写拦截）。
 
     使用示例见 example/once/main.cpp 与 README.md（中英镜像）。
 */
@@ -28,3 +28,4 @@
 #include "cmd_args/context/context_step.h"
 #include "cmd_args/context/context_runtime.h"
 #include "cmd_args/context/factory.h"
+#include "cmd_args/property/property.h"

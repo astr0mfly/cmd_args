@@ -312,7 +312,7 @@ public:
         }
 
         if (p->strType == "bool") {
-            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->strValue); }
+            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->getValue()); }
             throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option type mismatch: " + key);
         }
         if (p->strType != util::type_string<T>()) {
@@ -322,7 +322,7 @@ public:
                     + util::type_string<T>() + "'");
         }
 
-        return util::parse_value<T>(p->strValue);
+        return util::parse_value<T>(p->getValue());
     }
 
     // 一些 getOption 的类型便捷入口
@@ -528,10 +528,10 @@ private:
     void __assign(OptionValue *_Opt, std::string const &_Value, bool _IsBool)
     {
         if (_IsBool) {
-            _Opt->strValue = _Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0");
+            _Opt->setValue(_Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0"));
         }
         else {
-            _Opt->strValue = _Value;
+            _Opt->setValue(_Value);
         }
         _Opt->bExplicit__ = true;
 
@@ -540,7 +540,7 @@ private:
             // 语义为「解析期立即生效」：内联触发回调，使其影响后续解析
             // （如 --load-config 需先导入配置值，方位参数数量校验才能通过）。
             // 不记入 actionOrder——Executor 不会重复触发。
-            _Opt->fnOnSet__(_Opt->strValue);
+            _Opt->fnOnSet__(_Opt->getValue());
         }
         else if (pData__ && (_Opt->fnOnSet__ || !_Opt->strActionTemplate__.empty())) {
             // 记录含 action 的用户选项的解析顺序（Executor 按此顺序统一执行）
@@ -548,7 +548,7 @@ private:
         }
 
         // 虚拟钩子：子类（Interpreter）可 override 实现逐 Token 内联 action 执行
-        onOptionAssigned(_Opt, _Opt->strValue);
+        onOptionAssigned(_Opt, _Opt->getValue());
     }
 
     /// @brief 选项赋值后的虚拟钩子（纯解析 = 空操作；子类 override 实现 action 执行）

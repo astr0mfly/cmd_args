@@ -55,8 +55,8 @@ TEST_CASE("lexer: 未闭合字符串报词法错误", "[lexer]")
 
 TEST_CASE("lexer: Scanner::step 增量分词逐字符产出 token", "[lexer]")
 {
-    using cmd_args::detail::Scanner;
-    using cmd_args::detail::Token;
+    using cmd_args::expression_detail::Scanner;
+    using cmd_args::Token;
 
     Scanner sc({});
     // "--timeout 9" 逐字符喂入
@@ -81,7 +81,7 @@ TEST_CASE("lexer: Scanner::step 增量分词逐字符产出 token", "[lexer]")
 
 TEST_CASE("lexer: Scanner::step 字符串未终结抛 ErrorLexer", "[lexer]")
 {
-    using cmd_args::detail::Scanner;
+    using cmd_args::expression_detail::Scanner;
 
     Scanner sc({});
     sc.step('"');
@@ -92,7 +92,7 @@ TEST_CASE("lexer: Scanner::step 字符串未终结抛 ErrorLexer", "[lexer]")
 
 TEST_CASE("lexer: Scanner::step --timeout=9 产出 inline eq 标记", "[lexer]")
 {
-    using cmd_args::detail::Scanner;
+    using cmd_args::expression_detail::Scanner;
 
     Scanner sc({});
     sc.step('-'); sc.step('-');
@@ -111,7 +111,7 @@ TEST_CASE("lexer: Scanner::step --timeout=9 产出 inline eq 标记", "[lexer]")
 
 TEST_CASE("lexer: Scanner::step 与批量分词在终结符重派上一致", "[lexer]")
 {
-    using cmd_args::detail::Scanner;
+    using cmd_args::expression_detail::Scanner;
 
     auto streamTokens = [](std::string const &_Line) {
         Tokens_T res;
@@ -190,9 +190,9 @@ TEST_CASE("lexer: 关系语法与普通选项混合", "[lexer]")
 
 TEST_CASE("lexer: scanEnvLine(A::B::C=D) 产出 ScopeSep", "[lexer][envscope]")
 {
-    using cmd_args::detail::Scanner;
-    using cmd_args::detail::Source_T;
-    using cmd_args::detail::Token;
+    using cmd_args::expression_detail::Scanner;
+    using cmd_args::expression_detail::Source_T;
+    using cmd_args::Token;
 
     Source_T src{ "A::B::C=D" };
     Scanner sc(src, Scanner::LexMode_E::EnvLine);
@@ -209,8 +209,8 @@ TEST_CASE("lexer: scanEnvLine(A::B::C=D) 产出 ScopeSep", "[lexer][envscope]")
 
 TEST_CASE("lexer: scanEnvLine 单 ':' 产出 Delimiter", "[lexer][envscope]")
 {
-    using cmd_args::detail::Scanner;
-    using cmd_args::detail::Source_T;
+    using cmd_args::expression_detail::Scanner;
+    using cmd_args::expression_detail::Source_T;
     Source_T src{ "KEY:value" };
     Scanner sc(src, Scanner::LexMode_E::EnvLine);
     auto toks = sc.scan();
@@ -220,8 +220,8 @@ TEST_CASE("lexer: scanEnvLine 单 ':' 产出 Delimiter", "[lexer][envscope]")
 
 TEST_CASE("lexer: scanEnvLine 值为空 (KEY=)", "[lexer][envscope]")
 {
-    using cmd_args::detail::Scanner;
-    using cmd_args::detail::Source_T;
+    using cmd_args::expression_detail::Scanner;
+    using cmd_args::expression_detail::Source_T;
     Source_T src{ "KEY=" };
     Scanner sc(src, Scanner::LexMode_E::EnvLine);
     auto toks = sc.scan();
@@ -232,8 +232,8 @@ TEST_CASE("lexer: scanEnvLine 值为空 (KEY=)", "[lexer][envscope]")
 
 TEST_CASE("lexer: scanEnvLine 值含路径分隔符 (VAL=/usr/bin)", "[lexer][envscope]")
 {
-    using cmd_args::detail::Scanner;
-    using cmd_args::detail::Source_T;
+    using cmd_args::expression_detail::Scanner;
+    using cmd_args::expression_detail::Source_T;
     Source_T src{ "PATH=/usr/bin" };
     Scanner sc(src, Scanner::LexMode_E::EnvLine);
     auto toks = sc.scan();

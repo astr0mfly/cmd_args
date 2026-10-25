@@ -81,7 +81,7 @@ struct ClassifiedExpr
     auto fullPath() const -> std::string
     {
         std::string key;
-        for (auto const &sp : vecSpacePath) { key += sp + "::"; }
+        for (auto const &sp : vecSpacePath) { key += sp; key += ENV_SCOPE_SEP; }
         key += name;
         return key;
     }

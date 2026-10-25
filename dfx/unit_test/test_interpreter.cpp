@@ -83,7 +83,7 @@ TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）",
 
     auto *p = model.opts.mgrValues.find("timeout");
     REQUIRE(p != nullptr);
-    REQUIRE(p->strValue == "9");
+    REQUIRE(p->getValue() == "9");
 
     // setExitCode 生效
     interp.setExitCode(7);
@@ -96,7 +96,7 @@ TEST_CASE("interpreter: 继承三解析器模式逐行解释（写入 *Data）",
     REQUIRE(interp.describeError(ec, errors).find("(parse error)") != std::string::npos);
 
     // resetData 有效：下一次 interpret 前选项还原为默认值
-    REQUIRE(p->strValue == "30");
+    REQUIRE(p->getValue() == "30");
 }
 
 /* ==================== Interpreter 流式字符泵 ==================== */
@@ -131,7 +131,7 @@ TEST_CASE("interpreter: 流式 interpret 与批量 parse 结果一致", "[interp
     REQUIRE(pH->getValue() == "a");
     auto *pT = model.opts.mgrValues.find("timeout");
     REQUIRE(pT != nullptr);
-    REQUIRE(pT->strValue == "9");
+    REQUIRE(pT->getValue() == "9");
 }
 
 TEST_CASE("interpreter: 流式逐 Token 立即执行 fnOnSet 且带值/聚合/错误语义正确", "[interpreter]")
@@ -151,14 +151,14 @@ TEST_CASE("interpreter: 流式逐 Token 立即执行 fnOnSet 且带值/聚合/�
     auto ec1 = interp.interpret("-ab --step one", errors);
     REQUIRE(!ec1);
     REQUIRE(fired == std::vector<std::string>{ "one" });
-    REQUIRE(model.opts.mgrValues.find("ena")->strValue == "1");
-    REQUIRE(model.opts.mgrValues.find("enb")->strValue == "1");
+    REQUIRE(model.opts.mgrValues.find("ena")->getValue() == "1");
+    REQUIRE(model.opts.mgrValues.find("enb")->getValue() == "1");
 
     // 行间 reset：第二次 interpret 前选项还原
     auto ec2 = interp.interpret("--step two", errors);
     REQUIRE(!ec2);
     REQUIRE(fired == std::vector<std::string>{ "one", "two" });
-    REQUIRE(model.opts.mgrValues.find("ena")->strValue == "0");  // reset 后回默认
+    REQUIRE(model.opts.mgrValues.find("ena")->getValue() == "0");  // reset 后回默认
 
     // 内联 '=' 带值：--step=x 形态
     auto ec3 = interp.interpret("--step=x", errors);
@@ -227,11 +227,11 @@ TEST_CASE("interpreter: 短选项带值接受 dash 值（-t=-5 与 -t -5 均与�
 
     auto ec1 = interp.interpret("-t=-5", errors);
     REQUIRE(!ec1);
-    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "-5");
+    REQUIRE(model.opts.mgrValues.find("timeout")->getValue() == "-5");
 
     auto ec2 = interp.interpret("-t -5", errors);
     REQUIRE(!ec2);
-    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "-5");
+    REQUIRE(model.opts.mgrValues.find("timeout")->getValue() == "-5");
 }
 
 /* ==================== 实时解析状态机：idxCursor 游标 + token 栈归约 ==================== */
@@ -260,7 +260,7 @@ TEST_CASE("interpreter: 实时解析凑满一个 Expression 立即执行且时�
     REQUIRE(cursors.size() == 1);
     REQUIRE(cursors[0] == 10);
     REQUIRE(stacks[0] == 0);
-    REQUIRE(model.opts.mgrValues.find("step")->strValue == "one");
+    REQUIRE(model.opts.mgrValues.find("step")->getValue() == "one");
 
     // 整行解释完：游标抵达流尾、栈已排干
     REQUIRE(interp.getCursor() == std::string("--step one").size());

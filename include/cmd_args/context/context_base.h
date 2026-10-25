@@ -237,13 +237,13 @@ public:
         if (!p && key.size() == 1) { p = instData_.opts.mgrValues.find(key[0]); }
         if (!p) { throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option not found: " + key); }
         if (p->strType == "bool") {
-            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->strValue); }
+            if constexpr (std::is_same_v<T, bool>) { return util::parse_bool(p->getValue()); }
             throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option type mismatch: " + key);
         }
         if (p->strType != util::type_string<T>()) {
             throw ErrorParse(ParseError_E::UNKNOWN_OPTION, "option type mismatch...");
         }
-        return util::parse_value<T>(p->strValue);
+        return util::parse_value<T>(p->getValue());
     }
 
     bool hasOption(NameLong_T const &_Name) const noexcept

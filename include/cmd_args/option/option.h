@@ -25,8 +25,10 @@
 
 #include "cmd_args/base/def.h"
 #include "cmd_args/base/util.h"
-#include "cmd_args/expression/expression.h"
 #include "cmd_args/base/validator.h"
+#include "cmd_args/error/validation_error.h"
+#include "cmd_args/expression/expression.h"
+#include "cmd_args/property/property.h"
 
 CMD_ARGS_NAMESPACE_BEGIN
 
@@ -82,7 +84,6 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
 
     // ===== 公开取值 =====
     Type_T          strType;   ///< 类型标识（"bool" / "int" / "double" / "std::string"）
-    mutable Value_T strValue;  ///< 当前值（默认值 / 环境变量兜底值 / CLI 显式值）
 
     // ===== 运行时状态 =====
     mutable bool    bExplicit__ = false;  ///< 是否被命令行显式赋值过（区别于默认值/环境变量兜底）
@@ -92,10 +93,8 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     mutable bool    bEnvHit__   = false;   ///< 环境变量兜底命中标志（seed 时置位；reset 清除）
 
     // ===== 构造期默认与钩子 =====
-    Value_T     strDefault__;      ///< 构造时的内置默认值（loop reset 还原用）
     mutable FnOnSet_T fnOnSet__;  ///< 自定义 setter 钩子：命令行赋值成功后回调（用于 --env-set 等内置交互选项）
     ActionCmd_T strActionTemplate__;  ///< 绑定的系统调用命令模板（action）：解析时该选项被显式命中后立即执行，模板中的 {value} 占位符替换为该选项本次命中的值；空串表示未绑定
-    FnDefault_T fnDefault__;          ///< 惰性默认值：reset() 时重算（循环每行一次）
     bool        bDefaultExpr__ = false;  ///< 默认值来自表达式（schema 展示用）
 
     /// @brief 构造值选项（含短名）
@@ -107,8 +106,7 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     OptionValue(Option::NameShort_T _SName, Option::NameLong_T _LName, Option::Desc_T _Help, Type_T _Type, Value_T _Value)
         : Option(_SName, std::move(_LName), std::move(_Help))
         , strType(std::move(_Type))
-        , strValue(_Value)
-        , strDefault__(std::move(_Value))
+        , propValue__(_Value)
     {}
 
     /// @brief 构造值选项（仅长名）
@@ -119,8 +117,7 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     OptionValue(Option::NameLong_T _LName, Option::Desc_T _Help, Type_T _Type, Value_T _Value)
         : Option('\0', std::move(_LName), std::move(_Help))
         , strType(std::move(_Type))
-        , strValue(_Value)
-        , strDefault__(std::move(_Value))
+        , propValue__(_Value)
     {}
 
     /// @brief 绑定环境变量：命令行显式值 > 环境变量 > 内置默认值
@@ -159,7 +156,7 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     /// @return OptionValue& 支持链式调用
     auto setExternal(Value_T const &_V) -> Self_T &
     {
-        strValue    = _V;
+        propValue__.setRaw(_V);
         bExternal__ = true;
         return *this;
     }
@@ -169,18 +166,17 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     /// @return OptionValue& 支持链式调用
     auto setExternal(Value_T &&_V) -> Self_T &
     {
-        strValue    = std::move(_V);
+        propValue__.setRaw(std::move(_V));
         bExternal__ = true;
         return *this;
     }
 
     /// @brief 还原为内置默认值、清除显式/外部/env标记（loop 每次调用前执行）
     /// @return OptionValue& 支持链式调用
-    /// @note 还原 strValue 为 strDefault__；若 fnDefault__ 存在则重算 strDefault__；清除 bExplicit__ / bExternal__ / bEnvHit__ 标记
-    auto reset() noexcept -> Self_T &
+    /// @note 按属性默认值还原当前值（若挂了默认值函数则先重算）；清除 bExplicit__ / bExternal__ / bEnvHit__ 标记与属性错误
+    auto reset() -> Self_T &
     {
-        if (fnDefault__) { strDefault__ = fnDefault__(); }  // 惰性默认值重算
-        strValue    = strDefault__;
+        propValue__.reset();  // 惰性默认值重算 + 还原值 + 清属性错误/标记
         bExplicit__ = false;
         bExternal__ = false;
         bEnvHit__   = false;
@@ -192,15 +188,15 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
     bool isSatisfied() const noexcept
     {
         return bExplicit__ || bExternal__ || bEnvHit__
-               || (!strValue.empty() && strValue != strDefault__);
+               || (!propValue__.raw().empty() && propValue__.raw() != propValue__.defaultValue());
     }
 
     /// @brief 是否声明了非空默认值
-    bool hasDefault() const noexcept { return !strDefault__.empty(); }
+    bool hasDefault() const noexcept { return !propValue__.defaultValue().empty(); }
 
     /// @brief 内置默认值（只读）
     /// @note defaultExpr 场景下返回未展开的模板串（如 "${PORT:-8080}"），可结合 usesDefault()/默认值展开后值判断
-    auto defaultValue() const noexcept -> Value_T const & { return strDefault__; }
+    auto defaultValue() const noexcept -> Value_T const & { return propValue__.defaultValue(); }
 
     /** @brief 当前值是否来自默认值（未被 CLI / 配置 / 环境变量覆盖）
      *  @note 判定依据：三类输入源均未命中 */
@@ -214,10 +210,10 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
      */
     auto defaultExpr(Value_T const &_Expr) -> Self_T &
     {
-        strDefault__   = _Expr;
-        strValue       = _Expr;
+        propValue__.clearDefaultFn();
+        propValue__.defaultValue(_Expr);
+        propValue__.reset();
         bDefaultExpr__ = true;
-        fnDefault__    = {};
         return *this;
     }
 
@@ -228,13 +224,34 @@ struct OptionValue : Option, public ValidatorMixin<OptionValue>
      */
     auto defaultFn(FnDefault_T _Fn) -> Self_T &
     {
-        fnDefault__ = std::move(_Fn);
-        if (fnDefault__) {
-            strDefault__ = fnDefault__();
-            strValue     = strDefault__;
+        propValue__.defaultFn(std::move(_Fn));
+        return *this;
+    }
+
+    /// @brief 获取当前值（经属性读钩子；按值返回）
+    auto getValue() const -> Value_T { return propValue__.get(); }
+
+    /// @brief 设置当前值（经属性写钩子准入）
+    /// @param _V 候选值（写钩子可原地规范化）
+    /// @return Self_T& 支持链式调用
+    /// @throw ErrorValidation(VALIDATION_FAILED) 写钩子拒绝时抛出，值保持不变
+    auto setValue(Value_T _V) -> Self_T &
+    {
+        if (!propValue__.set(std::move(_V))) {
+            throw ErrorValidation(ValidationError_E::VALIDATION_FAILED,
+                                  "option --" + strLongName + ": " + propValue__.lastError());
         }
         return *this;
     }
+
+    /// @brief 属性载体（值/默认值/读写拦截钩子）
+    auto property() noexcept -> Property<Value_T> & { return propValue__; }
+
+    /// @brief 属性载体（只读）
+    auto property() const noexcept -> Property<Value_T> const & { return propValue__; }
+
+private:
+    Property<Value_T> propValue__;  ///< 值 + 默认值 + 读写拦截钩子
 };
 
 /**

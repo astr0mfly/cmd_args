@@ -25,7 +25,7 @@ TEST_CASE("parser: 长选项双形态 + 短选项三形态入库为 Option Expre
     auto *p = model.opts.mgrValues.find("timeout");
     REQUIRE(p != nullptr);
     REQUIRE(p->kind() == ExpressionKind_E::Option);   // 入库即携带 Expression 视角
-    REQUIRE(p->strValue == "9");
+    REQUIRE(p->getValue() == "9");
     REQUIRE(p->bExplicit__);
     REQUIRE(op.isParsed("timeout"));
     REQUIRE(t1.empty());                              // 已消费项移出 token 流
@@ -34,27 +34,27 @@ TEST_CASE("parser: 长选项双形态 + 短选项三形态入库为 Option Expre
     model.opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
     Tokens_T t2{ "--timeout", "42" };
     REQUIRE_FALSE(op.parse(t2));
-    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "42");
+    REQUIRE(model.opts.mgrValues.find("timeout")->getValue() == "42");
     REQUIRE(t2.empty());
 
     // -x value 短名分离形态
     model.opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
     Tokens_T t3{ "-t", "7" };
     REQUIRE_FALSE(op.parse(t3));
-    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "7");
+    REQUIRE(model.opts.mgrValues.find("timeout")->getValue() == "7");
     REQUIRE(op.isParsed('t'));
 
     // -x=value 短名内联形态（聚合路径吃 '=' 余串）
     model.opts.mgrValues.forEachValue([](OptionValue &o) { o.reset(); });
     Tokens_T t4{ "-t=5" };
     REQUIRE_FALSE(op.parse(t4));
-    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "5");
+    REQUIRE(model.opts.mgrValues.find("timeout")->getValue() == "5");
 
     // 聚合 bool：-ab 全部置位
     Tokens_T t5{ "-ab" };
     REQUIRE_FALSE(op.parse(t5));
-    REQUIRE(model.opts.mgrValues.find("ena")->strValue == "1");
-    REQUIRE(model.opts.mgrValues.find("enb")->strValue == "1");
+    REQUIRE(model.opts.mgrValues.find("ena")->getValue() == "1");
+    REQUIRE(model.opts.mgrValues.find("enb")->getValue() == "1");
 }
 
 TEST_CASE("parser: 缺值报 NEED_VALUE（ErrorParse 异常通道）", "[parser]")
@@ -100,7 +100,7 @@ TEST_CASE("parser: 短回路命中立即回调并中止后续解析", "[parser]"
     REQUIRE(op.isFired());
     // 命中即停止：后续 token 原样保留、未发生赋值
     REQUIRE(toks == Tokens_T{ "--timeout", "9" });
-    REQUIRE(model.opts.mgrValues.find("timeout")->strValue == "30");
+    REQUIRE(model.opts.mgrValues.find("timeout")->getValue() == "30");
 }
 
 TEST_CASE("parser: -- 终止选项区且其后 token 原样保留", "[parser]")

@@ -89,7 +89,7 @@ TEST_CASE("executor: Executor(Model*) 构造 + execute 执行 action", "[executo
 
     // 模拟解析后状态：手动记录 actionOrder + 赋值
     model.opts.recordParseOrder("task");
-    model.opts.mgrValues.mutFind("task")->strValue = "build";
+    model.opts.mgrValues.mutFind("task")->setValue("build");
     model.opts.mgrValues.mutFind("task")->bExplicit__ = true;
 
     exec.execute();

@@ -138,8 +138,10 @@ inline Result checkValues(Model const &_M)
     }
     if (msg.empty()) {
         _M.opts.mgrValues.forEachValue([&](OptionValue const &o) {
-            if (!msg.empty() || o.strValue.empty() || !o.hasValidators()) return;
-            auto vmsg = o.validate(o.strValue);
+            if (!msg.empty() || !o.hasValidators()) return;
+            auto const value = o.getValue();
+            if (value.empty()) return;
+            auto vmsg = o.validate(value);
             if (!vmsg.empty()) { msg = "option --" + o.strLongName + ": " + vmsg; }
         });
     }

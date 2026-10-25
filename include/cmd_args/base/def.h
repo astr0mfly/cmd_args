@@ -17,6 +17,8 @@
  */
 #pragma once
 
+#include <cstddef>
+
 /*
     基础设施宏：命名空间开关 + 计数/名字工具。
     - CMD_ARGS_NAMESPACE_BEGIN/END：整个库统一经该宏展开命名空间
@@ -39,3 +41,22 @@ char (&fakeArraySize(T (&)[N]))[N];
 
 #define ARRAY_SIZE(_A) sizeof(::detail::fakeArraySize(_A))
 #define ENUM_NAME(_E)  #_E
+
+/*
+    基础设施宏：Env 空间级联分隔符。
+    - CMD_ARGS_ENV_SCOPE_SEP：环境变量名中的空间级联分隔符，编译期可覆盖
+      （默认 "::"，如 A::B::C；在 include 之前 #define CMD_ARGS_ENV_SCOPE_SEP "-" 即改成 A-B-C）
+    - 注意：POSIX shell 不能 export A::B=1 / export A-B=1（名字不是合法标识符），
+      需要 env 'A::B=1' ./app；Windows 可用 set "A::B=1"。
+*/
+#ifndef CMD_ARGS_ENV_SCOPE_SEP
+#    define CMD_ARGS_ENV_SCOPE_SEP "::"
+#endif
+
+CMD_ARGS_NAMESPACE_BEGIN
+/// @brief Env 空间级联分隔符（与 CMD_ARGS_ENV_SCOPE_SEP 同步）
+inline constexpr char const *ENV_SCOPE_SEP = CMD_ARGS_ENV_SCOPE_SEP;
+/// @brief Env 空间级联分隔符字符数
+inline constexpr std::size_t ENV_SCOPE_SEP_LEN = sizeof(CMD_ARGS_ENV_SCOPE_SEP) - 1;
+static_assert(ENV_SCOPE_SEP_LEN > 0, "CMD_ARGS_ENV_SCOPE_SEP 不能为空字符串");
+CMD_ARGS_NAMESPACE_END

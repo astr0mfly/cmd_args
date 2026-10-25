@@ -1,7 +1,7 @@
 # unit_test — cmd_args 单元测试（Catch2 单测目标）
 
-> **摘要**：`dfx/unit_test/` 是 cmd_args 的核心回归测试集，使用 vendored Catch2 2.13.10，仅通过公共 API（`#include "cmd_args/cmd_args.hpp"` 与少量子模块头）驱动。当前 18 个 `test_*.cpp` 共 **166 个 TEST_CASE / 818 行 REQUIRE|CHECK**（2026-10-25 实测）；`main.cpp` 只提供 `CATCH_CONFIG_MAIN`。xmake target 名 `unit_test`，默认不参与全量构建。
-> **联系**：上级 [dfx/README.md](../README.md)、[include/cmd_args/cmd_args.md](../../include/cmd_args/cmd_args.md)；被测模块文档 [argument](../../include/cmd_args/argument/argument.md)、[option](../../include/cmd_args/option/option.md)、[env](../../include/cmd_args/env/env.md)、[context](../../include/cmd_args/context/context.md)、[expression](../../include/cmd_args/expression/expression.md)、[base](../../include/cmd_args/base/base.md)、[config](../../include/cmd_args/config/config.md)、[error](../../include/cmd_args/error/error.md)；同级样例 [example/example.md](../../example/example.md)；工程守则 [.dsh/Agent.md §9.4](../../.dsh/Agent.md)。
+> **摘要**：`dfx/unit_test/` 是 cmd_args 的核心回归测试集，使用 vendored Catch2 2.13.10，仅通过公共 API（`#include "cmd_args/cmd_args.hpp"` 与少量子模块头）驱动。当前 19 个 `test_*.cpp` 共 **175 个 TEST_CASE / 903 条断言**（2026-10-25 实测；172 通过，3 个为既有 lexer/classifier 基线失败）；`main.cpp` 只提供 `CATCH_CONFIG_MAIN`。xmake target 名 `unit_test`，默认不参与全量构建。
+> **联系**：上级 [dfx/README.md](../README.md)、[include/cmd_args/cmd_args.md](../../include/cmd_args/cmd_args.md)；被测模块文档 [argument](../../include/cmd_args/argument/argument.md)、[option](../../include/cmd_args/option/option.md)、[env](../../include/cmd_args/env/env.md)、[property](../../include/cmd_args/property/property.md)、[context](../../include/cmd_args/context/context.md)、[expression](../../include/cmd_args/expression/expression.md)、[base](../../include/cmd_args/base/base.md)、[config](../../include/cmd_args/config/config.md)、[error](../../include/cmd_args/error/error.md)；同级样例 [example/example.md](../../example/example.md)；工程守则 [.dsh/Agent.md §9.4](../../.dsh/Agent.md)。
 
 ## truth
 
@@ -27,17 +27,18 @@ target("unit_test")
 
 ### 测试文件清单（2026-10-25 实测计数）
 
-| 文件 | TEST_CASE | REQUIRE/CHECK | 覆盖内容 |
+| 文件 | TEST_CASE | 断言数 | 覆盖内容 |
 | --- | --- | --- | --- |
-| `test_lexer.cpp` | 27 | 105 | 词法：Lexer / Scanner（批量与流式、错误码） |
+| `test_lexer.cpp` | 27 | 115 | 词法：Lexer / Scanner（批量与流式、错误码） |
 | `test_validation.cpp` | 23 | 190 | 统一校验：env spec / 必选 / 值校验（含 validator 语义） |
 | `test_declarations.cpp` | 17 | 59 | `declare()` 折叠声明与 `OptionDef`/`FlagDef` |
 | `test_env.cpp` | 14 | 83 | EnvData / EnvBuilder / EnvParser + Context 层联动 |
 | `test_interpreter.cpp` | 11 | 61 | Interpreter 流式解释执行 |
 | `test_parser.cpp` | 10 | 48 | OptionParser：token → Option(Expression) |
 | `test_context.cpp` | 9 | 53 | Context 解析、错误码、短回路、loop、容器化 |
+| `test_property.cpp` | 9 | 79 | `Property<T>` 写/读/变更钩子、默认值与版本号；Argument/OptionValue 读写拦截、数据源旁路 |
 | `test_config.cpp` | 8 | 61 | YAML 配置 / schema / 往返 / load-save e2e |
-| `test_expression_classifier.cpp` | 8 | 38 | ExpressionRecognizer：Token → Expression 归约 |
+| `test_expression_classifier.cpp` | 8 | 34 | ExpressionRecognizer：Token → Expression 归约 |
 | `test_option_graph.cpp` | 7 | 22 | OptionGraph 条件/依赖边与拓扑执行 |
 | `test_token.cpp` | 6 | 14 | 公共 Token 类型与字符串化 |
 | `test_context_runtime.cpp` | 5 | 10 | ContextRuntime：流式 parse 引擎 |
@@ -47,7 +48,7 @@ target("unit_test")
 | `test_option.cpp` | 4 | 15 | 选项 action（system_call 子进程真实执行） |
 | `test_context_factory.cpp` | 3 | 7 | `make_context(EngineKind_E)` 工厂注入 |
 | `test_builder.cpp` | 2 | 3 | 构筑期重名检查 |
-| **合计** | **166** | **818** | 18 个文件 |
+| **合计** | **175** | **903** | 19 个文件（172 通过 / 3 失败） |
 
 ### 测试组织约定
 
@@ -87,6 +88,7 @@ target("unit_test")
 | `test_context_runtime.cpp` | `ContextRuntime` | 流式 parse |
 | `test_context_factory.cpp` | `make_context` | 工厂 |
 | `test_env.cpp` | `EnvData`/`EnvBuilder`/`EnvParser` | 环境变量 |
+| `test_property.cpp` | `Property<T>` / 写读钩子 | 属性读写拦截、默认值、版本号 |
 | `test_config.cpp` | `ConfigStore` / YAML | 配置往返 |
 | `test_validation.cpp` | `Validator` / `Result` | 统一校验 |
 | `test_option.cpp` | action / `system_call` | 选项 action |
@@ -101,7 +103,9 @@ target("unit_test")
 
 ## 教训
 
-- **`main.cpp` 的注释清单已过时**：其注释只列 10 类测试，而目录实有 18 个 `test_*.cpp`（缺 `test_token`、`test_declarations`、`test_option_graph`、`test_context_step`、`test_context_runtime`、`test_context_factory`、`test_expression_classifier`、`test_validation`）。加测试文件时同步该注释或直接依赖本表。
-- **数量漂移**：`.dsh/Agent.md` 曾写 111 TEST_CASE / 523 断言，2026-10-25 实测 166 / 818；引用数字必须注明实测日期。
+- **`main.cpp` 的注释清单已过时**：其注释只列 10 类测试，而目录实有 19 个 `test_*.cpp`（缺 `test_token`、`test_declarations`、`test_option_graph`、`test_context_step`、`test_context_runtime`、`test_context_factory`、`test_expression_classifier`、`test_validation`、`test_property`）。加测试文件时同步该注释或直接依赖本表。
+- **数量漂移**：`.dsh/Agent.md` 曾写 111 TEST_CASE / 523 断言，2026-10-25 引入 Property 后实测 175 / 903（172 通过，3 个既有失败）；引用数字必须注明实测日期。
+- **断言数会随失败用例与未提交改动漂移**：同一份源码在 `-s` 直跑口径下 `test_lexer` 曾记 105 条、现为 115 条，`test_expression_classifier` 曾记 38 条、现为 34 条——前者是 scanner/lexer 未提交重命名 WIP 带来的新增断言，后者是失败用例提前中断少记的断言。表格数字只作覆盖度参考，精确值以当天 `-s` 直跑为准。
 - **action 测试依赖真实子进程**：`test_option.cpp` 通过写文件观测，跨平台命令差异（`cmd`/`sh`）易失败；改 action 执行层时必须同时验证 Windows 与 Linux。
 - **不要用 `std::filesystem` 相对当前目录做断言**：测试运行目录由 xmake 决定，一律用临时目录绝对路径。
+- **`strValue` 公有字段已删除**：`OptionValue::strValue` 被 `property()` 取代后，测试改用 `getValue()` 读、`setValue()` 写；断言直接引用 `strValue` 会编译失败，不能用 `#define private public` 绕过（违反「只测公共 API」）。

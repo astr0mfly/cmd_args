@@ -55,18 +55,20 @@ Context  ──build<>──►  Builder         （构筑 Argument / Option / F
 | 8 | 环境变量兜底语义 | `.env("VAR")` 显式绑定后才参与兜底；优先级 **CLI 显式值 > 配置文件(YAML) > 环境变量 > 内置默认值**；配置导入走 `setExternal`（记 `bExternal__`），env 兜底跳过，CLI 后续仍可覆盖 |
 | 9 | 环境生态以 Env 三件套为准 | env 采用 `EnvData` / `EnvBuilder` / `EnvParser`；历史文件 `environment_parser.h`（含拼写 `envirionment_parser` / `environment_store`）已按用户要求删除，不得重建 |
 | 10 | builtins 懒注册 | 内置选项在每个 Model 首次解析时注册一次；`set_builtin_options(false)` 只在**同一 Context 首次 parse 之前**调用才生效 |
+| 11 | 参数值只经 `Property` 读写 | `Property<T>` 是值的唯一存储与拦截点；业务写入走 `Argument::set` / `OptionValue::setValue`（可被写钩子拒绝并抛 `ErrorValidation(VALIDATION_FAILED)`），只有配置/快照/`${VAR}` 展开等派生来源才允许 `setExternal` / `property().setRaw`；禁止恢复 `OptionValue::strValue` 公有字段 |
+| 12 | env 空间分隔符只能是宏 | `CMD_ARGS_ENV_SCOPE_SEP`（`base/def.h`，默认 `"::"`）唯一决定级联分隔符；`ENV_SCOPE_SEP`/`ENV_SCOPE_SEP_LEN` 为派生常量；`token.h` 的 `toText()`、`classified_expr.h` 的 `fullPath()`、`scanner.h` 的 `IN_SCOPE_SEP` 禁止硬编码字面量。`'-'` 需在 include 前 `#define` 覆盖，且 POSIX shell 无法直接 `export` 任一写法 |
 
 ---
 
 ## 3. 源码地图
 
-> 各子目录的详细模块说明见与该目录同名的 Markdown 文档：`argument/argument.md`、`option/option.md`、`env/env.md`、`context/context.md`、`expression/expression.md` 等（命名规则与覆盖清单见 §12）。
+> 各子目录的详细模块说明见与该目录同名的 Markdown 文档：`argument/argument.md`、`option/option.md`、`env/env.md`、`property/property.md`、`context/context.md`、`expression/expression.md` 等（命名规则与覆盖清单见 §12）。
 
 ```
 include/cmd_args/
-├── cmd_args.hpp                    # 唯一入口：include context/{context,context_step,context_runtime,factory}.h
+├── cmd_args.hpp                    # 唯一入口：include context/{context,context_step,context_runtime,factory}.h + property/property.h
 ├── base/                           # 基础工具（详见 base/base.md）
-│   ├── def.h                       # 命名空间宏 CMD_ARGS_NAMESPACE_BEGIN/END、ARRAY_SIZE、ENUM_NAME
+│   ├── def.h                       # 命名空间宏 CMD_ARGS_NAMESPACE_BEGIN/END、ARRAY_SIZE、ENUM_NAME、CMD_ARGS_ENV_SCOPE_SEP（env 空间分隔符，默认 "::"）
 │   ├── util.h                      # type_string<T> / parse_value<T> / parse_bool / trim / split / unwrap 等
 │   ├── defer.hpp                   # RAII defer / UniqueDefer
 │   └── validator.h                 # Validator / ValidatorMixin / SemanticTable_T（is_port/is_ipv4/…）
@@ -95,7 +97,7 @@ include/cmd_args/
 │   ├── interpreter.h               # Interpreter 流式引擎（字符泵逐 Token 解析即执行）
 │   ├── validation.h                # 统一校验入口（env spec → 必选 → 值校验）
 │   └── executor.h                  # Executor 批量执行（hasAction 门控按 actionOrder 后置）
-├── argument/                       # 参数子系统（详见 argument/AGENT.md）
+├── argument/                       # 参数子系统（详见 argument/argument.md）
 │   ├── argument.h                  # Argument / ArgumentNamed / ArgumentPosition
 │   ├── argument_builder.h          # ArgumentBuilder 构筑层
 │   ├── argument_data.h             # ArgumentData + NamedArgumentMgr / PositionArgumentMgr
@@ -106,7 +108,9 @@ include/cmd_args/
 │   ├── option_data.h               # OptionData + ValueOptMgr / ActionOptMgr + actionOrder
 │   ├── option_graph.h              # OptionGraph：conditional(-a?b:c)/dependency(-a->b) 有向图
 │   └── option_parser.h             # OptionParser 纯解析层（内置选项解析期即时触发回调）
-├── env/                            # 环境变量子系统（详见 env/AGENT.md）
+├── env/                            # 环境变量子系统（详见 env/env.md）
+├── property/                       # 参数值的属性载体（详见 property/property.md）
+│   └── property.h                  # Property<T>：值 + 默认值 + 写/读/变更钩子 + 修订号
 │   ├── env.h                       # environment 条目结构
 │   ├── env_data.h                  # EnvData 数据仓库（std::map）
 │   ├── env_builder.h               # EnvBuilder 写操作
@@ -137,7 +141,7 @@ example/once/main.cpp               # env 一等公民完整故事（target: onc
 example/validate/main.cpp           # required/range/semantic/requireEnv 校验（target: validation）
                                     # 示例总览见 example/example.md（各子目录另有同名文档）
 dfx/unit_test/                      # 单元测试（Catch2，仅公共 API）：main.cpp 仅 CATCH_CONFIG_MAIN，
-                                    # 18 个 test_*.cpp 按子模块拆分（详见 dfx/unit_test/unit_test.md）
+                                    # 19 个 test_*.cpp 按子模块拆分（详见 dfx/unit_test/unit_test.md）
 scripts/build_*.bat                 # 预留构建脚本
 ```
 
@@ -159,6 +163,15 @@ app.addFlag('v', "verbose", "help");
 app.argument("world")->env("CMD_ARGS_DEMO_WORLD");
 app.option("timeout")->env("CMD_ARGS_DEMO_TIMEOUT");
 app.option("task")->action("make {value}");
+
+// ── 属性读写拦截（property/property.h；参数与选项共用）──────────
+app.argument("world")->property()
+   .onWrite([](std::string &v) { return v.empty() ? "不能为空" : ""; })  // 返回非空消息即拒绝
+   .onRead([](std::string const &v) { return v.empty() ? "(anonymous)" : v; });
+app.option("timeout")->setValue("60");              // 经写钩子；拒绝抛 ErrorValidation(VALIDATION_FAILED)
+std::string tv = app.option("timeout")->getValue();  // 经读钩子（按值返回）
+bool okSet = app.option("timeout")->property().set("90");  // Property 自身返回 bool，不抛
+// 数据源：CLI 与 env seed 走 set（过写钩子）；YAML/快照与 ${VAR} 展开走 setRaw 旁路
 
 // ── 解析（三形态）────────────────────────────────────
 app.parse(argc, argv, envp);                            // 抛 ErrorParse/ErrorLexer
@@ -184,6 +197,12 @@ app.set_env("KEY", "VALUE"); app.unset_env("KEY");
 size_t n = app.apply_env();
 std::string e = app.expand_env("${VAR}!");
 std::cout << app.env_string();
+
+// ── env 空间键（分隔符宏，默认 '::'）───────────────────
+// A::B::C=V → 键 A::B::C；include 前 #define CMD_ARGS_ENV_SCOPE_SEP "-" 改为 A-B-C
+cmd_args::ENV_SCOPE_SEP;       // 实际分隔符（const char*）
+cmd_args::ENV_SCOPE_SEP_LEN;   // 字符数
+// 注意：POSIX shell 不能 export A-B=1 / A::B=1，需 env 'A::B=1' ./app
 
 // ── 配置脚本 ────────────────────────────────────────
 app.schema_string();  app.snapshot();  std::string y = app.to_yaml();
@@ -269,8 +288,9 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    形参 `_Xxx`（`_Name`/`_Help`）；方法 camelCase 小写动词开头；命名空间用宏；注释用中文 Doxygen。
 2. **提交信息**：gitmoji `type(scope): emoji message`，scope 取子系统（core/Lexer/Parser/builder/env/example/test/docs）。
 3. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`。
-4. **测试门槛**：`dfx/unit_test/` 目前 166 个 TEST_CASE / 818 行 REQUIRE/CHECK（2026-10-25 实测；
-   用例按子模块拆分为 18 个 `test_*.cpp`，`main.cpp` 仅保留 Catch2 main 入口，详见
+4. **测试门槛**：`dfx/unit_test/` 目前 175 个 TEST_CASE / 903 行 REQUIRE/CHECK（2026-10-25 实测：
+   172 通过，3 个为既有 lexer/classifier 基线失败，与 property 无关；
+   用例按子模块拆分为 19 个 `test_*.cpp`，`main.cpp` 仅保留 Catch2 main 入口，详见
    `dfx/unit_test/unit_test.md`）；任何行为改动应保持或增加覆盖，禁止回退。
 
 ---
@@ -286,7 +306,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 ## 11. Agent 工作守则
 
 1. 修改前先读目标文件与相关头文件（源码即文档）。
-2. **修改子目录代码前先读该目录的同名文档**（`argument/argument.md`、`option/option.md`、`env/env.md`、`context/context.md`、`expression/expression.md`、`base/base.md`、`config/config.md`、`error/error.md`），理解模块设计后再动手；命名规则与覆盖清单见 §12。
+2. **修改子目录代码前先读该目录的同名文档**（`argument/argument.md`、`option/option.md`、`env/env.md`、`property/property.md`、`context/context.md`、`expression/expression.md`、`base/base.md`、`config/config.md`、`error/error.md`），理解模块设计后再动手；命名规则与覆盖清单见 §12。
 3. 优先最小改动；改公共 API 必须先更新 §4 签名与双语 README。
 4. 每次改动后至少运行 `xmake build unit_test` + `xmake run unit_test`；
    涉及示例的改动再跑 `xmake build once`。
@@ -347,7 +367,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 - 跨目录概念只在一处详述（如 `OptionGraph` 归 `option/option.md`），其它文档留"联系 + 一句话"。
 - `.dsh/plans/*.md` 中的 `AGENT.md` 字样属于历史记录，不得据此改回文件名。
 
-### 12.3 覆盖清单（21 篇）
+### 12.3 覆盖清单（23 篇）
 
 | 目录 | 文档 |
 | --- | --- |
@@ -357,6 +377,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 | `include/cmd_args/context/` | `context/context.md` |
 | `include/cmd_args/expression/` | `expression/expression.md` |
 | `include/cmd_args/env/` | `env/env.md` |
+| `include/cmd_args/property/` | `property/property.md` |
 | `include/cmd_args/base/` | `base/base.md` |
 | `include/cmd_args/config/` | `config/config.md` |
 | `include/cmd_args/error/` | `error/error.md` |
@@ -372,6 +393,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 | `example/once/` | `example/once/once.md` |
 | `example/validate/` | `example/validate/validate.md` |
 | `dfx/unit_test/` | `dfx/unit_test/unit_test.md` |
+| `docs/` | `docs/docs.md`（声明式构建 / 响应式数据 / 数据源绑定的概念模型、盘点与候选决策；单文件） |
 
 ### 12.4 维护时机
 
@@ -385,26 +407,26 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 优先执行（退出码 0 为通过）：
 
 ```bash
-node .dsh/skills/dsi-native-docs/scripts/check-docs.mjs include/cmd_args example dfx/unit_test
+node .dsh/skills/dsi-native-docs/scripts/check-docs.mjs include/cmd_args example dfx/unit_test docs
 ```
 
 无 Node 环境时可用下列手工替代：
 
 ```bash
 # 1) 覆盖目录内不应再有 AGENT.md
-find include/cmd_args example dfx/unit_test -name AGENT.md
+find include/cmd_args example dfx/unit_test docs -name AGENT.md
 
 # 2) 每个目录都存在同名文档
-for d in include/cmd_args include/cmd_args/*/ include/cmd_args/extern/*/ example example/*/ dfx/unit_test; do
+for d in include/cmd_args include/cmd_args/*/ include/cmd_args/extern/*/ example example/*/ dfx/unit_test docs; do
   d=${d%/}; [ -f "$d/$(basename "$d").md" ] || echo "missing: $d/$(basename "$d").md"
 done
 
 # 3) 文档中的相对链接（人工确认可解析，或逐个 test -e）
-grep -rhoE '\]\([^)#]+' --include='*.md' include/cmd_args example dfx/unit_test | sed 's/^](//'
+grep -rhoE '\]\([^)#]+' --include='*.md' include/cmd_args example dfx/unit_test docs | sed 's/^](//'
 ```
 
 ### 12.6 配套技能（生成与校验）
 
 - 技能：`dsi-native-docs`，位于 `.dsh/skills/dsi-native-docs/`（`SKILL.md` + `scripts/check-docs.mjs`）。生成/迁移/更新子目录文档前先加载，按其模板、逐节写法与 0–7 工作流执行。
-- 校验：`node .dsh/skills/dsi-native-docs/scripts/check-docs.mjs include/cmd_args example dfx/unit_test`。脚本递归检查：同名文档存在、无 BOM、H1 含目录名、两行 blockquote（摘要/联系）、五节顺序、相对链接可解析、索引覆盖目录内全部非 md 文件、子目录在正文被提及；失败退出码 1。2026-10-25 实测：22 个目录、21 篇文档全部通过。
+- 校验：`node .dsh/skills/dsi-native-docs/scripts/check-docs.mjs include/cmd_args example dfx/unit_test docs`。脚本递归检查：同名文档存在、无 BOM、H1 含目录名、两行 blockquote（摘要/联系）、五节顺序、相对链接可解析、索引覆盖目录内全部非 md 文件、子目录在正文被提及；失败退出码 1。2026-10-25 实测：23 个目录、23 篇文档全部通过（`docs/` 新增 1 篇）。
 - 新增覆盖目录时，把目录加入上述命令，并把文档登记到 12.3。

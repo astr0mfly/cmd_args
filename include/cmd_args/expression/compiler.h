@@ -266,7 +266,7 @@ private:
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;
             if (envParser__.has(o.strEnvName__)) {
-                o.strValue  = envParser__.get(o.strEnvName__);
+                o.setValue(envParser__.get(o.strEnvName__));
                 o.bEnvHit__ = true;
             }
         });
@@ -275,13 +275,17 @@ private:
     void __expandEnvValues()
     {
         pModel__->args.mgrName.doMutVisit([&](Argument &a) {
-            if (a.hasValue()) { a.set(envParser__.expand(a.getValue())); }
+            if (!a.hasValue()) return;
+            // 展开属于派生值：旁路写钩子，避免二次准入/覆盖错误
+            a.property().setRaw(envParser__.expand(a.getValue()));
         });
         pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
-            if (a.hasValue()) { a.set(envParser__.expand(a.getValue())); }
+            if (!a.hasValue()) return;
+            a.property().setRaw(envParser__.expand(a.getValue()));
         });
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
-            if (!o.strValue.empty()) { o.strValue = envParser__.expand(o.strValue); }
+            auto const value = o.getValue();
+            if (!value.empty()) { o.property().setRaw(envParser__.expand(value)); }
         });
     }
 

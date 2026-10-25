@@ -76,7 +76,7 @@ public:
         _Errors.clearLast();
 
         try {
-            cmd_args::detail::Scanner sc({});
+            expression_detail::Scanner sc({});
             __lineReset();                                       // 游标归零指向输入流入口，栈与挂起状态清空
 
             while (idxCursor__ < _Line.size()) {
@@ -199,7 +199,7 @@ private:
     }
 
     /// @brief 泵入单字符：Scanner 识别出完整 token 即压入 token 栈，随后尝试归约执行
-    void __feedChar(detail::Scanner &_Sc, char _C)
+    void __feedChar(expression_detail::Scanner &_Sc, char _C)
     {
         auto tokOpt = _Sc.step(_C);
         if (!tokOpt) return;
@@ -347,7 +347,7 @@ private:
             // 条件关系：检查条件选项状态
             bool condState = false;
             if (auto const *pOpt = pModel__->opts.mgrValues.find(_Expr.strCondition)) {
-                condState = util::parse_bool(pOpt->strValue);
+                condState = util::parse_bool(pOpt->getValue());
             }
 
             if (condState) {
@@ -430,19 +430,19 @@ private:
     void __executeOptionImmediate(OptionValue *_Opt, std::string const &_Value, bool _IsBool)
     {
         if (_IsBool) {
-            _Opt->strValue = _Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0");
+            _Opt->setValue(_Value.empty() ? "1" : (util::parse_bool(_Value) ? "1" : "0"));
         }
         else {
-            _Opt->strValue = _Value;
+            _Opt->setValue(_Value);
         }
         _Opt->bExplicit__ = true;
 
         // 自定义回调：内置（--env-set 等）与用户选项一律即时触发（解析即执行）
-        if (_Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->strValue); }
+        if (_Opt->fnOnSet__) { _Opt->fnOnSet__(_Opt->getValue()); }
 
         // action 模板 → 子进程命令；非 0 告警不中断
         if (!_Opt->strActionTemplate__.empty()) {
-            auto cmd = util::replace(_Opt->strActionTemplate__, "{value}", _Opt->strValue);
+            auto cmd = util::replace(_Opt->strActionTemplate__, "{value}", _Opt->getValue());
             if (!cmd.empty()) {
                 int ret = std::system(cmd.c_str());
                 if (ret != 0) {
@@ -491,7 +491,7 @@ private:
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
             if (o.strEnvName__.empty() || o.bExplicit__ || o.bExternal__) return;
             if (this->EnvParser::has(o.strEnvName__)) {
-                o.strValue  = this->EnvParser::get(o.strEnvName__);
+                o.setValue(this->EnvParser::get(o.strEnvName__));
                 o.bEnvHit__ = true;
             }
         });
@@ -500,13 +500,16 @@ private:
     void __expandEnvValues()
     {
         pModel__->args.mgrName.doMutVisit([&](Argument &a) {
-            if (a.hasValue()) { a.set(this->EnvParser::expand(a.getValue())); }
+            if (!a.hasValue()) return;
+            a.property().setRaw(this->EnvParser::expand(a.getValue()));
         });
         pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
-            if (a.hasValue()) { a.set(this->EnvParser::expand(a.getValue())); }
+            if (!a.hasValue()) return;
+            a.property().setRaw(this->EnvParser::expand(a.getValue()));
         });
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
-            if (!o.strValue.empty()) { o.strValue = this->EnvParser::expand(o.strValue); }
+            auto const value = o.getValue();
+            if (!value.empty()) { o.property().setRaw(this->EnvParser::expand(value)); }
         });
     }
 
@@ -541,7 +544,7 @@ private:
     enum class PendingKind_E : char { None, LongOpt, ShortOpt, NamedArg };
 
     size_t                     idxCursor__        = 0;                    ///< 输入流游标：指向当前行下一待识别字符（入口为 0）
-    std::vector<detail::Token> vecStack__;                                ///< token 栈：识别即压入，凑满一个 Expression 立即归约执行
+    std::vector<Token> vecStack__;                                ///< token 栈：识别即压入，凑满一个 Expression 立即归约执行
     std::string                strPendingKey__    = {};                   ///< 等待取值的选项/命名参数名
     PendingKind_E              enPendingKind__    = PendingKind_E::None;  ///< 挂起取值方类型
     bool                       bPendingInlineEq__ = false;                ///< 挂起方是否由 '=' 内联分隔（仅 LongOpt 有意义）

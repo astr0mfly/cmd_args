@@ -7,17 +7,18 @@
 
 | 文件 | 行数 | 对外内容 |
 | --- | --- | --- |
-| `def.h` | 41 | `CMD_ARGS_NAMESPACE_BEGIN`/`CMD_ARGS_NAMESPACE_END`、`ARRAY_SIZE`、`ENUM_NAME`、`detail::fakeArraySize` |
+| `def.h` | 62 | `CMD_ARGS_NAMESPACE_BEGIN`/`CMD_ARGS_NAMESPACE_END`、`ARRAY_SIZE`、`ENUM_NAME`、`detail::fakeArraySize`、`CMD_ARGS_ENV_SCOPE_SEP`/`ENV_SCOPE_SEP`/`ENV_SCOPE_SEP_LEN` |
 | `util.h` | 222 | `type_string<T>`、`to_string`、`parse_value<T>`、`parse_bool`、`starts_with`/`ends_with`、`trim`/`split`/`unwrap`/`replace`/`parse_line`、`Group<T>` |
 | `defer.hpp` | 121 | `detail::Defer<F>`、`detail::UniqueDefer<F>`、`make_defer`/`make_unique_defer`、宏 `DEFER`/`UNIQUE_DEFER`/`DEFER_`/`UNIQUE_DEFER_` |
 | `validator.h` | 528 | 12 个 `is_*` 谓词、`Validator`、`ValidatorMixin<Self_T>`、`between`/`one_of`/`matches`/`custom`、`SemanticTable_T`/`semanticTable`/`semantic_validator` |
 
 ### def.h
 
-- `CMD_ARGS_NAMESPACE_BEGIN` 展开为 `namespace cmd_args {`，`CMD_ARGS_NAMESPACE_END` 展开为 `}`（`def.h:28-29`，2026-10-25 核对）。改名只需改这两行。
-- `cmd_args` 前缀式宏 `CMD_ARGS_NAMESPACE_PREFIX`、`CMD_ARGS_CONCAT`、`CMD_ARGS_NAMESPACE` 已被注释（`def.h:30-32`），不再使用。
-- `ARRAY_SIZE(_A)` 展开为 `sizeof(::detail::fakeArraySize(_A))`（`def.h:40`）。`fakeArraySize` 是**全局** `namespace detail` 中的未求值函数模板声明：`template <typename T, unsigned int N> char (&fakeArraySize(T (&)[N]))[N];`（`def.h:35-37`）。
-- `ENUM_NAME(_E)` 展开为 `#_E`（`def.h:41`），用于 `std::error_category::name()` 返回枚举类型名。
+- `CMD_ARGS_NAMESPACE_BEGIN` 展开为 `namespace cmd_args {`，`CMD_ARGS_NAMESPACE_END` 展开为 `}`（`def.h:30-31`，2026-10-25 核对）。改名只需改这两行。
+- `cmd_args` 前缀式宏 `CMD_ARGS_NAMESPACE_PREFIX`、`CMD_ARGS_CONCAT`、`CMD_ARGS_NAMESPACE` 已被注释（`def.h:32-34`），不再使用。
+- `ARRAY_SIZE(_A)` 展开为 `sizeof(::detail::fakeArraySize(_A))`（`def.h:42`）。`fakeArraySize` 是**全局** `namespace detail` 中的未求值函数模板声明：`template <typename T, unsigned int N> char (&fakeArraySize(T (&)[N]))[N];`（`def.h:38-40`）。
+- `ENUM_NAME(_E)` 展开为 `#_E`（`def.h:43`），用于 `std::error_category::name()` 返回枚举类型名。
+- `CMD_ARGS_ENV_SCOPE_SEP` 是 Env 空间级联分隔符宏，默认 `"::"`，`#ifndef` 包裹故可在 include 之前 `#define` 覆盖（`def.h:45-54`）；命名空间内配套 `inline constexpr char const *ENV_SCOPE_SEP` 与 `std::size_t ENV_SCOPE_SEP_LEN = sizeof(CMD_ARGS_ENV_SCOPE_SEP) - 1`，并有 `static_assert(ENV_SCOPE_SEP_LEN > 0)` 拒绝空串（`def.h:56-61`）。
 
 ### util.h
 
@@ -102,22 +103,23 @@
 
 | 文件 | 关键符号 | 职责 |
 | --- | --- | --- |
-| `def.h` | `CMD_ARGS_NAMESPACE_BEGIN`/`CMD_ARGS_NAMESPACE_END`、`ARRAY_SIZE`、`ENUM_NAME`、`detail::fakeArraySize` | 统一命名空间；编译期数组长度与枚举名工具 |
+| `def.h` | `CMD_ARGS_NAMESPACE_BEGIN`/`CMD_ARGS_NAMESPACE_END`、`ARRAY_SIZE`、`ENUM_NAME`、`detail::fakeArraySize`、`CMD_ARGS_ENV_SCOPE_SEP`/`ENV_SCOPE_SEP`/`ENV_SCOPE_SEP_LEN` | 统一命名空间；编译期数组长度与枚举名工具；Env 空间分隔符 |
 | `util.h` | `type_string<T>`、`to_string<T>`、`parse_value<T>`、`parse_bool`、`starts_with`/`ends_with`、`trim`/`split`/`unwrap`/`replace`/`parse_line`、`Group<T>` | 类型名映射、字符串解析与纯字符串工具 |
 | `defer.hpp` | `detail::Defer<F>`、`detail::UniqueDefer<F>`、`make_defer`、`make_unique_defer`、`DEFER`/`UNIQUE_DEFER`/`DEFER_`/`UNIQUE_DEFER_` | RAII 作用域退出守卫（当前无调用方） |
 | `validator.h` | `is_port`/`is_ipv4`/`is_ipv6`/`is_float`/`is_double`/`is_date`/`is_duration`/`is_hostname`/`is_uuid`/`is_path`/`is_existing_file`/`is_existing_dir`、`Validator`、`ValidatorMixin<Self_T>`、`between`/`one_of`/`matches`/`custom`、`SemanticTable_T`/`semanticTable`/`semantic_validator` | 值校验：内置谓词、用户文案、可链式校验器混入 |
 
 grep 锚点（行号基于 2026-10-25 核对）：
 
-- 命名空间宏：`def.h:28-29`
-- 全局 `detail::fakeArraySize`：`def.h:35-37`；`ARRAY_SIZE`：`def.h:40`
+- 命名空间宏：`def.h:30-31`
+- 全局 `detail::fakeArraySize`：`def.h:38-40`；`ARRAY_SIZE`：`def.h:42`；`ENUM_NAME`：`def.h:43`
+- Env 空间分隔符：`def.h:45-54`（宏）、`def.h:56-61`（常量与 static_assert）
 - `parse_bool`：`util.h:118-123`；`replace`：`util.h:181-193`
 - `Defer` 析构：`defer.hpp:34-38`；宏：`defer.hpp:115-121`
 - `Validator::validate`：`validator.h:236-256`；语义表：`validator.h:315-331`；`ValidatorMixin`：`validator.h:344`
 
 ## 决策
 
-- **用 `CMD_ARGS_NAMESPACE_BEGIN/END` 而不是 `inline namespace` 或前缀宏**：单点改名、调用方可选引入；代价是每个头文件多一对宏，且宏无法被 IDE 的命名空间重构识别。历史上曾设计 `CMD_ARGS_NAMESPACE_PREFIX`/`CMD_ARGS_CONCAT`/`CMD_ARGS_NAMESPACE`（`def.h:30-32` 仍保留注释），后因使用繁琐被否。
+- **用 `CMD_ARGS_NAMESPACE_BEGIN/END` 而不是 `inline namespace` 或前缀宏**：单点改名、调用方可选引入；代价是每个头文件多一对宏，且宏无法被 IDE 的命名空间重构识别。历史上曾设计 `CMD_ARGS_NAMESPACE_PREFIX`/`CMD_ARGS_CONCAT`/`CMD_ARGS_NAMESPACE`（`def.h:32-34` 仍保留注释），后因使用繁琐被否。
 - **`ARRAY_SIZE` 用函数模板推导而非 `sizeof(a)/sizeof(a[0])`**：对指针实参直接编译失败，避免静默算错；代价是必须放在**全局** `detail`（见“教训”）。
 - **`type_string` 用显式特化而非 RTTI/`typeid`**：字符串稳定、可读、不依赖 RTTI；代价是新增类型需手动补特化（漏写时返回 `"null"`，该字符串也是配置导出中“未知类型”的标记）。
 - **校验以“返回空串即通过”表达**：失败时可携带替换过 `%value%` 的用户文案，且无需异常；代价是每次失败才构造消息，调用方需用 `empty()` 判断而非布尔返回值。
@@ -128,7 +130,7 @@ grep 锚点（行号基于 2026-10-25 核对）：
 
 ## 教训
 
-- **`ARRAY_SIZE` 引用的是全局 `::detail`，不是 `cmd_args::detail`**：注释写作“经 detail::fakeArraySize 推导”（`def.h:25`），若照注释在库内改写为 `detail::fakeArraySize`，会解析到 `cmd_args::detail` 而找不到声明。`def.h:35-40`（2026-10-25 核对）明确用了前导 `::`；移动/重命名该宏时必须保留。
+- **`ARRAY_SIZE` 引用的是全局 `::detail`，不是 `cmd_args::detail`**：注释写作“经 detail::fakeArraySize 推导”（`def.h:27`），若照注释在库内改写为 `detail::fakeArraySize`，会解析到 `cmd_args::detail` 而找不到声明。`def.h:38-42`（2026-10-25 核对）明确用了前导 `::`；移动/重命名该宏时必须保留。
 - **`parse_bool` 对混合大小写一律判假**：只认 `true`/`TRUE`/`yes`/`on` 等精确拼写，`"True"` 落入 `parse_value<bool>` 的失败路径并返回 `false`（`util.h:118-123`）。解析布尔选项时不要指望大小写不敏感。
 - **`replace(str, "", to)` 会无限循环**：`find("") == pre_pos` 且 `pre_pos` 不前进（`util.h:181-193`）。传 `from` 前必须判空；这也意味着 `"%value%"` 替换的空模式不可能被调用。
 - **`trim` 的空白集只有空格、`\t`、`\r`、`\n`**：垂直制表/换页不在内（`util.h:140-147`）。处理外来文本时不要假设 `isspace` 全集。

@@ -94,7 +94,7 @@ inline parameter_schema schema_of(Model const &_M)
         e.name         = o.strLongName;
         e.kind         = (o.strType == "bool") ? "flag" : "option";
         e.type         = o.strType;
-        e.value        = o.strValue;
+        e.value        = o.getValue();
         e.env          = o.strEnvName__;
         e.explicit_set = o.bExplicit__;
         e.external_set = o.bExternal__;

@@ -122,6 +122,36 @@ app.option("port")->defaultValue();  // 内置默认值
 // usesDefault(): 参数=值比较近似、选项=来源标记（defaultExpr 下以选项语义为准）——见 schema uses_default 字段
 ```
 
+## 响应式数据：Property 属性（读写拦截）
+
+`Argument` 与 `OptionValue` 的值都存放在 `Property<std::string>` 里（`include/cmd_args/property/property.h`），
+参数/选项只是属性的持有者。属性提供三个拦截点和一个修订号：
+
+- **写拦截** `onWrite`：赋值准入。返回空串接受，返回非空消息即拒绝——值、版本、变更回调都不动；
+- **读拦截** `onRead`：取值变换（占位串、脱敏、默认值），只影响返回值，不改存储；
+- **变更回调** `onChange`：值实际变化后触发 `(旧值, 新值)`；
+- **修订号** `version()`：只在值真的变化时自增，可作缓存失效依据。
+
+```cpp
+// 写入即校验：空值拒绝；多余空白原地规范化
+app.argument("name")->property()
+   .onWrite([](std::string &v) {
+       v = cmd_args::util::trim(v);
+       return v.empty() ? "name 不能为空" : "";
+   })
+   .onRead([](std::string const &v) { return v.empty() ? "(anonymous)" : v; });
+
+std::error_code ec;
+app.parse(ec, argc, argv, envp);   // 写钩子拒绝 → ec == ValidationError_E::VALIDATION_FAILED
+std::string name = app.getArgument<std::string>("name");   // 经过读钩子
+
+app.option("timeout")->property().set("60");   // 返回 bool；false 表示被拒绝
+app.option("timeout")->setValue("90");         // 拒绝时抛 ErrorValidation(VALIDATION_FAILED)
+```
+
+数据源与拦截的关系：CLI 解析与 env 兜底 seed 都走写钩子；配置（YAML / 快照 / `setExternal`）
+与 `${VAR}` 展开走旁路 `setRaw`，不会被准入检查二次拦截。既有 `.check()` / `.range()` 等校验器
+仍只在解析末尾统一执行；需要“写入即校验”时，在 `onWrite` 里调用 `Validator` 并返回其消息即可。
 ## 环境变量一等公民
 
 ### 展示（`-!` / `--env` 或 `env_string()`）
@@ -139,6 +169,11 @@ No. : "key" = "value"
 - `>` 被引用：被用作兜底默认值，或被 `${VAR}` 展开命中
 - `+` 新建：进程环境里原本不存在的变量被本次会话创建
 
+### 空间键与分隔符
+
+环境键支持空间级联：`A::B::C=V` 会拆成空间路径 `A::B` 与叶子 `C`，写入 `EnvData` 的键是 `fullPath()`（默认 `A::B::C`）。分隔符由宏 `CMD_ARGS_ENV_SCOPE_SEP` 唯一决定：默认 `"::"`，在包含任何头文件之前 `#define CMD_ARGS_ENV_SCOPE_SEP "-"`（或编译期 `/D`、`-D`）即切到 `-`，`cmd_args::ENV_SCOPE_SEP` / `ENV_SCOPE_SEP_LEN` 暴露实际值。
+
+注意：两种写法都不能被 shell 直接导出——POSIX 变量名只允许 `[A-Za-z_][A-Za-z0-9_]*`，`export A::B=1` 与 `export A-B=1` 都失败，只能用 `env 'A::B=1' ./my_tool` 注入；Windows 用 `set "A::B=1"`（必须加引号）。默认保留 `"::"` 是为了键名不随平台漂移（YAML/CI/测试里写的是 `A::B::C`）。
 ### 交互（Context API / 内置选项）
 
 | 能力 | 编程接口 | 命令行 |
@@ -291,7 +326,8 @@ app.option("task")->action("echo \"{value}\"");
 - 三类错误码：`ParseError_E` / `LexError_E` / `InterpError_E`，均已注册进
   `std::error_code`，可用 `ec.message()` 转可读文本
 - 第四类错误域 `ValidationError_E`（`MISSING_ARGUMENT` / `MISSING_OPTION` /
-  `MISSING_ENV` / `VALIDATION_FAILED`），赋值完成后、action 执行前统一校验，
+  `MISSING_ENV` / `VALIDATION_FAILED`）：`VALIDATION_FAILED` 既用于赋值完成后统一校验，
+  也由属性写钩子拒绝即时抛出（`Argument::set` / `OptionValue::setValue`），
   同样支持异常与 `std::error_code` 双通道；批量管线中 `save-config` 随
   `finalize()` 在用户 action 执行之前写出——配置快照为 action 执行前的状态
   （validation 失败时不写出）
@@ -310,12 +346,14 @@ app.option("task")->action("echo \"{value}\"");
 环境变量展示/交互/展开/回写、**YAML 配置存储与反哺（save/load-config）**、
 **选项 action（system_call 子进程按顺序执行）**、
 **Expression 表达式类层次（kind() 自动分类 / Model::expressions() 统一视图 / app.model()）**、
+**Property 属性读写拦截（写准入 / 读变换 / 变更回调 / 版本号）**、
 参数格式 schema / 快照 snapshot、once/loop 模式、错误分类、异常捕获（airbag）。
 
 - **值验证器**（range/oneOf/match/check + semantic 语义校验：ipv4/ipv6/port/file/path/date/duration/hostname/uuid/float/double）
 - **必选约束**（`required()` / `required(false)` + `requireEnv`）
 - **默认值增强**（`defaultExpr` 含 `${VAR:-fallback}`、`defaultFn` 每次 reset 重算、`hasDefault`/`usesDefault`/`defaultValue`）
 - **schema 标注** `[required]` / `[default]` / `[validators]`
+- **属性读写拦截** `property().onWrite/onRead/onChange` + `version()`：写准入（拒绝不改值）、读变换、变更回调；CLI 与 env seed 过钩子，配置与 `${VAR}` 展开走 `setRaw` 旁路
 
 仍在展望（本期未做，见计划约束）：
 - `counter` 计数选项（`-vvv` → 3，涉及解析层聚合改造）
@@ -409,7 +447,7 @@ xmake r once -- --hello hi --timeout 99 -v peter 3   # 跑 once 示例
 `-?`/`--`、未闭合字符串）、构筑期重名检查、解析错误码分类、环境变量
 （展示格式与标记、三种展开、apply 回写、优先级）、**YAML 往返 / 配置反哺 /
 CLI>配置>环境>默认优先级链 / loop 独立调用语义 / 选项 action 执行语义**等，
-debug/release 均通过（163 通过 / 3 已知基线失败，合计 166 用例 / 824 断言）。
+debug/release 均通过（172 通过 / 3 已知基线失败，合计 175 用例 / 903 断言）。
 
 > MSVC 注意：源码含 UTF-8 中文注释，xmake 已为 Windows 平台追加
 > `/utf-8` 编译选项，避免 GBK 代码页下触发 C4819。
@@ -423,6 +461,7 @@ include/cmd_args/          头文件库本体（header-only）
 ├── argument/              Argument / ArgumentNamed / ArgumentPosition + 数据/解析
 ├── option/                OptionValue / OptionAction + 数据/构筑/解析
 ├── env/                   environment / EnvData / EnvBuilder / EnvParser（一等公民核心）
+├── property/              Property<T>：值 + 默认值 + 写/读/变更钩子 + 修订号（读写拦截）
 ├── expression/            token / lexer / scanner / expression_recognizer / classified_expr /
 │                          compiler / interpreter / executor（编译前端管线）
 ├── config/                yaml（极简 YAML 子集）/ parameter（schema/快照）/
@@ -434,6 +473,7 @@ example/config/            YAML 配置往返示例（config_demo）
 example/validate/          必选/校验器/默认值/环境声明示例（validation）
 dfx/unit_test/             Catch2 单元测试
 scripts/                   构建运行脚本（build.bat / clean.bat 等）
+docs/                      概念澄清：声明式构建 / 响应式数据 / 数据源绑定（含符合项盘点与候选决策）
 ```
 
 ## 来源与参考

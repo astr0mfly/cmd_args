@@ -96,9 +96,9 @@ app.declare(defs[0], defs[1]).group("net", "timeout", "port");
 
 ### 7. 文档一致性核查（2026-10-25 实测）
 
-- 测试口径：`README.md`、`README_zh.md`、`.dsh/Agent.md §9.4`、`dfx/unit_test/unit_test.md` 一致为 **175 用例 / 903 断言**（172 通过，3 个既有 lexer/classifier 基线失败）。
+- 测试口径：`README.md`、`README_zh.md`、`.dsh/Agent.md §9.4`、`dfx/unit_test/unit_test.md` 一致为 **175 用例 / 913 断言**（2026-10-25 实测，全部通过）。
 - 子目录文档：`include/cmd_args`、`example`、`dfx/unit_test`、`docs` 共 24 篇 native 文档通过 `check-docs`，无缺失（`example/reactive/` 为 Property 拦截的可运行示例）。
-- 工作树中 `include/cmd_args/expression/{lexer,scanner}.h` 的 `detail`→`expression_detail` 重命名 WIP 是上述 3 个失败的来源，与本概念模型无关。
+- 上一轮记录的 3 个失败已在修复提交中闭环，且它们并非 WIP 噪音：`test_lexer.cpp:207`/`:241` 暴露 `Scanner` 在 `EnvLine` 下 `bEnvValuePos__` 从未置位（`'='` 在 `__processBegin` 就被消费，`__processSingleDelimiter` 里判 `_Cur == '='` 永不成立），`test_expression_classifier.cpp:180` 是过期期望（聚合头 + 两个方位参数应得 3 个 expr，与同文件 `:63` 口径一致）。
 
 ## 约束
 
@@ -171,8 +171,8 @@ app.option("output")
 ## 教训
 
 - **本目录一度只剩过期样例与历史计划**：这些内容删除后目录空缺；重建为单文件概念文档，不回填历史计划（计划属于 `.dsh/plans/`）。
-- **概念文档最容易漂移**：测试计数与 `file:line` 必须在写作当天实测；本次核对发现 `unit_test.md` 仍按旧口径（166/818），已同步为 175/903。
-- **3 个既有失败不是本次回归**：`test_lexer.cpp:207`/`:241`（`toks[6].getAttr()`、`toks.size()`）与 `test_expression_classifier.cpp:180`（`exprs.size()`）来自未提交的 scanner/lexer `detail`→`expression_detail` WIP，改动文档或属性代码时不要把它们当作自己的回归。
+- **概念文档最容易漂移**：测试计数与 `file:line` 必须在写作当天实测；本次核对发现 `unit_test.md` 仍按旧口径（166/818），已同步为 175/913。
+- **失败测试先判源码期望**：曾把 3 个失败归给 scanner/lexer 的 `detail`→`expression_detail` WIP，实为两类真问题——`EnvLine` 值位置标志未置位（词法缺陷，`scanner.h` 需在 `__processBegin` 遇 `'='` 就置位，见 `expression.md`）与过期期望（聚合头不吞后续 token）。修复后两条路径的行为差异都由单测固定，别再沿用「基线失败」说法。
 - **分隔符不能按平台改默认**：`'-'` 与 `'::'` 在 shell 里同样不可 `export`，按平台切默认只会让键名漂移；改为单一宏 `CMD_ARGS_ENV_SCOPE_SEP`（默认 `'::'`）后由用户按需覆盖，词法与文档里不再出现第二个字面量。
 - **EnvLine 不在生产路径**：`A::B=V` 只在 `scanEnvLine`/`recognizeEnvAssign`（当前仅单测）里级联，真实 envp 由 `EnvParser::parse` 按首个 `'='` 截键；验证分隔符要用 `Lexer::scanEnvLine`，不要指望 `parse` 拆键。
 - **D2 与 Property 冲突要先定权威**：在“值存哪儿”没定论前，不要同时推进镜像同步与响应式钩子，否则两套真值源会互相覆盖。

@@ -289,8 +289,8 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
    形参 `_Xxx`（`_Name`/`_Help`）；方法 camelCase 小写动词开头；命名空间用宏；注释用中文 Doxygen。
 2. **提交信息**：gitmoji `type(scope): emoji message`，scope 取子系统（core/Lexer/Parser/builder/env/example/test/docs）。
 3. **README 镜像**：改公共 API 或行为时必须同步更新 `README.md` 与 `README_zh.md`。
-4. **测试门槛**：`dfx/unit_test/` 目前 175 个 TEST_CASE / 903 行 REQUIRE/CHECK（2026-10-25 实测：
-   172 通过，3 个为既有 lexer/classifier 基线失败，与 property 无关；
+4. **测试门槛**：`dfx/unit_test/` 目前 175 个 TEST_CASE / 913 行 REQUIRE/CHECK（2026-10-25 实测：
+   全部通过；
    用例按子模块拆分为 19 个 `test_*.cpp`，`main.cpp` 仅保留 Catch2 main 入口，详见
    `dfx/unit_test/unit_test.md`）；任何行为改动应保持或增加覆盖，禁止回退。
 

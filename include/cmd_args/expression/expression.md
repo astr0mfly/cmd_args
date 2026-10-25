@@ -33,7 +33,7 @@
 
 归约五规则（`__reduceStack`，与批量 Parser 语义逐条对齐）：1) 有挂起取值方则栈顶即值并立即执行；2) `--` 之后一律方位参数；3) `--name[=v]`：短回路/bool 即刻完成，非 bool 转挂起；4) `-x`/`-abc` 聚合：bool 位即刻完成，值选项吃余串或挂起等下个 token；5) 其余 token 入方位缓冲。取值消费规则：`LongOpt` 拒绝 `'-'` 开头值（除非挂起方带内联 `'='`），`ShortOpt`/`NamedArg` 无条件接受下一个 token。关系语法即时处理：`__isRelationText`（长度 ≥ 4、以 `'-'` 开头且含 `'?'` 或 `"->"`）→ `__classifyRelationText` → `__handleRelation`（Conditional 查条件选项 `util::parse_bool` 激活 then/else，Dependency 激活 target，值统一 `"1"`）。
 
-词法模式：`LexMode_E::CommandLine` 为默认（argv；长名遇 `'='` 或空白结束并 `setInlineEq(true)`）；`LexMode_E::EnvLine` 用于 envp 行（Variable 遇 `':'`/`'='`/`ENV_SCOPE_SEP[0]` 结束；首字符命中即进入 `IN_SCOPE_SEP`，按 `nScopeMatched__` 与 `ENV_SCOPE_SEP_LEN` 逐字符比对：凑满定型 `ScopeSep`，不足则退化为 `Delimiter` 并把当前字符留给 `BEGIN` 重处理；`'='` 置 `bEnvValuePos__` 后进入 `IN_ENV_VALUE` 吸收整段值）。
+词法模式：`LexMode_E::CommandLine` 为默认（argv；长名遇 `'='` 或空白结束并 `setInlineEq(true)`）；`LexMode_E::EnvLine` 用于 envp 行（Variable 遇 `':'`/`'='`/`ENV_SCOPE_SEP[0]` 结束；首字符命中即进入 `IN_SCOPE_SEP`，按 `nScopeMatched__` 与 `ENV_SCOPE_SEP_LEN` 逐字符比对：凑满定型 `ScopeSep`，不足则退化为 `Delimiter` 并把当前字符留给 `BEGIN` 重处理；`'='` 在 `__processBegin` 处即置 `bEnvValuePos__` 并进入 `IN_ENV_VALUE` 吸收整段值；值 token 定型为 `String` 或换行时清除该标志）。
 
 action 时机：`Compiler` 路径内置短回路选项在识别期 `fireAction` 即回调，用户 action 记录进 `actionOrder` 由 `Executor` 在 finalize 后统一执行；`Interpreter` 路径全部即时（`__executeOptionImmediate` 内触发 `fnOnSet__` + action 模板），不使用 `Executor`。
 
@@ -92,3 +92,4 @@ grep 锚点（2026-10-25 核对）：`grep -n "class Scanner" include/cmd_args/e
 - LongOpt 挂起拒绝 `'-'` 开头值、ShortOpt/NamedArg 无条件接受（`expression_recognizer.h:180-210`、`interpreter.h:232-255`）：`--opt -5` 报 `NEED_VALUE`，而 `-o -5` 接受；测试需分别覆盖。
 - `ExpressionRecognizer` 的 HeadStash 快速路径：缓冲第二个 token 是 Variable/Integer/String/Real 时直接 emit aggregate（`expression_recognizer.h:307-323`）→ `-a b` 不会等待关系尾；关系语法必须紧邻出现。
 - `Interpreter::__finalize` 与 `Compiler::finalize` 各有一份 seed/expand/save-config 逻辑（`compiler.h:148-164`、`interpreter.h:513-529`），改一处忘另一处会导致两条路径行为分叉。
+- EnvLine 的值位置标志只能在 `__processBegin` 置位：`'='` 在 BEGIN 阶段就被 `pick` 并 `__nextChar()`，到 `__processSingleDelimiter` 时 `_Cur` 已是值首字符，在那里判 `_Cur == '='` 永不成立（曾使 `PATH=/usr/bin` 拆成 4 个 token、`A::B::C=D` 的值退化为 Variable）。

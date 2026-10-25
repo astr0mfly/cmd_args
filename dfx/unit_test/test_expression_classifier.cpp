@@ -179,11 +179,14 @@ TEST_CASE("recognizer: aggregate -abc 后跟 positional 走快速路径", "[clas
         Token(Token::Type_E::Variable, "extra", 0)
     };
     auto exprs = rec.recognizeAll(toks);
-    REQUIRE(exprs.size() == 2);
+    // 聚合头 + 两个方位参数：快速路径只提前吐出聚合候选，不会吞掉后续 token
+    REQUIRE(exprs.size() == 3);
     REQUIRE(exprs[0].kind == ExpressionKind_E::Option);
     REQUIRE(exprs[0].cShortName == 'a');
     REQUIRE(exprs[1].bPositional);
     REQUIRE(exprs[1].name == "val");
+    REQUIRE(exprs[2].bPositional);
+    REQUIRE(exprs[2].name == "extra");
 }
 
 

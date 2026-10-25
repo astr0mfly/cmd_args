@@ -200,6 +200,10 @@ private:
             __nextChar();
             return;
         }
+        // EnvLine：'=' 起始即进入「值位置」，随后的字符按整段值吸收（含 '/'、'.'、'=' 等）
+        if (enMode__ == LexMode_E::EnvLine && _Cur == '=') {
+            bEnvValuePos__ = true;
+        }
         if (enMode__ == LexMode_E::EnvLine && _Cur == ENV_SCOPE_SEP[0]) {
             _T.pick(_Cur);
             nScopeMatched__ = 1;
@@ -422,10 +426,6 @@ private:
         default: break;
         }
 
-        if (enMode__ == LexMode_E::EnvLine && _Cur == '=') {
-            bEnvValuePos__ = true;
-        }
-
         _T.setAttr(Token::Type_E::Delimiter);
         __setState(Phrase_E::END);
     }
@@ -443,6 +443,7 @@ private:
     void __processEnd(char const _Cur, Token &_T)
     {
         (void)_Cur;
+        if (bEnvValuePos__ && _T.getAttr() == Token::Type_E::String) { bEnvValuePos__ = false; }
         _T.setLoc(cntLoc__);
         tResultSingle__ = _T;
         _T.clear();
@@ -487,6 +488,7 @@ private:
     inline void __nextLine() noexcept
     {
         ++cntLoc__;
+        bEnvValuePos__ = false;  // EnvLine：每条赋值行独立，值位置不跨行
         if (cntLoc__ < source__.size()) { itPc__ = source__[cntLoc__].cbegin(); }
     }
 

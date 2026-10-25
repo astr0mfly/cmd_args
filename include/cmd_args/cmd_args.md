@@ -117,5 +117,5 @@ enum class ExpressionKind_E : char
 - **README 与源码漂移**：README_zh 第 36–44 行「Expression 表达式类层次」只列 `Argument/Option/Env` 三种，而 `expression/expression.h:31-39` 实际定义 5 种（含 `Conditional`/`Dependency`）。改枚举时同步 README；阅读时以源码为准。
 - **词法已知缺陷**：`Scanner` 会把含 `.` 的数值（如 `127.0.0.1`）拆成多个 token，`example/validate/main.cpp` 头注释有记录；写文档/示例时不要把它当合法单 token。
 - **旧文档事实不可直接沿用**：迁移前 `expression/AGENT.md` 记录了并不存在的 `expression_classifier.h`，`context/AGENT.md` 只登记 4 个文件而目录实有 13 个；本次迁移后须以源码重新核对。
-- **统计数字易腐坏**：`.dsh/Agent.md` 曾写「111 TEST_CASE / 523 断言」，2026-10-25 实测为 175 用例 / 903 断言（其中 3 个为既有 lexer/classifier 基线失败）；引用数量必须注明核对日期。
+- **统计数字易腐坏**：`.dsh/Agent.md` 曾写「111 TEST_CASE / 523 断言」，2026-10-25 实测为 175 用例 / 913 断言（全部通过）；引用数量必须注明核对日期。
 - **不要用行号做文档锚点**：头文件重构频繁，行号会立刻失效；用符号名与文件名定位，必要时附核对日期。

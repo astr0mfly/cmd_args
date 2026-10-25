@@ -152,6 +152,10 @@ app.option("timeout")->setValue("90");         // 拒绝时抛 ErrorValidation(V
 数据源与拦截的关系：CLI 解析与 env 兜底 seed 都走写钩子；配置（YAML / 快照 / `setExternal`）
 与 `${VAR}` 展开走旁路 `setRaw`，不会被准入检查二次拦截。既有 `.check()` / `.range()` 等校验器
 仍只在解析末尾统一执行；需要“写入即校验”时，在 `onWrite` 里调用 `Validator` 并返回其消息即可。
+
+可运行示例：`xmake build reactive` 后执行 `xmake r reactive -- --name alice --port 9090`
+（源码 [example/reactive/main.cpp](example/reactive/main.cpp)）。
+
 ## 环境变量一等公民
 
 ### 展示（`-!` / `--env` 或 `env_string()`）
@@ -471,6 +475,7 @@ include/cmd_args/          头文件库本体（header-only）
 example/once/              once 模式示例
 example/config/            YAML 配置往返示例（config_demo）
 example/validate/          必选/校验器/默认值/环境声明示例（validation）
+example/reactive/          响应式拦截示例（reactive：Property 写/读拦截与变更通知）
 dfx/unit_test/             Catch2 单元测试
 scripts/                   构建运行脚本（build.bat / clean.bat 等）
 docs/                      概念澄清：声明式构建 / 响应式数据 / 数据源绑定（含符合项盘点与候选决策）

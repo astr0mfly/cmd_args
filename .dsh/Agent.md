@@ -139,6 +139,7 @@ example/deduce/main.cpp             # addOption 类型推导（target: deduce）
 example/group/main.cpp              # group() 帮助分组（target: group）
 example/once/main.cpp               # env 一等公民完整故事（target: once）
 example/validate/main.cpp           # required/range/semantic/requireEnv 校验（target: validation）
+example/reactive/main.cpp           # Property 写/读拦截与变更通知（target: reactive）
                                     # 示例总览见 example/example.md（各子目录另有同名文档）
 dfx/unit_test/                      # 单元测试（Catch2，仅公共 API）：main.cpp 仅 CATCH_CONFIG_MAIN，
                                     # 19 个 test_*.cpp 按子模块拆分（详见 dfx/unit_test/unit_test.md）
@@ -367,7 +368,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 - 跨目录概念只在一处详述（如 `OptionGraph` 归 `option/option.md`），其它文档留"联系 + 一句话"。
 - `.dsh/plans/*.md` 中的 `AGENT.md` 字样属于历史记录，不得据此改回文件名。
 
-### 12.3 覆盖清单（23 篇）
+### 12.3 覆盖清单（24 篇）
 
 | 目录 | 文档 |
 | --- | --- |
@@ -392,6 +393,7 @@ $env:XMAKE_PROFILE_DIR='H:\dsh_space\cmd_args\build\.xmake-profile'
 | `example/group/` | `example/group/group.md` |
 | `example/once/` | `example/once/once.md` |
 | `example/validate/` | `example/validate/validate.md` |
+| `example/reactive/` | `example/reactive/reactive.md` |
 | `dfx/unit_test/` | `dfx/unit_test/unit_test.md` |
 | `docs/` | `docs/docs.md`（声明式构建 / 响应式数据 / 数据源绑定的概念模型、盘点与候选决策；单文件） |
 
@@ -428,5 +430,5 @@ grep -rhoE '\]\([^)#]+' --include='*.md' include/cmd_args example dfx/unit_test 
 ### 12.6 配套技能（生成与校验）
 
 - 技能：`dsi-native-docs`，位于 `.dsh/skills/dsi-native-docs/`（`SKILL.md` + `scripts/check-docs.mjs`）。生成/迁移/更新子目录文档前先加载，按其模板、逐节写法与 0–7 工作流执行。
-- 校验：`node .dsh/skills/dsi-native-docs/scripts/check-docs.mjs include/cmd_args example dfx/unit_test docs`。脚本递归检查：同名文档存在、无 BOM、H1 含目录名、两行 blockquote（摘要/联系）、五节顺序、相对链接可解析、索引覆盖目录内全部非 md 文件、子目录在正文被提及；失败退出码 1。2026-10-25 实测：23 个目录、23 篇文档全部通过（`docs/` 新增 1 篇）。
+- 校验：`node .dsh/skills/dsi-native-docs/scripts/check-docs.mjs include/cmd_args example dfx/unit_test docs`。脚本递归检查：同名文档存在、无 BOM、H1 含目录名、两行 blockquote（摘要/联系）、五节顺序、相对链接可解析、索引覆盖目录内全部非 md 文件、子目录在正文被提及；失败退出码 1。2026-10-25 实测：24 个目录、24 篇文档全部通过（`docs/` 与 `example/reactive/` 各新增 1 篇）。
 - 新增覆盖目录时，把目录加入上述命令，并把文档登记到 12.3。

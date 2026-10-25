@@ -274,17 +274,17 @@ private:
 
     void __expandEnvValues()
     {
+        // 展开属于派生值：以原始值（raw）为源并旁路写钩子，避免把读钩子的默认值物化进存储
         pModel__->args.mgrName.doMutVisit([&](Argument &a) {
-            if (!a.hasValue()) return;
-            // 展开属于派生值：旁路写钩子，避免二次准入/覆盖错误
-            a.property().setRaw(envParser__.expand(a.getValue()));
+            auto const value = a.property().raw();
+            if (!value.empty()) { a.property().setRaw(envParser__.expand(value)); }
         });
         pModel__->args.mgrPos.doMutVisit([&](Argument &a) {
-            if (!a.hasValue()) return;
-            a.property().setRaw(envParser__.expand(a.getValue()));
+            auto const value = a.property().raw();
+            if (!value.empty()) { a.property().setRaw(envParser__.expand(value)); }
         });
         pModel__->opts.mgrValues.forEachValue([&](OptionValue &o) {
-            auto const value = o.getValue();
+            auto const value = o.property().raw();
             if (!value.empty()) { o.property().setRaw(envParser__.expand(value)); }
         });
     }

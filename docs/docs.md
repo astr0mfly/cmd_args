@@ -97,7 +97,7 @@ app.declare(defs[0], defs[1]).group("net", "timeout", "port");
 ### 7. 文档一致性核查（2026-10-25 实测）
 
 - 测试口径：`README.md`、`README_zh.md`、`.dsh/Agent.md §9.4`、`dfx/unit_test/unit_test.md` 一致为 **175 用例 / 903 断言**（172 通过，3 个既有 lexer/classifier 基线失败）。
-- 子目录文档：`include/cmd_args`、`example`、`dfx/unit_test`、`docs` 共 23 篇 native 文档通过 `check-docs`，无缺失。
+- 子目录文档：`include/cmd_args`、`example`、`dfx/unit_test`、`docs` 共 24 篇 native 文档通过 `check-docs`，无缺失（`example/reactive/` 为 Property 拦截的可运行示例）。
 - 工作树中 `include/cmd_args/expression/{lexer,scanner}.h` 的 `detail`→`expression_detail` 重命名 WIP 是上述 3 个失败的来源，与本概念模型无关。
 
 ## 约束

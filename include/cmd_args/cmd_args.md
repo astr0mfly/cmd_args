@@ -67,7 +67,7 @@ enum class ExpressionKind_E : char
 ### 构建与平台
 
 - xmake 工程，C++20，header-only（无库编译产物）；根 [xmake.lua](../../xmake.lua) 定义公共 includedirs 与 target。
-- target：`unit_test`（默认关闭）+ 7 个示例 target（`chain`、`config_demo`、`declare`、`deduce`、`group`、`once`、`validation`，全部 `set_default(false)`）。
+- target：`unit_test`（默认关闭）+ 8 个示例 target（`chain`、`config_demo`、`declare`、`deduce`、`group`、`once`、`reactive`、`validation`，全部 `set_default(false)`）。
 - 支持 MSVC / GCC / Clang；Windows 使用 airbag 的 `exception_handler.h` 时需 `/EHa`。
 
 ### 外部依赖

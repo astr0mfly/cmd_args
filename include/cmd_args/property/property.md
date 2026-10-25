@@ -1,7 +1,7 @@
 # property — 参数值的属性载体与读写拦截点
 
 > **摘要**：property 目录只有一件东西：模板 `Property<T>`。它是参数/选项值的唯一存储，也是“响应式数据”的拦截点——写钩子 `onWrite` 做准入与原地规范化，读钩子 `onRead` 做取值变换与默认值拦截，变更回调 `onChange` 与修订号 `version()` 支撑下游失效传播。`Argument` 与 `OptionValue` 各私有持有一个 `Property<std::string>`，经 `property()` 暴露、经 `set` / `setValue` / `getValue` 生效；它不做解析、不做统一校验，也不跨对象广播。
-> **联系**：上级索引 [cmd_args.md](../cmd_args.md)；持有方 [argument.md](../argument/argument.md)、[option.md](../option/option.md)；错误通道 [validation_error.h](../error/validation_error.h)；接线点 [compiler.h](../expression/compiler.h)、[interpreter.h](../expression/interpreter.h)、[validation.h](../expression/validation.h)、[config_store.h](../config/config_store.h)；单测 [test_property.cpp](../../../dfx/unit_test/test_property.cpp)；README 见 [环境变量一等公民](../../../README_zh.md#环境变量一等公民) 与 [配置脚本（YAML）：第三类外界环境](../../../README_zh.md#配置脚本yaml第三类外界环境)。
+> **联系**：上级索引 [cmd_args.md](../cmd_args.md)；持有方 [argument.md](../argument/argument.md)、[option.md](../option/option.md)；错误通道 [validation_error.h](../error/validation_error.h)；接线点 [compiler.h](../expression/compiler.h)、[interpreter.h](../expression/interpreter.h)、[validation.h](../expression/validation.h)、[config_store.h](../config/config_store.h)；可运行示例 [example/reactive/main.cpp](../../../example/reactive/main.cpp)；单测 [test_property.cpp](../../../dfx/unit_test/test_property.cpp)；README 见 [环境变量一等公民](../../../README_zh.md#环境变量一等公民) 与 [配置脚本（YAML）：第三类外界环境](../../../README_zh.md#配置脚本yaml第三类外界环境)。
 
 ## truth
 
@@ -61,7 +61,7 @@ public:
 | CLI 解析（长/短选项、命名/方位参数） | 是 | option_parser.h:531-543 经 `setValue`；argument_parser.h 各赋值点经 `set` |
 | 业务代码 `Argument::set` / `OptionValue::setValue` | 是 | argument.h:194-208 / option.h:238-245 |
 | env 兜底 seed（`__seedEnvDefaults`） | 是 | compiler.h:256-273、interpreter.h:486-499 |
-| `${VAR}` 展开（`__expandEnvValues`） | 否（`setRaw`） | compiler.h:275-290、interpreter.h:501-513 |
+| `${VAR}` 展开（`__expandEnvValues`，以 `raw()` 为源） | 否（`setRaw`） | compiler.h:275-290、interpreter.h:500-514 |
 | YAML / 快照 / `setExternal` / `load_config` | 否（`setRaw`） | argument.h:217-234、option.h:157-172、config_store.h |
 | 默认值同步 / `reset` | 否（`__apply`） | property.h:126-159 |
 
@@ -107,4 +107,5 @@ grep 锚点（2026-10-25 核对）：`grep -n "class Property" include/cmd_args/
 - `OptionValue::strValue` 曾被测试直接赋值（原 test_model.cpp:92），本次改为 `setValue`：公有字段删除属破坏性变更，升级方需全量替换为 `getValue()` / `setValue()`。
 - `defaultValue(T)` 与 `defaultFn` 都带 `!bSet__` 守护：显式赋值过就不再被默认值覆盖；这与旧 `defaultExpr` “无条件覆盖值”的行为不同，改为 `defaultExpr` = `clearDefaultFn` + `defaultValue(_Expr)` + `reset()`（argument.h:333-340）。
 - 文档漂移：旧 `argument.md` / `option.md` 记录 `strValue__` / `strDefault__` / `fnDefault__` 与 mutable `strValue`，`option.h:176` 的 `reset` 注释也还写着 `strValue`——Property 接入后全部失效（2026-10-25 已同步）。
+- 展开源必须用 `raw()` 而不是 `get()`：`__expandEnvValues` 初版以 `o.getValue()`（过读钩子）取值再 `setRaw` 回写，`onRead` 造出的默认值被物化进存储、`version()` 自增，表现为“没传 --level 却拿到 raw = info”。已改为 `property().raw()` 作源（compiler.h:275-290、interpreter.h:500-514）；`example/reactive` 的输出 `raw = []` 是该修复的回归观察点。
 - 读钩子返回空值不等于未设置：`hasValue()` / `operator bool` 用 `raw()` 判定，`getValue()` 可能返回钩子造出的非空串（如 `(anonymous)`）；判断“有没有值”只能查 `raw()` / `isSet()` / `isSatisfied()`。

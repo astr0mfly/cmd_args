@@ -26,7 +26,7 @@
 3) `isOptionsEnded()` 为真 → `parseNamedOnly` + `parsePositionalOnly`，否则 `argParser__.parse` + `optionGraph.evaluate()`；
 4) 仍以 `'-'` 开头的残留 token → `ErrorParse(ParseError_E::UNKNOWN_OPTION)`；
 5) `catch(...)` → `clearParseOrder()` + `optionGraph.clear()` 后 rethrow。
-`finalize()`：`__seedEnvDefaults`（跳过已有值/外部赋值，env 命中则 set + `markEnvHit`/`bEnvHit__`）→ `__expandEnvValues`（所有参数/选项值过 `EnvParser::expand`）→ `validate`（失败抛 `ErrorValidation`）→ `--save-config` 写出。
+`finalize()`：`__seedEnvDefaults`（跳过已有值/外部赋值，env 命中则 set + `markEnvHit`/`bEnvHit__`）→ `__expandEnvValues`（以 `property().raw()` 为源、`setRaw` 旁路，所有参数/选项值过 `EnvParser::expand`）→ `validate`（失败抛 `ErrorValidation`）→ `--save-config` 写出。
 注意：`__applyOne(ClassifiedExpr&&, std::vector<std::string>&)` 已实现按 kind 分派（Option/Conditional/Dependency/Argument/Env），但全文件无调用点；批量路径不经过 `ExpressionRecognizer`。
 
 流式管线（`Interpreter`）：`interpret(line, Errors&)` → 复位全部参数/选项值 → `clearLast()` → `Scanner sc({})` → `__lineReset()` → 逐字符 `__feedChar`（`Scanner::step` 出 token 即压 `vecStack__`，随后 `__reduceStack()`）→ 流尾 `step('\0')` flush → 挂起取值按 `NamedArg`/`LongOpt`/`ShortOpt` 三种文案报 `NEED_VALUE` → `vecDashLeft__` 非空报 `UNKNOWN_OPTION` → `__assignPositional`（数量校验：`need` 为非外部方位参数数、`total` 为全部；越界抛 `UNKNWON_ARGS` 并附 `give N, but need A..B`）→ `__finalize`（seed + expand + validate + save-config）→ `bParsed__ = true`；异常按 `ErrorParse`/`ErrorLexer`/`ErrorValidation` 捕获并 `setLast` 返回错误码，`std::exception` → `setMsg` + `UNKNWON_ARGS`。
